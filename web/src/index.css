@@ -1,0 +1,146 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Design tokens. Components use only these semantic colors, so both themes
+   stay consistent. Status always pairs color with a text label. */
+:root {
+  --bg: #f4f5f7;
+  --surface: #ffffff;
+  --surface-2: #f0f2f5;
+  --surface-3: #e7eaef;
+  --border: #e1e4ea;
+  --border-strong: #c9cfd8;
+  --text: #141920;
+  --text-muted: #566070;
+  --text-faint: #8a93a1;
+  --accent: #3d5afe;
+  --accent-hover: #2f4ae0;
+  --accent-fg: #ffffff;
+  --accent-soft: rgb(61 90 254 / 0.1);
+  --ok: #1a7f37;
+  --ok-soft: rgb(26 127 55 / 0.1);
+  --warn: #9a6700;
+  --warn-soft: rgb(154 103 0 / 0.12);
+  --danger: #cf222e;
+  --danger-soft: rgb(207 34 46 / 0.1);
+  --info: #0969da;
+  --info-soft: rgb(9 105 218 / 0.1);
+  --neutral: #6e7781;
+  --neutral-soft: rgb(110 119 129 / 0.12);
+  --shadow: 0 1px 2px rgb(16 24 40 / 0.06), 0 1px 3px rgb(16 24 40 / 0.08);
+  --overlay: rgb(15 20 28 / 0.45);
+}
+
+.dark {
+  --bg: #0a0d12;
+  --surface: #11151c;
+  --surface-2: #171c25;
+  --surface-3: #1e2430;
+  --border: #222935;
+  --border-strong: #303948;
+  --text: #e7eaf0;
+  --text-muted: #9aa4b3;
+  --text-faint: #687384;
+  --accent: #6d8bff;
+  --accent-hover: #8aa2ff;
+  --accent-fg: #0a0d12;
+  --accent-soft: rgb(109 139 255 / 0.14);
+  --ok: #3fb950;
+  --ok-soft: rgb(63 185 80 / 0.14);
+  --warn: #d29922;
+  --warn-soft: rgb(210 153 34 / 0.15);
+  --danger: #f85149;
+  --danger-soft: rgb(248 81 73 / 0.14);
+  --info: #58a6ff;
+  --info-soft: rgb(88 166 255 / 0.14);
+  --neutral: #7d8696;
+  --neutral-soft: rgb(125 134 150 / 0.16);
+  --shadow: 0 1px 0 rgb(0 0 0 / 0.4), 0 8px 24px rgb(0 0 0 / 0.25);
+  --overlay: rgb(0 0 0 / 0.6);
+}
+
+@theme inline {
+  --font-sans: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "Cascadia Mono", "Cascadia Code", Consolas, ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-fg: var(--text);
+  --color-muted: var(--text-muted);
+  --color-faint: var(--text-faint);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-neutral: var(--neutral);
+  --color-neutral-soft: var(--neutral-soft);
+  --shadow-panel: var(--shadow);
+}
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-bg text-fg font-sans antialiased;
+    font-size: 13.5px;
+    line-height: 1.45;
+  }
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  ::selection {
+    background: var(--accent-soft);
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.live-dot {
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .live-dot {
+    animation: none;
+  }
+}
+
+/* uPlot chart chrome follows the active theme. */
+.uplot-host .u-legend {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin-top: 4px;
+}
+.uplot-host .u-legend .u-marker {
+  border-radius: 2px;
+}
+.uplot-host .u-select {
+  background: var(--accent-soft);
+}

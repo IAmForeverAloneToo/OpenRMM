@@ -1,0 +1,14 @@
+# Only build inputs enter the context. In particular .env, .local, and dist
+# never reach the Docker daemon, even when the build runs through WSL.
+**
+!go.mod
+!go.sum
+!dependencies.lock
+!cmd/
+!cmd/**
+!internal/
+!internal/**
+!Dockerfile
+!THIRD_PARTY_NOTICES.md
+!LICENSE
+!NOTICE

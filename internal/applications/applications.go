@@ -1,0 +1,144 @@
+// Package applications defines managed MSI packages and verified lifecycle results.
+// Storage, targeting and transport remain outside the Windows execution contract.
+package applications
+
+import (
+	_ "embed"
+	"encoding/base64"
+	"encoding/json"
+	"net/url"
+	"regexp"
+	"strconv"
+	"strings"
+
+	"github.com/IAmForeverAloneToo/OpenRMM/internal/protocol"
+	"github.com/IAmForeverAloneToo/OpenRMM/internal/scripting"
+)
+
+const MaxVersions = 20
+const MaxTargets = 25
+const MaxInstallerBytes = 256 * 1024 * 1024
+
+type Definition struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Version     string `json:"version"`
+	ProductCode string `json:"product_code"`
+	URL         string `json:"url"`
+	SHA256      string `json:"sha256"`
+}
+
+var guid = regexp.MustCompile(`^\{[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}\}$`)
+
+func ProductCode(s string) bool { return guid.MatchString(s) }
+func Version(s string) bool {
+	parts := strings.Split(s, ".")
+	if len(parts) != 3 {
+		return false
+	}
+	for i, p := range parts {
+		n, e := strconv.ParseUint(p, 10, 16)
+		if e != nil || strconv.FormatUint(n, 10) != p || i < 2 && n > 255 {
+			return false
+		}
+	}
+	return true
+}
+func Newer(next, previous string) bool {
+	if !Version(next) || !Version(previous) {
+		return false
+	}
+	a, b := strings.Split(next, "."), strings.Split(previous, ".")
+	for i := range a {
+		x, _ := strconv.Atoi(a[i])
+		y, _ := strconv.Atoi(b[i])
+		if x != y {
+			return x > y
+		}
+	}
+	return false
+}
+func Valid(d Definition) bool {
+	if d.Name == "" || strings.TrimSpace(d.Name) != d.Name || !scripting.Text(d.Name, 100, false) || !scripting.Text(d.Description, 2000, true) || !Version(d.Version) || !ProductCode(d.ProductCode) || !scripting.Hash(d.SHA256) || len(d.URL) > 2048 || !scripting.Text(d.URL, 2048, false) {
+		return false
+	}
+	u, e := url.ParseRequestURI(d.URL)
+	return e == nil && u.Scheme == "https" && u.Hostname() != "" && u.User == nil && u.RawQuery == "" && !u.ForceQuery && u.Fragment == "" && u.Opaque == "" && strings.HasSuffix(strings.ToLower(u.Path), ".msi") && !strings.ContainsAny(d.URL, "\r\n\t\\#")
+}
+func Operation(s string) bool {
+	return s == "verify" || s == "install" || s == "update" || s == "uninstall"
+}
+
+//go:embed runner.ps1
+var runner string
+
+func Runner(d Definition, verify bool) protocol.ScriptDefinition {
+	raw, _ := json.Marshal(d)
+	identity := "system"
+	name := "Managed MSI lifecycle"
+	if verify {
+		identity = "restricted"
+		name = "Managed MSI verification"
+	}
+	body := `param([string]$Operation,[string]$KnownProducts,[string]$PreviousCode='', [string]$PreviousVersion='')` + "\n" + `$package = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('` + base64.StdEncoding.EncodeToString(raw) + `')) | ConvertFrom-Json` + "\n"
+	if verify {
+		body += `if ($Operation -ne 'verify') { exit 91 }` + "\n"
+	}
+	return protocol.ScriptDefinition{Name: name, Description: "Generated immutable MSI workflow; package metadata and hash are bound to this definition.", Body: body + runner, Timeout: 300, RunAs: identity, Parameters: []protocol.ScriptParameter{{Name: "Operation", Required: true}, {Name: "KnownProducts", Required: true}, {Name: "PreviousCode"}, {Name: "PreviousVersion"}}}
+}
+
+type Product struct {
+	Code    string `json:"code"`
+	Version string `json:"version"`
+}
+type Report struct {
+	Format          string    `json:"format"`
+	Operation       string    `json:"operation"`
+	Outcome         string    `json:"outcome"`
+	Reason          string    `json:"reason"`
+	Observed        bool      `json:"observed"`
+	Products        []Product `json:"products"`
+	Mutated         bool      `json:"mutated"`
+	InstallerExit   *int32    `json:"installer_exit"`
+	RestartRequired bool      `json:"restart_required"`
+}
+
+func ReportValid(r Report) bool {
+	if r.Format != "msi_v1" || !Operation(r.Operation) || len(r.Products) > MaxVersions || r.Products == nil {
+		return false
+	}
+	if r.Outcome != "verified" && r.Outcome != "no_change" && r.Outcome != "failed" && r.Outcome != "unknown" {
+		return false
+	}
+	allowed := map[string]bool{"verified": true, "precondition": true, "download": true, "checksum": true, "package_identity": true, "installer": true, "verification": true, "observation": true, "denied": true, "unsupported": true, "interrupted": true}
+	if !allowed[r.Reason] || !r.Observed && len(r.Products) != 0 || (r.Outcome == "verified" || r.Outcome == "no_change") && (!r.Observed || r.Reason != "verified") || r.InstallerExit != nil && !r.Mutated || r.RestartRequired && (r.InstallerExit == nil || *r.InstallerExit != 3010) || r.Operation == "verify" && r.Mutated {
+		return false
+	}
+	if r.Outcome == "no_change" && (r.Mutated || r.InstallerExit != nil) || r.RestartRequired != (r.InstallerExit != nil && *r.InstallerExit == 3010) {
+		return false
+	}
+	if r.Outcome == "verified" && r.Operation != "verify" && (!r.Mutated || r.InstallerExit == nil || *r.InstallerExit != 0 && *r.InstallerExit != 3010) {
+		return false
+	}
+	seen := map[string]bool{}
+	for _, p := range r.Products {
+		if !ProductCode(p.Code) || !Version(p.Version) || seen[p.Code] {
+			return false
+		}
+		seen[p.Code] = true
+	}
+	return true
+}
+
+func PostconditionValid(d Definition, r Report) bool {
+	if r.Outcome != "verified" && r.Outcome != "no_change" {
+		return true
+	}
+	if r.Operation == "verify" {
+		return !r.Mutated
+	}
+	if r.Operation == "uninstall" {
+		return len(r.Products) == 0
+	}
+	return len(r.Products) == 1 && r.Products[0].Code == d.ProductCode && r.Products[0].Version == d.Version
+}

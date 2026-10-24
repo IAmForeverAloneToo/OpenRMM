@@ -1,0 +1,17 @@
+OpenRMM
+SPDX-License-Identifier: AGPL-3.0-only
+
+Copyright (C) 2026 OpenRMM contributors.
+
+Original OpenRMM source code and accompanying project documentation are
+licensed under the GNU Affero General Public License as published by the
+Free Software Foundation, version 3 only.
+
+This program is free software: you can redistribute it and/or modify it
+under the terms of that license. It is distributed in the hope that it will
+be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See LICENSE for the
+full terms.
+
+Third-party components retain their own copyright notices and licenses.
+See THIRD_PARTY_NOTICES.md. This notice does not relicense third-party code.

@@ -1,0 +1,53 @@
+name: Bug report
+description: Something does not work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please remove secrets, host names, user names and device data from everything you paste.
+        Security vulnerabilities must be reported privately; see SECURITY.md.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Go to ...
+        2. Click ...
+        3. See ...
+    validations:
+      required: true
+  - type: input
+    id: server-version
+    attributes:
+      label: Server version
+      description: Shown under Administration → Server updates.
+    validations:
+      required: true
+  - type: input
+    id: agent-version
+    attributes:
+      label: Agent version and Windows version
+      placeholder: e.g. 0.1.0 on Windows 11 23H2
+  - type: dropdown
+    id: install
+    attributes:
+      label: Installation type
+      options:
+        - install.sh with a domain (Let's Encrypt)
+        - install.sh with an address (LAN CA)
+        - Local development (scripts/local.ps1)
+        - Other
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      description: Server logs (docker compose logs server) or the agent log (%ProgramData%\OpenRMM Agent\logs\agent.log), redacted.
+      render: text

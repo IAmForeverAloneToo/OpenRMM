@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  OpenRMM agent installer, built with wixl (msitools) by
+  scripts/build-msi.ps1. Never change the UpgradeCode or component GUIDs.
+  Variables: ProductVersion (1.0.<release sequence>), AgentVersion, SourceDir.
+  Every install removes whichever agent version is installed (upgrades and
+  downgrades), so the self-update helper can roll back by reinstalling the
+  previous package. Device identity and state under ProgramData are never
+  installed or removed by this package.
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*" Name="OpenRMM Agent" Language="1033" Version="$(var.ProductVersion)" Manufacturer="OpenRMM" UpgradeCode="24409C6B-91FC-4A07-83E8-933476E74BBD">
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Description="OpenRMM Agent $(var.AgentVersion)" Comments="OpenRMM Windows agent and desktop companion"/>
+    <MajorUpgrade AllowDowngrades="yes"/>
+    <Media Id="1" Cabinet="agent.cab" EmbedCab="yes"/>
+    <Property Id="ARPNOREPAIR" Value="1"/>
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLDIR" Name="OpenRMM Agent">
+          <Component Id="Agent" Guid="9CB4F2DE-6523-4463-80E1-F4E68E0879B2" Win64="yes">
+            <File Id="AgentExe" Name="openrmm-agent.exe" Source="$(var.SourceDir)/openrmm-agent.exe" KeyPath="yes"/>
+            <ServiceInstall Id="AgentService" Name="OpenRMMAgent" DisplayName="OpenRMM Agent" Description="OpenRMM agent: outbound authenticated management and response. Credentials and bounded logs are retained on uninstall." Type="ownProcess" Start="auto" ErrorControl="normal" Account="LocalSystem" Arguments="-service -state &quot;[CommonAppDataFolder]OpenRMM Agent\state&quot; -log-directory &quot;[CommonAppDataFolder]OpenRMM Agent\logs&quot;"/>
+            <!-- Remove at install too: replaces a registration made by older versions of scripts/service.ps1. -->
+            <ServiceControl Id="AgentServiceControl" Name="OpenRMMAgent" Start="install" Stop="both" Remove="both" Wait="yes"/>
+            <!-- Helpers that ran as separate services in older versions. -->
+            <ServiceControl Id="LegacyUpdater" Name="OpenRMMAgentUpdater" Stop="install" Remove="install" Wait="yes"/>
+            <ServiceControl Id="LegacyRunner" Name="OpenRMMScriptRunner" Stop="install" Remove="install" Wait="yes"/>
+            <ServiceControl Id="LegacyBroker" Name="OpenRMMUpdateBroker" Stop="install" Remove="install" Wait="yes"/>
+          </Component>
+          <Component Id="Desktop" Guid="5C1A9743-C6A8-4BB8-8B55-0F9DA87A4860" Win64="yes">
+            <File Id="DesktopExe" Name="openrmm-desktop.exe" Source="$(var.SourceDir)/openrmm-desktop.exe" KeyPath="yes"/>
+            <!-- The companion starts at every sign-in. -->
+            <RegistryValue Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\Run" Name="OpenRMM Desktop" Type="string" Value="&quot;[INSTALLDIR]openrmm-desktop.exe&quot; --background"/>
+          </Component>
+          <Component Id="Notices" Guid="81CFFCE4-09DC-405A-99C7-632CDEE7FE45" Win64="yes">
+            <File Id="License" Name="LICENSE" Source="$(var.SourceDir)/LICENSE" KeyPath="yes"/>
+            <File Id="Notice" Name="NOTICE" Source="$(var.SourceDir)/NOTICE"/>
+            <File Id="ThirdParty" Name="THIRD_PARTY_NOTICES.md" Source="$(var.SourceDir)/THIRD_PARTY_NOTICES.md"/>
+          </Component>
+        </Directory>
+      </Directory>
+      <Directory Id="CommonAppDataFolder">
+        <Directory Id="DATADIR" Name="OpenRMM Agent">
+          <Directory Id="STATEDIR" Name="state">
+            <Component Id="StateFolder" Guid="C0CAA67B-8D12-40CC-81BF-C8B6A7F925F2" Win64="yes">
+              <CreateFolder/>
+            </Component>
+          </Directory>
+          <Directory Id="LOGDIR" Name="logs">
+            <Component Id="LogFolder" Guid="7CE67BE5-FC0E-4865-901D-0E548EB25015" Win64="yes">
+              <CreateFolder/>
+            </Component>
+          </Directory>
+        </Directory>
+      </Directory>
+    </Directory>
+    <Feature Id="Complete" Level="1">
+      <ComponentRef Id="Agent"/>
+      <ComponentRef Id="Desktop"/>
+      <ComponentRef Id="Notices"/>
+      <ComponentRef Id="StateFolder"/>
+      <ComponentRef Id="LogFolder"/>
+    </Feature>
+  </Product>
+</Wix>

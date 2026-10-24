@@ -1,0 +1,67 @@
+name: openrmm-local
+
+services:
+  server:
+    image: openrmm-local:dev
+    build: .
+    restart: unless-stopped
+    environment:
+      OPENRMM_SERVER_LISTEN: "0.0.0.0:8443"
+      OPENRMM_SERVER_CONTAINER_NETWORK: "true"
+      OPENRMM_SERVER_DATABASE: /data/openrmm.db
+      OPENRMM_SERVER_TLS_CERT: /tls/local/server.pem
+      OPENRMM_SERVER_TLS_KEY: /tls/local/server-key.pem
+      # Written into downloaded agent installers.
+      OPENRMM_SERVER_TLS_CA: /tls/local/ca.pem
+      OPENRMM_SERVER_ENCRYPTION_KEY: /secrets/admin-key.bin
+      OPENRMM_SERVER_DEVICE_LISTEN: "0.0.0.0:8444"
+      OPENRMM_SERVER_DEVICE_AUTHORITY: /secrets/device-ca/authority.pem
+      OPENRMM_LOG_LEVEL: info
+      OPENRMM_SERVER_ALERT_SMTP_CONFIG: "${OPENRMM_ALERT_SMTP_CONFIG:-}"
+      # Case evidence: its own volume, never pruned automatically.
+      OPENRMM_SERVER_EVIDENCE_DIR: /evidence
+      OPENRMM_SERVER_EVIDENCE_QUOTA_GB: "${OPENRMM_EVIDENCE_QUOTA_GB:-100}"
+    ports:
+      - "127.0.0.1:8443:8443"
+      - "127.0.0.1:8444:8444"
+    volumes:
+      - data:/data
+      - tls:/tls:ro
+      - secrets:/secrets
+      - evidence:/evidence
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 64
+    mem_limit: 256m
+    cpus: 1.0
+    stop_grace_period: 10s
+    healthcheck:
+      test: [CMD, /openrmm-agent, -server, "https://127.0.0.1:8443", -ca, /tls/local/ca.pem, -ready]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  certificates:
+    image: openrmm-local:dev
+    profiles: [tools]
+    entrypoint: [/openrmm-devcert]
+    command: [-out, /tls/local]
+    network_mode: none
+    volumes:
+      - tls:/tls
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+
+volumes:
+  data:
+  tls:
+  secrets:
+  evidence:

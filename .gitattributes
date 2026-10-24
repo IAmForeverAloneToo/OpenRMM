@@ -1,0 +1,8 @@
+* text=auto
+# Migration checksums must be identical across Windows and Linux checkouts.
+*.sql text eol=lf
+*.sh text eol=lf
+*.yaml text eol=lf
+*.lock text eol=lf
+Dockerfile text eol=lf
+

@@ -1,0 +1,51 @@
+# ---------------------------------------------------------------------------
+# Secrets, keys and local configuration (never committed)
+# ---------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+signing-key.json
+
+# ---------------------------------------------------------------------------
+# Local data, build output and caches
+# ---------------------------------------------------------------------------
+/.local/
+/dist/
+/coverage.out
+*.log
+*.db
+*.db-*
+*.sqlite*
+*.msi
+*.exe
+*.zip
+__pycache__/
+*.py[cod]
+
+# Frontend packages and the generated web build (embedded by the server;
+# produced by scripts/build-web.ps1).
+/web/node_modules/
+/web/dist/
+/internal/server/webui/dist/
+
+# Signed agent release bundled into a server build by scripts/release.ps1.
+/internal/agentbundle/files/*
+!/internal/agentbundle/files/README.md
+
+# Throwaway tests run against local data.
+zz_*_test.go
+
+# ---------------------------------------------------------------------------
+# Editor and operating-system files
+# ---------------------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
