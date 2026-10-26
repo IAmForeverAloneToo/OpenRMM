@@ -233,3 +233,32 @@ func TestSMTPConfigStrictFieldsAndAddressInjection(t *testing.T) {
 		t.Fatal("header injection accepted")
 	}
 }
+func TestSMTPTestMessageAndConfigID(t *testing.T) {
+	f := smtpFixture(t, "starttls", "")
+	m, e := NewMailer(f.config)
+	if e != nil {
+		t.Fatal(e)
+	}
+	// The ID ignores the password, the CA file and a trailing slash, so it
+	// can be computed from stored settings without decrypting anything.
+	other := f.config
+	other.Password, other.RootCAFile, other.ServerURL = "", "", other.ServerURL+"/"
+	if ConfigID(other) != m.ID {
+		t.Fatal("configuration ID depends on the password or CA file")
+	}
+	other.To = []string{"someone-else@example.invalid"}
+	if ConfigID(other) == m.ID {
+		t.Fatal("configuration ID ignores the recipients")
+	}
+	r := m.SendTest(context.Background(), "admin")
+	if r.Status != "sent" || f.auth.Load() != 1 {
+		t.Fatal("test message failed", r)
+	}
+	parsed, e := mail.ReadMessage(strings.NewReader(<-f.message))
+	if e != nil || parsed.Header.Get("Subject") != "OpenRMM test e-mail" || !strings.HasPrefix(parsed.Header.Get("Message-ID"), "<openrmm.test.") {
+		t.Fatal("unexpected test message headers")
+	}
+	if r := (*Mailer)(nil).SendTest(context.Background(), "admin"); r.Status != "failed" || r.Reason != "disabled" {
+		t.Fatal("test message without a mailer", r)
+	}
+}

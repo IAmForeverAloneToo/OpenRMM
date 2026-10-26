@@ -22,22 +22,24 @@ func runAlertEvaluator(ctx context.Context, s *storage.Store, logger *slog.Logge
 		}
 	}
 }
-func runAlertMail(ctx context.Context, s *storage.Store, m *alerting.Mailer, logger *slog.Logger) {
-	if m == nil {
-		return
-	}
+
+// runAlertMail sends queued notices with the mailer in use at each tick;
+// current returns nil while e-mail is off.
+func runAlertMail(ctx context.Context, s *storage.Store, current func() *alerting.Mailer, logger *slog.Logger) {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	for {
-		id, notice, e := s.ClaimAlertMail(ctx, m.ID, time.Now())
-		if e == nil && id != 0 {
-			r := m.Send(ctx, notice)
-			if e = s.FinishAlertMail(ctx, id, r, time.Now()); e != nil && ctx.Err() == nil {
-				logger.Warn("alert email outcome could not be recorded")
+		if m := current(); m != nil {
+			id, notice, e := s.ClaimAlertMail(ctx, m.ID, time.Now())
+			if e == nil && id != 0 {
+				r := m.Send(ctx, notice)
+				if e = s.FinishAlertMail(ctx, id, r, time.Now()); e != nil && ctx.Err() == nil {
+					logger.Warn("alert email outcome could not be recorded")
+				}
 			}
-		}
-		if e != nil && ctx.Err() == nil {
-			logger.Warn("alert email queue unavailable")
+			if e != nil && ctx.Err() == nil {
+				logger.Warn("alert email queue unavailable")
+			}
 		}
 		select {
 		case <-ctx.Done():

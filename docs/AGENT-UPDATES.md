@@ -49,11 +49,11 @@ A release bundled with the server appears automatically, recorded as `system:ser
 
 ## Automatic updates (rings)
 
-Automatic updates are off until you turn them on. In **Automatic updates → Settings**:
+A new installation updates agents automatically: with no pilot groups, every device receives a new release 24 hours after the server first sees it, and any failure pauses the rollout. Servers that already had devices before this default keep their earlier setting. Change it in **Automatic updates → Settings**:
 
 | Setting | Values |
 | --- | --- |
-| Automatic updates | On or off (default off) |
+| Automatic updates | On or off (default on for new installations) |
 | Pilot groups | Up to ten device groups |
 | Delay before the rest of the fleet | 1–720 hours (default 24) |
 

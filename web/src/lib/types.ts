@@ -377,6 +377,22 @@ export type AlertSettings = {
   runtime: { mail_paused: boolean; offline_after_seconds: number; last_sweep: number; last_gap: number; mail_configured: boolean; pending_samples: number; active_devices: number; capacity_limited: boolean };
   evaluator_stale: boolean;
 };
+export type EmailSettings = {
+  source: "dashboard" | "file";
+  enabled: boolean;
+  host: string;
+  port: number;
+  tls: "starttls" | "tls";
+  username: string;
+  from: string;
+  to: string[];
+  server_url: string;
+  updated_at: number | null;
+  revision: number;
+  has_password: boolean;
+  active: boolean;
+  suggested_server_url: string;
+};
 export type HealthCheck = {
   id: string;
   device_id: string;

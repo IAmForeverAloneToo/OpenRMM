@@ -3,6 +3,7 @@ package alerting
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
@@ -96,13 +97,19 @@ func NewMailer(c MailConfig) (*Mailer, error) {
 			return nil, ErrMailConfig
 		}
 	}
-	// The fingerprint binds queued notices to destinations, not password hashes.
-	identity := c
-	identity.Password = ""
-	identity.RootCAFile = ""
-	b, _ := json.Marshal(identity)
+	return &Mailer{config: c, roots: roots, ID: ConfigID(c)}, nil
+}
+
+// ConfigID fingerprints a configuration's destination (server, sender,
+// recipients, link), binding queued notices to it. The password and CA file
+// are left out, so the ID can be computed without decrypting anything.
+func ConfigID(c MailConfig) string {
+	c.ServerURL = strings.TrimSuffix(c.ServerURL, "/")
+	c.Password = ""
+	c.RootCAFile = ""
+	b, _ := json.Marshal(c)
 	sum := sha256.Sum256(b)
-	return &Mailer{config: c, roots: roots, ID: hex.EncodeToString(sum[:])}, nil
+	return hex.EncodeToString(sum[:])
 }
 func LoadMailer(path string) (*Mailer, error) {
 	if path == "" {
@@ -140,6 +147,25 @@ func (m *Mailer) Send(ctx context.Context, n Notice) MailResult {
 	if !protocol.ValidID(n.AlertID) || !protocol.ValidID(n.DeviceID) || (n.Event != "opened" && n.Event != "resolved") || len(n.Hostname) > 512 || len(n.Title) > 128 || len(n.Condition) > 256 {
 		return result("failed", "invalid_notice")
 	}
+	text := fmt.Sprintf("OpenRMM alert %s\r\n\r\nDevice: %s\r\nDevice ID: %s\r\nAlert: %s\r\nSeverity: %s\r\nCondition: %s\r\nOpened (UTC): %s\r\n\r\n%s/alerts?device=%s\r\n", n.Event, n.Hostname, n.DeviceID, n.Title, n.Severity, n.Condition, time.Unix(n.OpenedAt, 0).UTC().Format(time.RFC3339), m.config.ServerURL, n.DeviceID)
+	return m.deliver(ctx, "OpenRMM device alert "+n.Event, "openrmm."+n.AlertID+"."+n.Event, text)
+}
+
+// SendTest sends a short test message to the configured recipients, from
+// the dashboard's e-mail settings.
+func (m *Mailer) SendTest(ctx context.Context, actor string) MailResult {
+	if m == nil {
+		return MailResult{"failed", "disabled"}
+	}
+	id := make([]byte, 8)
+	_, _ = rand.Read(id)
+	text := fmt.Sprintf("This is a test message from OpenRMM, sent by %s from the e-mail settings.\r\nAlert notices will be sent to the same recipients.\r\n\r\n%s/\r\n", actor, m.config.ServerURL)
+	return m.deliver(ctx, "OpenRMM test e-mail", "openrmm.test."+hex.EncodeToString(id), text)
+}
+
+// deliver sends one plain-text message over the configured TLS connection.
+func (m *Mailer) deliver(ctx context.Context, subject, messageID, text string) MailResult {
+	result := func(status, reason string) MailResult { return MailResult{status, reason} }
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	conn, e := (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, "tcp", net.JoinHostPort(m.config.Host, strconv.Itoa(m.config.Port)))
@@ -196,9 +222,9 @@ func (m *Mailer) Send(ctx context.Context, n Notice) MailResult {
 		return mailFailure(e)
 	}
 	var body bytes.Buffer
-	fmt.Fprintf(&body, "From: %s\r\nTo: %s\r\nSubject: OpenRMM device alert %s\r\nDate: %s\r\nMessage-ID: <openrmm.%s.%s@openrmm.invalid>\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: quoted-printable\r\n\r\n", m.config.From, strings.Join(m.config.To, ", "), n.Event, time.Now().UTC().Format(time.RFC1123Z), n.AlertID, n.Event)
+	fmt.Fprintf(&body, "From: %s\r\nTo: %s\r\nSubject: %s\r\nDate: %s\r\nMessage-ID: <%s@openrmm.invalid>\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: quoted-printable\r\n\r\n", m.config.From, strings.Join(m.config.To, ", "), subject, time.Now().UTC().Format(time.RFC1123Z), messageID)
 	w := quotedprintable.NewWriter(&body)
-	_, e = fmt.Fprintf(w, "OpenRMM alert %s\r\n\r\nDevice: %s\r\nDevice ID: %s\r\nAlert: %s\r\nSeverity: %s\r\nCondition: %s\r\nOpened (UTC): %s\r\n\r\n%s/alerts?device=%s\r\n", n.Event, n.Hostname, n.DeviceID, n.Title, n.Severity, n.Condition, time.Unix(n.OpenedAt, 0).UTC().Format(time.RFC3339), m.config.ServerURL, n.DeviceID)
+	_, e = io.WriteString(w, text)
 	if e != nil || w.Close() != nil {
 		return result("failed", "encoding")
 	}

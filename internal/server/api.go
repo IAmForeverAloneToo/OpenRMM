@@ -23,6 +23,7 @@ type api struct {
 	store   *storage.Store
 	devices *devices.Service
 	updates *serverUpdates
+	mail    *mailSource
 }
 
 // access declares who may call a route. The zero value is owner-only, so a

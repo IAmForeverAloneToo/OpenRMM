@@ -75,7 +75,7 @@ There is no field-by-field merging and no competing group precedence. Clearing a
 
 ### What alert rules do not do
 
-Alert rules evaluate telemetry that is already collected. They do not change reporting intervals, modify Windows services, grant permissions, run scripts or approve updates and restarts. Missing or disabled telemetry stays Unknown. Email additionally needs the protected SMTP configuration described in [alerts](ALERTS.md), and email must not be paused. The fixed 10% disk warning on the dashboard is independent of policy thresholds.
+Alert rules evaluate telemetry that is already collected. They do not change reporting intervals, modify Windows services, grant permissions, run scripts or approve updates and restarts. Missing or disabled telemetry stays Unknown. Email additionally needs a mail server configured as described in [alerts](ALERTS.md), and email must not be paused. The fixed 10% disk warning on the dashboard is independent of policy thresholds.
 
 ## Agent features per policy
 

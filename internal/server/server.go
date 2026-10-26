@@ -26,10 +26,13 @@ import (
 )
 
 func Handler(store *storage.Store, administrator *auth.Service, deviceService *devices.Service) http.Handler {
-	return handler(store, administrator, deviceService, &serverUpdates{current: serverupdate.Running(nil)})
+	return handler(store, administrator, deviceService, &serverUpdates{current: serverupdate.Running(nil)}, nil)
 }
 
-func handler(store *storage.Store, administrator *auth.Service, deviceService *devices.Service, updates *serverUpdates) http.Handler {
+func handler(store *storage.Store, administrator *auth.Service, deviceService *devices.Service, updates *serverUpdates, mail *mailSource) http.Handler {
+	if mail == nil {
+		mail = &mailSource{store: store, auth: administrator}
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -51,7 +54,7 @@ func handler(store *storage.Store, administrator *auth.Service, deviceService *d
 		_, _ = w.Write([]byte("{\"status\":\"ok\"}\n"))
 	})
 	if administrator != nil {
-		registerAPI(mux, &api{auth: administrator, store: store, devices: deviceService, updates: updates})
+		registerAPI(mux, &api{auth: administrator, store: store, devices: deviceService, updates: updates, mail: mail})
 	}
 	if deviceService != nil {
 		registerEnrollment(mux, deviceService)
@@ -103,14 +106,20 @@ func Run(ctx context.Context, c config.Server, logger *slog.Logger) error {
 		return err
 	}
 	defer store.Close()
-	mailer, err := alerting.LoadMailer(c.AlertSMTPConfig)
+	// Alert e-mail: the protected SMTP file when given, otherwise the
+	// dashboard's settings.
+	fileMailer, err := alerting.LoadMailer(c.AlertSMTPConfig)
 	if err != nil {
 		cancelStartup()
 		return err
 	}
+	mail := &mailSource{store: store, file: fileMailer}
 	mailID := ""
-	if mailer != nil {
-		mailID = mailer.ID
+	if fileMailer != nil {
+		mailID = fileMailer.ID
+	} else if mailID, err = storedMailID(startupCtx, store); err != nil {
+		cancelStartup()
+		return errors.New("cannot read the e-mail settings")
 	}
 	offline := c.OfflineAfter
 	if offline <= 0 {
@@ -160,7 +169,7 @@ func Run(ctx context.Context, c config.Server, logger *slog.Logger) error {
 	alertCtx, stopAlerts := context.WithCancel(ctx)
 	evalDone, mailDone := make(chan struct{}), make(chan struct{})
 	go func() { defer close(evalDone); runAlertEvaluator(alertCtx, store, logger) }()
-	go func() { defer close(mailDone); runAlertMail(alertCtx, store, mailer, logger) }()
+	go func() { defer close(mailDone); runAlertMail(alertCtx, store, mail.Current, logger) }()
 	defer func() { stopAlerts(); <-evalDone; <-mailDone }()
 
 	housekeepingCtx, stopHousekeeping := context.WithCancel(ctx)
@@ -216,6 +225,10 @@ func Run(ctx context.Context, c config.Server, logger *slog.Logger) error {
 	if err != nil {
 		cancelStartup()
 		return err
+	}
+	mail.auth = administrator
+	if e := mail.Reload(startupCtx, time.Now()); e != nil {
+		logger.Warn("alert e-mail is off: the dashboard's e-mail settings cannot be used; check them on the Alerts settings page")
 	}
 	authorityPath := c.DeviceAuthority
 	if authorityPath == "" {
@@ -278,7 +291,7 @@ func Run(ctx context.Context, c config.Server, logger *slog.Logger) error {
 	updatesDone := make(chan struct{})
 	go func() { defer close(updatesDone); runServerUpdates(updatesCtx, store, updates, logger) }()
 	defer func() { stopUpdates(); <-updatesDone }()
-	s := makeServer(handler(store, administrator, deviceService, updates), dashboardTLS)
+	s := makeServer(handler(store, administrator, deviceService, updates, mail), dashboardTLS)
 	servers := []*http.Server{s}
 	var deviceListener net.Listener
 	if c.DeviceListen != "" {

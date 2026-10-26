@@ -110,11 +110,32 @@ Qualification also restarts after a server restart, a backward clock change, an 
 
 ## Email notifications (optional)
 
-Email is **off by default**, both for the server (no SMTP configuration) and for each rule.
+Email is **off by default**, both for the server and for each rule. Configure the mail server in the dashboard; operators who prefer to provision credentials as a file can use an [SMTP configuration file](#smtp-configuration-file) instead.
+
+### Setting up email in the dashboard
+
+1. Open **Alert settings** and find the **Email notifications** panel (primary administrator only).
+2. Fill in the mail server:
+
+   | Field | Notes |
+   | --- | --- |
+   | SMTP server, Port | Host name or IP address of the relay. |
+   | Encryption | **STARTTLS** (mandatory STARTTLS, commonly port 587) or **TLS** (implicit TLS, commonly port 465). Both verify the server name and certificate and require TLS 1.2 or newer. There is no cleartext fallback and no way to skip verification. |
+   | User name, Password | PLAIN authentication inside verified TLS only. Leave the user name empty for a relay that needs no sign-in. |
+   | Sender address, Recipients | Plain ASCII mailbox addresses without display names. At most 10 distinct recipients, separated by commas. |
+   | Dashboard address | The HTTPS address of your OpenRMM server, used for links in messages. It is pre-filled from the installer settings. |
+
+3. Tick **Send alert e-mail** and select **Save e-mail settings**. Settings take effect immediately; no restart is needed.
+4. Select **Send test** to send a short test message through the saved settings. The panel shows whether the relay accepted it or why it failed (unreachable, TLS, rejected sign-in, temporary failure). Tests are limited to one every 30 seconds.
+5. Enable email on the rules you want (see below).
+
+The relay's certificate must chain to a trusted root: the operating system trust store for the native server, or the public CA bundle built into the container image. A relay with a private certificate authority needs the SMTP configuration file and its `root_ca_file`.
+
+The password is write-only. It is stored encrypted with the server's encryption key (the same key that protects authenticator secrets) and is never returned by the API or shown again; the panel only says that a password is stored. Leave the password field empty to keep the stored one, or tick **Remove the stored password**. A database restored without its encryption key cannot decrypt the password; the panel then asks for it again.
 
 ### SMTP configuration file
 
-The server reads a JSON file at startup. Example with placeholder values:
+When the server is started with `-alert-smtp-config`, the file takes precedence: the dashboard shows email as set by the file and its settings cannot be edited there. **Send test**, **Pause email** and **Resume email** still work. The file is read at startup. Example with placeholder values:
 
 ```json
 {
@@ -130,41 +151,28 @@ The server reads a JSON file at startup. Example with placeholder values:
 }
 ```
 
-| Field | Notes |
-| --- | --- |
-| `tls` | `tls` for implicit TLS (commonly port 465) or `starttls` for mandatory STARTTLS (commonly port 587). Both verify the server name and certificate and require TLS 1.2 or newer. There is no cleartext fallback and no way to skip verification. |
-| `username`, `password` | PLAIN authentication inside verified TLS only. Leave both empty for a relay that needs no authentication; setting only one is rejected. |
-| `from`, `to` | Plain ASCII mailbox addresses without display names or comments. At most 10 distinct recipients. |
-| `server_url` | The HTTPS origin of your OpenRMM server, used for links in messages. |
-| `root_ca_file` | Optional PEM file. When set, only these roots are trusted (useful for a private relay). When empty, the native server uses the operating system trust store and the container uses the public CA bundle built into the image. |
+The fields match the dashboard settings above. `root_ca_file` is an optional PEM file; when set, only these roots are trusted (useful for a private relay). Setting only one of `username` and `password` is rejected.
 
 OAuth, attachments, webhooks and cloud notification services are not supported.
 
-### Protecting the file
-
 > [!IMPORTANT]
-> Keep real SMTP credentials out of source control. Do not put passwords in environment variables, command arguments, browser forms, logs, Compose files or the repository's root `.env` file.
+> Keep real SMTP credentials out of source control. Do not put passwords in environment variables, command arguments, logs, Compose files or the repository's root `.env` file.
 
 - The file may be at most 16 KiB. Unknown fields or invalid values stop the server at startup with a redacted error.
 - **Linux:** a regular file owned by root or the server's user, mode `0600` or stricter, in a protected directory. In the container, use owner `10001:10001` and a `0700` secrets directory.
 - **Windows:** the file's owner, DACL and parent directory are checked. The service account or current user, Administrators and SYSTEM are trusted; any other reader or writer of the file, or writer of the parent, is rejected.
-- Keep parent directories protected too.
-- The configuration is read only at startup. Restart the server after changing it.
+- Keep parent directories protected too, and restart the server after changing the file.
 
-### Enabling email
+To use the file:
 
-1. Create the file with an administrator-controlled editor or secret-provisioning process.
-   - **Docker Compose (repository `compose.yaml`):** place it in the `secrets` volume as `/secrets/alert-smtp.json`, owned `10001:10001`, mode `0600`. Do not copy the root `.env` file into this volume.
-   - **Native server:** place it anywhere protected as described above.
-2. Point the server at the file:
-   - Compose: set `OPENRMM_ALERT_SMTP_CONFIG=/secrets/alert-smtp.json` in `deploy/local.env`, then start the stack (for local development, `scripts/local.ps1 -Action up`).
-   - Native server: pass `-alert-smtp-config PATH` or set `OPENRMM_SERVER_ALERT_SMTP_CONFIG`.
+- **Docker Compose (repository `compose.yaml`):** place it in the `secrets` volume as `/secrets/alert-smtp.json`, owned `10001:10001`, mode `0600`, and set `OPENRMM_ALERT_SMTP_CONFIG=/secrets/alert-smtp.json` in `deploy/local.env`. Do not copy the root `.env` file into this volume.
+- **Native server:** pass `-alert-smtp-config PATH` or set `OPENRMM_SERVER_ALERT_SMTP_CONFIG`.
 
-   A configured path that is missing or unreadable stops the server. An empty path disables email.
-3. In **Alert settings**, enable email on the rules you want. Notifications apply to future transitions only; existing incidents are not backfilled.
-4. Check the **Email notifications** panel in **Alert settings** and each incident's **Email** section. If email was paused (by an administrator or by a restore), select **Resume email**.
+A configured path that is missing or unreadable stops the server. Server key backups include the `secrets` volume, so protect SMTP files and their backups the same way.
 
-Server key backups include the `secrets` volume, so protect SMTP files and their backups the same way.
+### Turning email on for rules
+
+In **Alert settings**, tick **Email** on the rules you want. Notifications apply to future transitions only; existing incidents are not backfilled. Check the **Email notifications** panel and each incident's **Email** section. If email was paused (by an administrator or by a restore), select **Resume email**.
 
 ## Delivery behavior
 
@@ -186,7 +194,7 @@ Server key backups include the `secrets` volume, so protect SMTP files and their
 ### Cancellation
 
 - Unattempted notices expire after one hour.
-- Changing the SMTP destination configuration cancels notices queued for the old one.
+- Changing the mail server, sender, recipients or dashboard address (or turning email off) cancels notices queued for the old settings. Changing only the password keeps them.
 - **Pause email** cancels queued notices. **Resume email** applies to future transitions and does not replay anything.
 - Rule changes, device revocation and confirmed recovery also cancel obsolete queued notices.
 - A message already being sent cannot be recalled.
@@ -203,12 +211,12 @@ Device text appears only in the quoted-printable message body, never in a header
 | Finished incidents | 2,000 or 30 days, whichever removes them first; their delivery records go with them |
 | Active incidents | Always retained |
 
-The reading queue is not historical metric storage; see [metrics](METRICS.md) for history. Deleting old records is not secure erasure from the SQLite database, its WAL file or backups. The audit log records transitions, actors and identifiers, never SMTP passwords or message contents.
+The reading queue is not historical metric storage; see [metrics](METRICS.md) for history. Deleting old records is not secure erasure from the SQLite database, its WAL file or backups. The audit log records transitions, actors and identifiers (including e-mail settings changes and test messages), never SMTP passwords or message contents.
 
 ## Permissions and API
 
 - Every account can read alerts within its current device and group scope. Scope is applied before counting and paging. Group and tag filters use current assignment, not assignment at the time the incident opened. An unknown group or tag returns no matches and grants no access. A missing or inaccessible incident returns 404.
-- Acknowledging, changing alert settings and pausing or resuming email are limited to the primary administrator.
+- Acknowledging, changing alert and e-mail settings, sending test messages and pausing or resuming email are limited to the primary administrator.
 - Reading pages never sends mail, evaluates incidents or acknowledges anything.
 
 | Route | Purpose |
@@ -219,6 +227,9 @@ The reading queue is not historical metric storage; see [metrics](METRICS.md) fo
 | `GET /api/v1/alert-settings` | Global rules and email status. |
 | `POST /api/v1/alert-settings/rules/{kind}` | Change one global rule. |
 | `POST /api/v1/alert-settings/mail` | Pause or resume email. |
+| `GET /api/v1/alert-settings/email` | Mail server settings and whether a password is stored (never the password). |
+| `PUT /api/v1/alert-settings/email` | Change the mail server settings. An empty `password` keeps the stored one; `clear_password` removes it. Refused while the SMTP file is in use. |
+| `POST /api/v1/alert-settings/email/test` | Send a test message with the saved settings. |
 
 Unknown query parameters are rejected, and responses are not cached.
 

@@ -125,6 +125,30 @@ func (s *Service) decrypt(value []byte) ([]byte, error) {
 	return secret, nil
 }
 
+// SealSetting encrypts a stored setting (such as the SMTP password) with the
+// server's separate encryption key. The purpose is bound to the ciphertext,
+// so a value sealed for one setting cannot be opened as another.
+func (s *Service) SealSetting(purpose string, plaintext []byte) ([]byte, error) {
+	nonce, err := randomBytes(s.aead.NonceSize())
+	if err != nil {
+		return nil, err
+	}
+	return s.aead.Seal(append([]byte{1}, nonce...), nonce, plaintext, []byte("openrmm:setting:"+purpose+":v1")), nil
+}
+
+// OpenSetting decrypts a value sealed by SealSetting for the same purpose.
+func (s *Service) OpenSetting(purpose string, value []byte) ([]byte, error) {
+	nonceSize := s.aead.NonceSize()
+	if len(value) < 1+nonceSize+s.aead.Overhead() || value[0] != 1 {
+		return nil, errors.New("stored setting is invalid")
+	}
+	plain, err := s.aead.Open(nil, value[1:1+nonceSize], value[1+nonceSize:], []byte("openrmm:setting:"+purpose+":v1"))
+	if err != nil {
+		return nil, errors.New("cannot decrypt a stored setting; check the encryption key backup")
+	}
+	return plain, nil
+}
+
 func (s *Service) Setup(ctx context.Context, name, password string, reset bool) (Provisioning, error) {
 	return s.setup(ctx, name, password, reset, false)
 }

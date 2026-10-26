@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/IAmForeverAloneToo/OpenRMM/internal/alerting"
@@ -201,6 +202,141 @@ func registerAlertsAPI(mux *http.ServeMux, a *api) {
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
+	})
+
+	// E-mail settings: the SMTP password is write-only; responses only say
+	// whether one is stored.
+	emailView := func(ctx context.Context) (any, error) {
+		type view struct {
+			Source string `json:"source"` // dashboard or file
+			storage.MailSettings
+			HasPassword  bool   `json:"has_password"`
+			Active       bool   `json:"active"`
+			SuggestedURL string `json:"suggested_server_url"`
+		}
+		if a.mail.file != nil {
+			return view{Source: "file", MailSettings: storage.MailSettings{To: []string{}}, Active: true}, nil
+		}
+		m, e1 := a.store.MailSettings(ctx)
+		installer, e2 := a.store.InstallerSettings(ctx)
+		if e := errors.Join(e1, e2); e != nil {
+			return nil, e
+		}
+		return view{"dashboard", m, m.PasswordCipher != nil, a.mail.Current() != nil, installer.ServerURL}, nil
+	}
+	a.route(mux, "GET /api/v1/alert-settings/email", ownerOnly, func(w http.ResponseWriter, r *http.Request, s storage.Session) {
+		v, e := emailView(r.Context())
+		if e != nil {
+			unavailable(w)
+			return
+		}
+		writeJSON(w, http.StatusOK, v)
+	})
+	a.route(mux, "PUT /api/v1/alert-settings/email", ownerOnly, func(w http.ResponseWriter, r *http.Request, s storage.Session) {
+		var in struct {
+			Enabled       bool     `json:"enabled"`
+			Host          string   `json:"host"`
+			Port          int      `json:"port"`
+			TLS           string   `json:"tls"`
+			Username      string   `json:"username"`
+			Password      string   `json:"password"`
+			ClearPassword bool     `json:"clear_password"`
+			From          string   `json:"from"`
+			To            []string `json:"to"`
+			ServerURL     string   `json:"server_url"`
+			Revision      int64    `json:"revision"`
+		}
+		if !decodeJSON(w, r, &in, 8192) {
+			return
+		}
+		if a.mail.file != nil {
+			apiError(w, http.StatusConflict, "file_managed", "E-mail is configured by the server's SMTP file. Remove -alert-smtp-config to manage it here.")
+			return
+		}
+		ctx := r.Context()
+		current, e := a.store.MailSettings(ctx)
+		if e != nil {
+			unavailable(w)
+			return
+		}
+		next := storage.MailSettings{Enabled: in.Enabled, Host: strings.TrimSpace(in.Host), Port: in.Port, TLS: in.TLS, Username: in.Username, From: strings.TrimSpace(in.From), ServerURL: strings.TrimSuffix(strings.TrimSpace(in.ServerURL), "/"), Revision: in.Revision, To: []string{}}
+		for _, to := range in.To {
+			if to = strings.TrimSpace(to); to != "" {
+				next.To = append(next.To, to)
+			}
+		}
+		// A new password replaces the stored one; without a user name there is
+		// no password.
+		password := ""
+		switch {
+		case in.Username == "" || in.ClearPassword:
+		case in.Password != "":
+			password = in.Password
+		case current.PasswordCipher != nil:
+			plain, e := a.auth.OpenSetting(smtpPasswordPurpose, current.PasswordCipher)
+			if e != nil {
+				apiError(w, http.StatusConflict, "password_unreadable", "The stored SMTP password cannot be decrypted (the encryption key changed). Enter the password again.")
+				return
+			}
+			password, next.PasswordCipher = string(plain), current.PasswordCipher
+		}
+		invalid := "Check the e-mail settings: a host name, port 1–65535, STARTTLS or TLS, a sender address, 1–10 different recipient addresses, an https:// dashboard address, and a password whenever a user name is set."
+		c := mailConfig(next)
+		c.Password = password
+		blank := next.Host == "" && next.From == "" && len(next.To) == 0 && next.ServerURL == "" && next.Username == ""
+		if next.Port < 1 || next.Port > 65535 || (next.TLS != "starttls" && next.TLS != "tls") {
+			apiError(w, http.StatusBadRequest, "invalid_request", invalid)
+			return
+		}
+		if _, e := alerting.NewMailer(c); e != nil && (next.Enabled || !blank) {
+			apiError(w, http.StatusBadRequest, "invalid_request", invalid)
+			return
+		}
+		if password != "" && next.PasswordCipher == nil {
+			if next.PasswordCipher, e = a.auth.SealSetting(smtpPasswordPurpose, []byte(password)); e != nil {
+				unavailable(w)
+				return
+			}
+		}
+		now := time.Now()
+		if e = a.store.SetMailSettings(ctx, next, s.Username, now); errors.Is(e, storage.ErrMailSettingsChanged) {
+			apiError(w, http.StatusConflict, "refused", "The e-mail settings changed since you loaded them. Reload and try again.")
+			return
+		} else if e != nil {
+			unavailable(w)
+			return
+		}
+		if e = a.mail.Reload(ctx, now); e != nil {
+			apiError(w, http.StatusServiceUnavailable, "unavailable", "The settings were saved but could not be put into use. Reload and try again.")
+			return
+		}
+		v, e := emailView(ctx)
+		if e != nil {
+			unavailable(w)
+			return
+		}
+		writeJSON(w, http.StatusOK, v)
+	})
+	a.route(mux, "POST /api/v1/alert-settings/email/test", ownerOnly, func(w http.ResponseWriter, r *http.Request, s storage.Session) {
+		mailer := a.mail.Current()
+		if mailer == nil {
+			apiError(w, http.StatusConflict, "disabled", "Turn e-mail on and save the settings before sending a test.")
+			return
+		}
+		now := time.Now()
+		if !a.mail.allowTest(now) {
+			apiError(w, http.StatusTooManyRequests, "rate_limited", "Wait 30 seconds between test messages.")
+			return
+		}
+		// Within the listener's 10-second write timeout.
+		ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+		defer cancel()
+		result := mailer.SendTest(ctx, s.Username)
+		_ = a.store.AuditMailTest(context.WithoutCancel(r.Context()), s.Username, result.Status, now)
+		writeJSON(w, http.StatusOK, struct {
+			Status string `json:"status"`
+			Reason string `json:"reason"`
+		}{result.Status, result.Reason})
 	})
 
 	// Health checks: technicians read their scope; changes are owner-only and

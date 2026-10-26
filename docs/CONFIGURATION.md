@@ -52,7 +52,7 @@ Every option of the OpenRMM server and agent, with its environment variable and 
 | Flag | Environment | Default | Description |
 | --- | --- | --- | --- |
 | `-offline-after` | `OPENRMM_SERVER_OFFLINE_AFTER` | `120s` | A device without a heartbeat for this long is shown as offline (3s to 24h). |
-| `-alert-smtp-config` | `OPENRMM_SERVER_ALERT_SMTP_CONFIG` | empty | Protected SMTP JSON file for alert e-mail. Empty disables e-mail. See [ALERTS.md](ALERTS.md). |
+| `-alert-smtp-config` | `OPENRMM_SERVER_ALERT_SMTP_CONFIG` | empty | Optional protected SMTP JSON file for alert e-mail. When set, it replaces the e-mail settings in the dashboard. See [ALERTS.md](ALERTS.md). |
 | `-updater-dir` | `OPENRMM_SERVER_UPDATER_DIR` | empty | Folder shared with the updater sidecar. Empty disables updates from the dashboard. See [SERVER-UPDATES.md](SERVER-UPDATES.md). |
 | `-release-keys` | `OPENRMM_SERVER_RELEASE_KEYS` | empty | Up to seven extra Ed25519 public keys (hex) trusted for server releases, next to the project key. |
 | `-log-level` | `OPENRMM_LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error`. |

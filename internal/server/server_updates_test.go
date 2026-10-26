@@ -26,7 +26,7 @@ func TestServerUpdateAPI(t *testing.T) {
 	pub, priv, _ := ed25519.GenerateKey(nil)
 	dir := t.TempDir()
 	updates := &serverUpdates{dir: dir, current: serverupdate.Current{Version: "1.0.0", Sequence: 10, Keys: []string{hex.EncodeToString(pub)}}}
-	s := httptest.NewTLSServer(handler(base.store, base.auth, base.devices, updates))
+	s := httptest.NewTLSServer(handler(base.store, base.auth, base.devices, updates, nil))
 	t.Cleanup(s.Close)
 	client := s.Client()
 	client.Jar, _ = cookiejar.New(nil)
