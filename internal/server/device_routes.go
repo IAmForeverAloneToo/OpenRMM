@@ -15,7 +15,6 @@ import (
 	"github.com/IAmForeverAloneToo/OpenRMM/internal/windowsupdate"
 	"io"
 	"mime"
-	"net"
 	"net/http"
 	"strconv"
 	"time"
@@ -71,11 +70,7 @@ func registerEnrollment(mux *http.ServeMux, service *devices.Service) {
 		if !readJSON(w, r, &request) {
 			return
 		}
-		peer, _, err := net.SplitHostPort(r.RemoteAddr)
-		if err != nil {
-			peer = "unknown"
-		}
-		credential, err := service.Enroll(r.Context(), request, peer)
+		credential, err := service.Enroll(r.Context(), request, peerKey(r))
 		if err != nil {
 			switch {
 			case errors.Is(err, devices.ErrLimited):

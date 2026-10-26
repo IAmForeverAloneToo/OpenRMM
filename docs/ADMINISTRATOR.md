@@ -112,7 +112,7 @@ For production installs, see [INSTALL.md](INSTALL.md) for certificates.
 | Cookies | Host-only, `Secure`, `HttpOnly`, `SameSite=Strict` |
 
 - Sign-in (`POST /api/v1/session`) and sign-out (`DELETE /api/v1/session`) require same-origin requests. Sign-out and every other authenticated change also require the session's `X-CSRF-Token` header.
-- Sign-in uses generic credential errors, bounded hashing concurrency, and throttles per account, per network address and globally. Throttle counters are kept in memory and reset when the server restarts; replay protection for authenticator codes and session state are stored in the database.
+- Sign-in uses generic credential errors (a failure never says whether the password or the code was wrong) and one password check at a time. Attempts are limited to 10 a minute per network address (an IPv6 /64 counts as one address) and 5 a minute per account from one address. There is deliberately no limit across all addresses, so nobody can lock the administrator out by sending failed attempts from elsewhere. Throttle counters are kept in memory and reset when the server restarts; replay protection for authenticator codes and session state are stored in the database.
 - Signing out revokes the session on the server.
 
 ## How credentials are stored

@@ -130,7 +130,7 @@ All agent features are on after enrollment; turn them off per monitoring policy 
 | Unused single-device tokens | 100 at a time |
 | Active deployments | 50 at a time |
 | Devices per deployment | 1–10,000 |
-| Enrollment requests | 60 per minute in total, 20 per minute per network address |
+| Enrollment requests | 20 per minute per network address (an IPv6 /64 counts as one address); no overall limit, so nobody can block enrollment for everyone |
 
 Beyond the token limits, downloads are refused until a deployment is revoked or unused installers expire. A rate-limited agent retries a minute later, so a large deployment behind one network address enrolls about 20 machines per minute.
 

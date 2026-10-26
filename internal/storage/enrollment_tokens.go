@@ -176,6 +176,16 @@ func (s *Store) InitializeInstallerSettings(ctx context.Context, v InstallerSett
 }
 
 // consumeEnrollmentToken uses one device of a valid token and returns its ID.
+// EnrollmentTokenUsable reports, without consuming it, whether a token can
+// enroll a device now.
+func (s *Store) EnrollmentTokenUsable(ctx context.Context, hash string, now time.Time) (bool, error) {
+	var n int
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM enrollment_tokens WHERE token_hash=? AND expires_at>? AND revoked_at IS NULL AND used<max_devices", hash, now.Unix()).Scan(&n); err != nil {
+		return false, errors.New("cannot read enrollment token")
+	}
+	return n > 0, nil
+}
+
 func consumeEnrollmentToken(ctx context.Context, tx *sql.Tx, hash string, now time.Time) (string, error) {
 	var id string
 	var reusable bool

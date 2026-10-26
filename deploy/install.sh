@@ -288,8 +288,14 @@ if [ -z "$image" ]; then
 	latest=$(curl -fsSL -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/$release_repository/releases/latest" |
 		sed -n 's/^[[:space:]]*"tag_name":[[:space:]]*"v\([0-9][0-9.]*[0-9A-Za-z.-]*\)".*/\1/p' | head -n 1) || true
 	[ -n "$latest" ] || die "cannot find the latest release; check the network or pass --image"
-	image="$release_image:$latest"
-	say "Using the latest release: $image"
+	# Pin the image to the registry digest published with the release (the
+	# signed server release file), so a tag moved in the registry cannot
+	# change what is installed.
+	digest=$(curl -fsSL "https://github.com/$release_repository/releases/download/v$latest/openrmm-server-release.json" |
+		tr -d ' \n' | sed -n 's/.*"digest":"\(sha256:[0-9a-f]\{64\}\)".*/\1/p') || true
+	[ -n "$digest" ] || die "cannot read the image digest of release $latest; check the network or pass --image"
+	image="$release_image:$latest@$digest"
+	say "Using the latest release: $release_image:$latest"
 fi
 
 # Validation (the server checks the same values again).
@@ -299,6 +305,7 @@ last=${image##*/}
 if [[ $image != *@sha256:* ]] && { [[ $last != *:* ]] || [[ $last == *:latest ]]; }; then
 	die "--image needs an exact version or digest, not a floating tag"
 fi
+[[ $image == *@sha256:* ]] || [ -n "${running-}" ] || say "Note: $image is pinned by tag only; IMAGE:VERSION@sha256:DIGEST also pins the exact image."
 [ -n "$domain" ] || [ -n "$address" ] || die "give --domain (public name) or --address (LAN)"
 [ -z "$domain" ] || [ -z "$address" ] || die "give either --domain or --address, not both"
 for port in "$dashboard_port" "$agent_port"; do

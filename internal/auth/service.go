@@ -208,14 +208,23 @@ func (s *Service) Confirm(ctx context.Context, code string) error {
 	return s.store.ConfirmAdministrator(ctx, admin.Version, step, s.now())
 }
 
+// Attempts are limited per client (10 a minute) and per account from that
+// client (5 a minute). There is deliberately no limit across all clients or
+// per account alone: anyone could use it to lock the administrator out.
+// Guessing gains little without one, since every sign-in needs the password
+// and a fresh authenticator code, and a failure does not say which was
+// wrong; the single sign-in slot (gate) bounds the work an attacker causes.
+func limitKeys(peer, name string) ([]string, []int) {
+	return []string{"peer:" + peer, "account:" + name + "@" + peer}, []int{10, 5}
+}
+
 // limited reports, without counting an attempt, whether a peer or label is
 // over its limit.
 func (s *Service) limited(peer, name string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := s.now()
-	keys := []string{"global", "peer:" + peer, "account:" + name}
-	limits := []int{30, 10, 5}
+	keys, limits := limitKeys(peer, name)
 	for index, key := range keys {
 		if v, ok := s.attempts[key]; ok && now.Before(v.until) && v.count >= limits[index] {
 			return true
@@ -233,16 +242,17 @@ func (s *Service) allow(peer, name string) bool {
 			delete(s.attempts, key)
 		}
 	}
-	keys := []string{"global", "peer:" + peer, "account:" + name}
-	limits := []int{30, 10, 5}
-	// Bound attacker-controlled labels without evicting an active account limit.
-	if len(s.attempts) > 4090 {
-		return false
-	}
+	keys, limits := limitKeys(peer, name)
 	for index, key := range keys {
 		if s.attempts[key].count >= limits[index] {
 			return false
 		}
+	}
+	// Past this many tracked labels (only an attacker with thousands of
+	// addresses gets here) attempts are no longer recorded, rather than
+	// refusing everyone; the sign-in slot still bounds the work.
+	if len(s.attempts) > 4090 {
+		return true
 	}
 	for _, key := range keys {
 		value := s.attempts[key]
@@ -255,6 +265,22 @@ func (s *Service) allow(peer, name string) bool {
 	return true
 }
 
+// enter takes the single sign-in slot, waiting briefly while another
+// password check runs, so a flood of attempts slows sign-in down instead of
+// refusing it.
+func (s *Service) enter(ctx context.Context) bool {
+	t := time.NewTimer(3 * time.Second)
+	defer t.Stop()
+	select {
+	case s.gate <- struct{}{}:
+		return true
+	case <-t.C:
+		return false
+	case <-ctx.Done():
+		return false
+	}
+}
+
 func (s *Service) Login(ctx context.Context, name, password, factor, peer string) (SignedIn, error) {
 	canonical, validName := username(name)
 	if !validName {
@@ -263,12 +289,10 @@ func (s *Service) Login(ctx context.Context, name, password, factor, peer string
 	if !s.allow(peer, canonical) {
 		return SignedIn{}, ErrLimited
 	}
-	select {
-	case s.gate <- struct{}{}:
-		defer func() { <-s.gate }()
-	default:
+	if !s.enter(ctx) {
 		return SignedIn{}, ErrLimited
 	}
+	defer func() { <-s.gate }()
 	admin, err := s.store.Administrator(ctx)
 	if err != nil && !errors.Is(err, storage.ErrNoAdministrator) {
 		return SignedIn{}, err

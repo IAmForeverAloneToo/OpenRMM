@@ -175,10 +175,16 @@ func (s *Service) allow(peer string) bool {
 			delete(s.attempts, key)
 		}
 	}
-	if len(s.attempts) > 4090 || s.attempts["global"].count >= 60 || s.attempts["peer:"+peer].count >= 20 {
+	// Per client only: a limit across all clients would let anyone block
+	// enrollment. Past this many tracked clients attempts are no longer
+	// recorded rather than refused.
+	if s.attempts["peer:"+peer].count >= 20 {
 		return false
 	}
-	for _, key := range []string{"global", "peer:" + peer} {
+	if len(s.attempts) > 4090 {
+		return true
+	}
+	for _, key := range []string{"peer:" + peer} {
 		value := s.attempts[key]
 		if value.until.IsZero() {
 			value.until = now.Add(time.Minute)
@@ -207,6 +213,13 @@ func (s *Service) Enroll(ctx context.Context, input protocol.Enrollment, peer st
 	}
 	csr, err := deviceidentity.ParseCSR(input.CSR)
 	if err != nil {
+		return fail()
+	}
+	// Sign a certificate only for a usable token; the token is consumed
+	// atomically with the enrollment below.
+	if usable, err := s.store.EnrollmentTokenUsable(ctx, deviceidentity.Fingerprint([]byte(input.Token)), s.now()); err != nil {
+		return protocol.Credential{}, err
+	} else if !usable {
 		return fail()
 	}
 	idBytes := make([]byte, 16)

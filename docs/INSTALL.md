@@ -27,7 +27,7 @@ The script:
 - prints a one-time link for creating the first administrator in the browser.
 
 > [!NOTE]
-> Without `--image`, the script installs the latest release published on GitHub, pinned to its exact version (`ghcr.io/iamforeveralonetoo/openrmm-server:<version>`). Until the first release is published, build the image from source (see [DEVELOPMENT.md](DEVELOPMENT.md)) and pass its exact tag to `--image`.
+> Without `--image`, the script installs the latest release published on GitHub, pinned to its exact image: the registry digest is taken from the release's signed server release file (`ghcr.io/iamforeveralonetoo/openrmm-server:<version>@sha256:<digest>`), so a tag moved in the registry cannot change what is installed. Until the first release is published, build the image from source (see [DEVELOPMENT.md](DEVELOPMENT.md)) and pass its exact tag to `--image`.
 
 ## Requirements
 
@@ -136,6 +136,9 @@ The server container runs:
 - with all capabilities dropped and `no-new-privileges`;
 - with limits on memory (1 GiB) and process count (256);
 - with a health check (`/openrmm-server -health`) that verifies the server certificate with the same trust and name that agents use.
+
+> [!WARNING]
+> Docker publishes the dashboard and agent ports on all addresses, and its firewall rules come before `ufw` and `firewalld`. A rule such as "allow 443 only from the office" in `ufw` does **not** restrict them. To limit who can reach the ports, add rules to Docker's `DOCKER-USER` chain or use a firewall in front of the host ([Docker documentation](https://docs.docker.com/engine/network/packet-filtering-firewalls/)).
 
 The updater container is described in [SERVER-UPDATES.md](SERVER-UPDATES.md#security-boundaries). If `/var/run/docker.sock` does not exist (for example with rootless Docker), the server is installed without the updater and updates from the dashboard are unavailable.
 

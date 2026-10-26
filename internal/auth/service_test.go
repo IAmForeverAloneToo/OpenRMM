@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -149,6 +150,18 @@ func TestExpiryCSRFAndLoginThrottling(t *testing.T) {
 	}
 	if _, err := service.Login(context.Background(), "admin", testPassword, result.RecoveryCodes[1], "127.0.0.1"); !errors.Is(err, ErrLimited) {
 		t.Fatal("throttle did not apply to the next attempt")
+	}
+	// Attempts from other clients, even many of them, never lock the
+	// administrator out of a client that has not used up its own limit.
+	for peer := 0; peer < 100; peer++ {
+		for index := 0; index < 5; index++ {
+			if _, err := service.Login(context.Background(), "admin", "incorrect", "000000", fmt.Sprintf("192.0.2.%d", peer)); !errors.Is(err, ErrCredentials) {
+				t.Fatal("unexpected limit for a fresh client", peer, err)
+			}
+		}
+	}
+	if _, err := service.Login(context.Background(), "admin", testPassword, result.RecoveryCodes[1], "198.51.100.7"); err != nil {
+		t.Fatal("administrator locked out by other clients' attempts", err)
 	}
 }
 

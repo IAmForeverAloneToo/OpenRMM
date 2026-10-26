@@ -2,7 +2,6 @@ package server
 
 import (
 	"errors"
-	"net"
 	"net/http"
 	"time"
 
@@ -163,13 +162,7 @@ func registerAdminAPI(mux *http.ServeMux, a *api) {
 		}
 		apiError(w, http.StatusBadRequest, "activation_failed", "Activation failed. Check the invitation link, use a password of at least 15 characters, and enter a fresh authenticator code. Invitations expire after 30 minutes; ask your administrator for a new one.")
 	}
-	peer := func(r *http.Request) string {
-		p, _, e := net.SplitHostPort(r.RemoteAddr)
-		if e != nil {
-			return "unknown"
-		}
-		return p
-	}
+	peer := peerKey
 	// First-administrator setup link: the link (in the URL
 	// fragment, never in logs) creates the administrator in two steps.
 	setupError := func(w http.ResponseWriter, e error) {
@@ -185,13 +178,7 @@ func registerAdminAPI(mux *http.ServeMux, a *api) {
 			apiError(w, http.StatusBadRequest, "invalid_request", "Use a username of 3 to 64 lowercase letters, numbers, dots, underscores or hyphens and a password of at least 15 characters.")
 		}
 	}
-	setupPeer := func(r *http.Request) string {
-		peer, _, err := net.SplitHostPort(r.RemoteAddr)
-		if err != nil {
-			return "unknown"
-		}
-		return peer
-	}
+	setupPeer := peerKey
 	mux.HandleFunc("GET /api/v1/setup", func(w http.ResponseWriter, r *http.Request) {
 		done, e := a.store.AdministratorConfirmed(r.Context())
 		if e != nil {

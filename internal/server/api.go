@@ -6,7 +6,6 @@ import (
 	"errors"
 	"io"
 	"mime"
-	"net"
 	"net/http"
 	"time"
 
@@ -186,12 +185,7 @@ func registerAPI(mux *http.ServeMux, a *api) {
 		if !decodeJSON(w, r, &in, 4096) {
 			return
 		}
-		peer, _, err := net.SplitHostPort(r.RemoteAddr)
-		if err != nil {
-			peer = "unknown"
-		}
-		// Forwarded headers are deliberately not trusted for throttling identity.
-		signedIn, err := a.auth.Login(r.Context(), in.Username, in.Password, in.Code, peer)
+		signedIn, err := a.auth.Login(r.Context(), in.Username, in.Password, in.Code, peerKey(r))
 		switch {
 		case errors.Is(err, auth.ErrCredentials):
 			apiError(w, http.StatusUnauthorized, "invalid_credentials", "Sign-in failed. Check your username, password and a fresh authenticator code.")

@@ -5,8 +5,10 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -213,8 +215,26 @@ func TestEnrollmentValidationAndThrottling(t *testing.T) {
 	if _, err := service.Enroll(ctx, input, "peer"); !errors.Is(err, ErrLimited) {
 		t.Fatal("enrollment throttling absent")
 	}
+	// Other clients are not blocked by one client's attempts, and a valid
+	// token still enrolls.
+	for peer := 0; peer < 10; peer++ {
+		for index := 0; index < 10; index++ {
+			if _, err := service.Enroll(ctx, input, fmt.Sprintf("peer-%d", peer)); !errors.Is(err, storage.ErrAuthentication) {
+				t.Fatal("unexpected limit for another client", err)
+			}
+		}
+	}
+	// A well-formed request with an unknown token is refused before any
+	// certificate is signed.
+	unknown := request(t, strings.Repeat("A", 43))
+	if _, err := service.Enroll(ctx, unknown, "other"); !errors.Is(err, storage.ErrAuthentication) {
+		t.Fatal("unknown token accepted", err)
+	}
+	if _, err := service.Enroll(ctx, request(t, token), "other"); err != nil {
+		t.Fatal("valid enrollment refused", err)
+	}
 	list, err := store.Devices(ctx)
-	if err != nil || len(list) != 0 {
-		t.Fatal("invalid requests created device records")
+	if err != nil || len(list) != 1 {
+		t.Fatal("only the valid enrollment may create a device")
 	}
 }

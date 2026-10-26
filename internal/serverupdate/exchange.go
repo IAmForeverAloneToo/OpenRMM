@@ -3,6 +3,7 @@ package serverupdate
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -98,8 +99,28 @@ func writeJSON(path string, v any) error {
 	return e
 }
 
+// openRegular opens a file only if it is a regular file, without following
+// a symbolic link or blocking: the server can write the exchange volume and
+// the data volume, and must not be able to stall or exhaust the updater.
+func openRegular(path string) (*os.File, error) {
+	f, e := os.OpenFile(path, openFlags, 0)
+	if e != nil {
+		return nil, e
+	}
+	if info, e := f.Stat(); e != nil || !info.Mode().IsRegular() {
+		f.Close()
+		return nil, errors.New("not a regular file")
+	}
+	return f, nil
+}
+
 func readJSON(path string, v any, limit int) error {
-	b, e := os.ReadFile(path)
+	f, e := openRegular(path)
+	if e != nil {
+		return e
+	}
+	defer f.Close()
+	b, e := io.ReadAll(io.LimitReader(f, int64(limit)+1))
 	if e != nil {
 		return e
 	}

@@ -93,7 +93,7 @@ func timeOf(name string) int64 {
 }
 
 func hashFile(path string) (string, error) {
-	f, e := os.Open(path)
+	f, e := openRegular(path)
 	if e != nil {
 		return "", e
 	}
@@ -106,7 +106,7 @@ func hashFile(path string) (string, error) {
 }
 
 func copyFile(src, dst string, mode fs.FileMode) error {
-	in, e := os.Open(src)
+	in, e := openRegular(src)
 	if e != nil {
 		return e
 	}
