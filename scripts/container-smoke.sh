@@ -24,7 +24,7 @@ cleanup() {
 trap cleanup EXIT HUP INT TERM
 printf 'FROM scratch\nCOPY . /\n' > "$artifacts/context.Dockerfile"
 docker build --quiet --file "$artifacts/context.Dockerfile" --output "type=local,dest=$artifacts/context" . >/dev/null
-for excluded in .env .local dist .git; do
+for excluded in .env .local dist .git web/node_modules internal/server/webui/dist; do
     [ ! -e "$artifacts/context/$excluded" ] || { echo 'Private or generated files entered the Docker build context.' >&2; exit 1; }
 done
 echo 'Build context excludes credentials, local state, binaries, and Git metadata.'

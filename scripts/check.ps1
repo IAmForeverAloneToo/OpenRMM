@@ -20,7 +20,9 @@ try {
     & (Join-Path $PSScriptRoot 'check-dependencies.ps1')
     & (Join-Path $PSScriptRoot 'build-web.ps1') -CheckOnly
     $sourceFiles = @(Get-ChildItem -Path cmd,internal -Recurse -Filter '*.go' | ForEach-Object FullName)
-    $unformatted = @(& gofmt -l @sourceFiles)
+    # The pinned toolchain's own gofmt, not whichever one is on PATH.
+    $gofmt = Join-Path (& go env GOROOT) 'bin/gofmt'
+    $unformatted = @(& $gofmt -l @sourceFiles)
     if ($LASTEXITCODE -ne 0) { throw 'Formatting check failed.' }
     if ($unformatted.Count -ne 0) {
         $unformatted | Write-Output

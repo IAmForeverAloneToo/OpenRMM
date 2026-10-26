@@ -1,3 +1,13 @@
+# The web dashboard is built here, so an image built from a clean checkout
+# always embeds it. Node exists only in this build stage, never in the image.
+FROM node:24.22.0-bookworm-slim@sha256:91acba91b842bec0bf7ea6f5e09c644c7ccad72c4996ed9616d861d1c7cd60d4 AS web
+WORKDIR /src/web
+COPY web/package.json web/package-lock.json web/.npmrc ./
+RUN npm ci --ignore-scripts --no-fund --loglevel=error
+COPY web/ ./
+# "build" typechecks first, then writes ../internal/server/webui/dist.
+RUN --network=none npm run --silent build
+
 FROM golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61 AS build
 WORKDIR /src
 ENV GOWORK=off
@@ -8,6 +18,7 @@ RUN go mod download \
     && go mod verify
 COPY cmd/ ./cmd/
 COPY internal/ ./internal/
+COPY --from=web /src/internal/server/webui/dist/ ./internal/server/webui/dist/
 RUN --network=none CGO_ENABLED=0 go test -mod=readonly ./... \
     && CGO_ENABLED=0 go build -mod=readonly -trimpath -buildvcs=false -o /out/openrmm-server ./cmd/openrmm-server \
     && CGO_ENABLED=0 go build -mod=readonly -trimpath -buildvcs=false -o /out/openrmm-agent ./cmd/openrmm-agent \

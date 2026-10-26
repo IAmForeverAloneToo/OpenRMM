@@ -119,9 +119,21 @@ Build tooling licenses include MIT, Apache-2.0, ISC, BSD-3-Clause and MPL-2.0 (l
 
 | Image | Pinned reference | Use |
 | --- | --- | --- |
+| Web builder | `node:24.22.0-bookworm-slim@sha256:91acba91b842bec0bf7ea6f5e09c644c7ccad72c4996ed9616d861d1c7cd60d4` | Builds the web dashboard from the locked npm packages in the image's first stage (`Dockerfile`); nothing from it reaches the runtime image except the built static files |
 | Go builder | `golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61` | Builds and tests the Go binaries (`Dockerfile`); source of the public CA bundle copied into the runtime image |
 | Runtime base | `scratch` | Server image: OpenRMM binaries, legal files and the CA bundle only, no shell or package manager |
 | MSI builder | `ubuntu:26.04@sha256:c098726dd9b9733f3e885f8de0ef375206a311b0a317eadc40d347b1115fb944` with `wixl=0.106+repack-2` and `wixl-data=0.106+repack-2` | Builds the agent MSI (`installer/Dockerfile`, run by `scripts/build-msi.ps1` with `--network none` as a non-root user) |
+
+### Continuous integration
+
+GitHub Actions run `scripts/check.ps1` on Linux and Windows and build the container image (`.github/workflows/ci.yml`). Only GitHub's own actions are used, each pinned to an exact commit, with read-only repository permissions.
+
+| Action | Version | Commit | Use |
+| --- | --- | --- | --- |
+| `actions/checkout` | v7.0.1 | `3d3c42e5aac5ba805825da76410c181273ba90b1` | Checks out the commit under test (credentials not persisted) |
+| `actions/setup-node` | v7.1.0 | `949feb2413d6458794dcd2491c4babbbce0c15c1` | Installs Node.js 24.22.0, the same version the image's web builder uses |
+
+The Go toolchain is not installed by an action: `check.ps1` pins `go1.27.2` through `GOTOOLCHAIN`, and the runner's preinstalled Go only launches it.
 
 ### Operating system prerequisites
 
@@ -214,6 +226,10 @@ Revisit dependencies when features change, and remove those no longer needed.
 **wixl (msitools) for the agent MSI.** The agent ships as a Windows Installer package, which it also uses to update itself. Go cannot write MSI databases, and a hand-written MSI writer would be a new implementation of a complex binary format. `wixl` 0.106 runs only in the pinned Ubuntu build image with networking disabled; its apt transitive set is about 21 packages, mostly already in the base image, verified through Ubuntu's signed repository metadata. Nothing from the image reaches the server image or a device except the MSI, whose contents are OpenRMM's own binaries and notices and which every release binds by its Ed25519 signature. Alternatives: the WiX Toolset (needs .NET on Windows, and recent releases add a maintenance-fee condition for some users) and NSIS (no Windows Installer transactions, no GPO/Intune MSI deployment).
 
 Known `wixl` limits used deliberately: it ignores `Platform` on `Package` (the `-a x64` switch sets the architecture) and `KeyPath` on `Component`, and it has no `ServiceConfig`, so the agent sets its own delayed start and crash recovery at start-up. The generated `RemoveExistingProducts` runs before `InstallInitialize`, so Windows Installer does not roll back a failed upgrade itself; the agent's update helper reinstalls the previous package.
+
+**Node.js build stage.** The server image builds the web dashboard itself, so an image built from a clean checkout is complete. The stage uses the pinned `node` image at the same version as local builds (24.22.0), installs exactly from `package-lock.json` with lifecycle scripts disabled, and builds with networking disabled. Node.js never enters the runtime image. Alternative: committing the built dashboard to the repository (rejected: generated files in the repository can drift from their sources).
+
+**CI actions.** Only `actions/checkout` and `actions/setup-node` (both maintained by GitHub) are used, each pinned to a commit rather than a movable tag. The Go toolchain comes from the pinned `GOTOOLCHAIN`, so no third-party setup action is needed. Upgrades follow the same review rule as other dependencies.
 
 **Install script.** `deploy/install.sh` uses bash and the Docker CLI already on the host and downloads nothing else.
 

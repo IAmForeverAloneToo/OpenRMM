@@ -4,6 +4,7 @@
 
 **Self-hosted remote monitoring and management with built-in forensic live response for Windows fleets.**
 
+[![CI](https://github.com/IAmForeverAloneToo/OpenRMM/actions/workflows/ci.yml/badge.svg)](https://github.com/IAmForeverAloneToo/OpenRMM/actions/workflows/ci.yml)
 [![License: AGPL-3.0-only](https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8.svg?logo=go&logoColor=white)](go.mod)
 [![Platform](https://img.shields.io/badge/agent-Windows%20x64-0078D6.svg?logo=windows&logoColor=white)](docs/WINDOWS-SERVICE.md)

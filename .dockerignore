@@ -8,7 +8,13 @@
 !cmd/**
 !internal/
 !internal/**
+!web/
+!web/**
 !Dockerfile
 !THIRD_PARTY_NOTICES.md
 !LICENSE
 !NOTICE
+# Built in the image's web stage, never taken from a local build.
+internal/server/webui/dist
+web/node_modules
+web/dist

@@ -76,7 +76,7 @@ dist/linux-amd64/openrmm-server
 The container image (`Dockerfile`) checks the same dependency baseline and runs the full Go test suite on Linux, with networking disabled after the pinned modules are fetched.
 
 > [!NOTE]
-> The image embeds the web interface from `internal/server/webui/dist`, which is produced by `scripts/build-web.ps1` and is not committed. Run `.\scripts\build.ps1` (or `build-web.ps1`) before building the image, otherwise the server serves a placeholder page.
+> The image builds the web dashboard itself in a separate Node.js stage (pinned `node` image, locked packages, no lifecycle scripts), so `docker build .` from a clean checkout produces a complete server. A locally built `internal/server/webui/dist` is excluded from the build context and never used.
 
 ### Packaging checks
 

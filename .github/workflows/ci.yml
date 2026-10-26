@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Read-only: CI checks code and never writes to the repository.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Check (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      # Actions are pinned to exact commits; see docs/DEPENDENCIES.md.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.22.0
+      # check.ps1 pins the Go toolchain (go1.27.2) itself; the runner's Go is
+      # only the launcher. It verifies dependencies.lock and the npm lockfile,
+      # typechecks and tests the web interface, then runs gofmt, vet and tests.
+      - name: Check
+        shell: pwsh
+        run: ./scripts/check.ps1
+
+  image:
+    name: Container image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Builds the web dashboard and the server from a clean checkout and runs
+      # the Go tests on Linux inside the build; nothing is pushed.
+      - name: Build
+        run: docker build --tag openrmm-server:ci .
