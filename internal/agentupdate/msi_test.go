@@ -90,3 +90,17 @@ func TestBuiltInTrustAndJournalSupport(t *testing.T) {
 		t.Fatal("unknown job status", r, e)
 	}
 }
+
+// Public releases are signed for a year; longer lifetimes are refused.
+func TestReleaseLifetime(t *testing.T) {
+	m := msiManifest(strings.Repeat("c", 64), 10)
+	m.Issued = 1_800_000_000
+	m.Expires = m.Issued + 365*24*3600
+	if !Valid(m) {
+		t.Fatal("one-year release refused")
+	}
+	m.Expires = m.Issued + 367*24*3600
+	if Valid(m) {
+		t.Fatal("release longer than the maximum accepted")
+	}
+}

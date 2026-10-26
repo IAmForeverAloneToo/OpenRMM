@@ -1,0 +1,213 @@
+name: Release
+
+# Pushing a version tag (v1.2.3) builds, signs and publishes a release:
+#   - the signed agent MSI, bundled into the server image;
+#   - the server image on GitHub Container Registry;
+#   - the signed server release (openrmm-server-release.json) that servers
+#     check for daily, plus SHA256SUMS, attached to a GitHub release.
+# Running the workflow by hand is a dry run: everything is built and signed
+# with a throwaway key, and nothing is published.
+
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/iamforeveralonetoo/openrmm-server
+  # Highest release sequence used before the first public release; public
+  # releases continue from here so existing devices accept them.
+  BASE_SEQUENCE: '40'
+  GOTOOLCHAIN: go1.27.2
+  GOFLAGS: -mod=readonly
+  GOWORK: 'off'
+
+jobs:
+  release:
+    name: Build, sign and publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: write # create the GitHub release
+      packages: write # push the image
+    env:
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' }}
+    steps:
+      # Actions are pinned to exact commits; see docs/DEPENDENCIES.md.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.22.0
+
+      - name: Version and sequence
+        id: meta
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ "$DRY_RUN" = true ]; then
+            version="0.0.0-dryrun.${GITHUB_RUN_NUMBER}"
+          else
+            version="${GITHUB_REF_NAME#v}"
+          fi
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "invalid version $version"; exit 1; }
+          previous="$BASE_SEQUENCE"
+          dir="$(mktemp -d)"
+          if gh release download --repo "$GITHUB_REPOSITORY" --pattern openrmm-server-release.json --dir "$dir" 2>/dev/null; then
+            previous="$(jq -r '.manifest.sequence' "$dir/openrmm-server-release.json")"
+          fi
+          [[ "$previous" =~ ^[0-9]+$ ]] || { echo "unreadable previous sequence"; exit 1; }
+          next=$((previous + 1))
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "previous=$previous" >> "$GITHUB_OUTPUT"
+          echo "sequence=$next" >> "$GITHUB_OUTPUT"
+          echo "Release $version, sequence $next (previous $previous)"
+
+      - name: Dependency baseline
+        shell: pwsh
+        run: ./scripts/check-dependencies.ps1
+
+      - name: Build the signer
+        run: go build -trimpath -buildvcs=false -o "$RUNNER_TEMP/openrmm-release" ./cmd/openrmm-release
+
+      - name: Signing key
+        id: key
+        env:
+          SIGNING_KEY: ${{ secrets.OPENRMM_SIGNING_KEY }}
+          SIGNING_PASSPHRASE: ${{ secrets.OPENRMM_SIGNING_PASSPHRASE }}
+          PREVIOUS: ${{ steps.meta.outputs.previous }}
+        run: |
+          set -euo pipefail
+          umask 077
+          key="$RUNNER_TEMP/signing"
+          mkdir "$key"
+          if [ "$DRY_RUN" = true ]; then
+            # A throwaway key: a dry run must never touch the real one.
+            head -c 32 /dev/urandom | base64 > "$key/passphrase"
+            "$RUNNER_TEMP/openrmm-release" -create-key "$key/key" -passphrase-stdin < "$key/passphrase"
+            mv "$key/key/signing-key.json" "$key/key/public.txt" "$key/"
+          else
+            [ -n "$SIGNING_KEY" ] && [ -n "$SIGNING_PASSPHRASE" ] || { echo "Set the OPENRMM_SIGNING_KEY and OPENRMM_SIGNING_PASSPHRASE repository secrets."; exit 1; }
+            printf '%s' "$SIGNING_KEY" > "$key/signing-key.json"
+            printf '%s' "$SIGNING_PASSPHRASE" > "$key/passphrase"
+            jq -r '.public_key' "$key/signing-key.json" > "$key/public.txt"
+          fi
+          grep -Eq '^[0-9a-f]{64}$' "$key/public.txt" || { echo "the signing key has no valid public key"; exit 1; }
+          printf '{"format":1,"last_sequence":%s}' "$PREVIOUS" > "$key/sequence.json"
+          echo "dir=$key" >> "$GITHUB_OUTPUT"
+          echo "public=$(cat "$key/public.txt")" >> "$GITHUB_OUTPUT"
+
+      - name: Build the agent and its MSI
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          SEQUENCE: ${{ steps.meta.outputs.sequence }}
+          PUBLIC: ${{ steps.key.outputs.public }}
+        run: |
+          ./scripts/build.ps1 -Target windows -AgentVersion $env:VERSION -ReleaseSequence $env:SEQUENCE -PinnedKeys $env:PUBLIC
+          ./scripts/build-msi.ps1 -ProductVersion "1.0.$($env:SEQUENCE)" -AgentVersion $env:VERSION
+
+      - name: Sign the agent release
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          SEQUENCE: ${{ steps.meta.outputs.sequence }}
+          KEY: ${{ steps.key.outputs.dir }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          "$RUNNER_TEMP/openrmm-release" -key "$KEY/signing-key.json" -passphrase-stdin \
+            -binary dist/windows-amd64/openrmm-agent.msi -agent dist/windows-amd64/openrmm-agent.exe \
+            -version "$VERSION" -sequence "$SEQUENCE" -days 365 -out out/openrmm-agent-release.json < "$KEY/passphrase"
+          # The server image carries the signed agent release.
+          bundle=internal/agentbundle/files
+          cp out/openrmm-agent-release.json "$bundle/release.json"
+          cp "$KEY/public.txt" "$bundle/public.txt"
+          cp dist/windows-amd64/openrmm-agent.msi "$bundle/openrmm-agent.msi"
+          cp dist/windows-amd64/openrmm-agent.msi "out/openrmm-agent-$VERSION.msi"
+
+      - name: Build the server image
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          docker build \
+            --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+            --label "org.opencontainers.image.version=${VERSION}" \
+            --label "org.opencontainers.image.licenses=AGPL-3.0-only" \
+            --tag "$IMAGE:$VERSION" .
+
+      - name: Push the server image
+        id: image
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          id="$(docker image inspect -f '{{.Id}}' "$IMAGE:$VERSION")"
+          digest=""
+          if [ "$DRY_RUN" != true ]; then
+            printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+            docker push "$IMAGE:$VERSION"
+            digest="$(docker image inspect -f '{{index .RepoDigests 0}}' "$IMAGE:$VERSION")"
+            digest="${digest#*@}"
+            docker logout ghcr.io
+          fi
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "Image $IMAGE:$VERSION id $id digest ${digest:-(not pushed)}"
+
+      - name: Release notes
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          previous_tag="$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD^ 2>/dev/null || true)"
+          {
+            echo "OpenRMM $VERSION"
+            echo
+            if [ -n "$previous_tag" ]; then
+              echo "Changes since $previous_tag:"
+              git log --no-merges --format='- %s' "$previous_tag..HEAD"
+            else
+              echo "First public release."
+            fi
+          } | head -c 15000 > out/notes.md
+
+      - name: Sign the server release
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          SEQUENCE: ${{ steps.meta.outputs.sequence }}
+          KEY: ${{ steps.key.outputs.dir }}
+          IMAGE_ID: ${{ steps.image.outputs.id }}
+          DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          set -euo pipefail
+          args=(-server-release -key "$KEY/signing-key.json" -passphrase-stdin -version "$VERSION" -sequence "$SEQUENCE"
+                -image "$IMAGE" -image-id "$IMAGE_ID" -notes out/notes.md -days 365 -out out/openrmm-server-release.json)
+          [ -n "$DIGEST" ] && args+=(-digest "$DIGEST")
+          "$RUNNER_TEMP/openrmm-release" "${args[@]}" < "$KEY/passphrase"
+          (cd out && sha256sum openrmm-agent-*.msi openrmm-agent-release.json openrmm-server-release.json > SHA256SUMS)
+          ls -l out
+
+      - name: Publish the GitHub release
+        if: env.DRY_RUN != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "OpenRMM $VERSION" --notes-file out/notes.md \
+            "out/openrmm-agent-$VERSION.msi" out/openrmm-agent-release.json out/openrmm-server-release.json out/SHA256SUMS
+
+      - name: Remove the signing key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/signing"

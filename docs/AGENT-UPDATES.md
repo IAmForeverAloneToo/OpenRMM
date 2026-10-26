@@ -105,7 +105,7 @@ Automatic batches go through the same review and checks as manual ones and are r
 | Item | Limit |
 | --- | --- |
 | Package size | 32 MiB |
-| Release validity | At most 90 days |
+| Release validity | At most 366 days (releases are signed for one year) |
 | Release sequence | At most 65535 (part of the MSI version `1.0.<sequence>`) |
 | Active releases in the library | 8 (200 in total, including withdrawn) |
 | Targets per batch | 25 |

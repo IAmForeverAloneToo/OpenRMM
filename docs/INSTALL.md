@@ -27,13 +27,13 @@ The script:
 - prints a one-time link for creating the first administrator in the browser.
 
 > [!NOTE]
-> Published container images will be available with the first tagged release. Until then, build the image from source (see [RELEASE.md](RELEASE.md)) and pass its exact tag to `--image`.
+> Without `--image`, the script installs the latest release published on GitHub, pinned to its exact version (`ghcr.io/iamforeveralonetoo/openrmm-server:<version>`). Until the first release is published, build the image from source (see [DEVELOPMENT.md](DEVELOPMENT.md)) and pass its exact tag to `--image`.
 
 ## Requirements
 
 - A Linux host with Docker Engine and the `docker compose` plugin ([install Docker](https://docs.docker.com/engine/install/)).
 - Run the script as root (`sudo`) or as a member of the `docker` group.
-- The server image with an exact version (`IMAGE:VERSION`) or digest (`IMAGE@sha256:...`). Floating tags such as `latest`, or a reference without a tag, are refused.
+- `curl`, to find the latest release (or pass `--image` with an exact version (`IMAGE:VERSION`) or digest (`IMAGE@sha256:...`); floating tags such as `latest` are refused).
 - Two TCP ports that browsers and agents can reach:
 
 | Port | Default | Purpose |
@@ -46,7 +46,7 @@ Port 80 is not used.
 ## Public server with a domain name
 
 ```bash
-sudo bash deploy/install.sh --image IMAGE:VERSION --domain rmm.example.com --email admin@example.com
+sudo bash install.sh --domain rmm.example.com --email admin@example.com
 ```
 
 - The name must resolve to this host, and port 443 must be reachable from the internet.
@@ -57,7 +57,7 @@ sudo bash deploy/install.sh --image IMAGE:VERSION --domain rmm.example.com --ema
 ## LAN or lab server
 
 ```bash
-sudo bash deploy/install.sh --image IMAGE:VERSION --address 192.0.2.10,rmm.lan
+sudo bash install.sh --address 192.0.2.10,rmm.lan
 ```
 
 - The server creates its own certificate authority, valid for 10 years. The CA and its key stay in the `secrets` volume (`server-ca/`).
@@ -87,7 +87,7 @@ To add more people, invite [technicians](TECHNICIANS.md). To recover the adminis
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `--image REF` | (required on the first run) | Server image with an exact version or digest. |
+| `--image REF` | the latest published release | Server image with an exact version or digest. |
 | `--domain NAME` | | Public DNS name; certificate from Let's Encrypt. Requires the dashboard on port 443. |
 | `--email ADDRESS` | | Let's Encrypt contact address (optional, with `--domain`). |
 | `--address LIST` | | Comma-separated IP addresses or host names for a LAN install; certificate from the server's own CA. |

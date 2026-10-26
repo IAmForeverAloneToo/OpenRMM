@@ -4,7 +4,7 @@ param(
     [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9._+-]{1,64}$')][string]$Version,
     # Folder holding the encrypted signing key (signing-key.json, public.txt, sequence.json).
     [string]$KeyDirectory = (Join-Path (Split-Path -Parent $PSScriptRoot) '.local/agent-updates-publisher'),
-    [ValidateRange(1, 90)][int]$Days = 30,
+    [ValidateRange(1, 366)][int]$Days = 365,
     # Also back up and replace the local server (scripts/local.ps1) after building.
     [switch]$Deploy
 )

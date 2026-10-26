@@ -122,7 +122,7 @@ func run(stdin io.Reader) error {
 	if *serverRelease {
 		return signServer(*key, *version, *sequence, *image, *imageID, *digest, *notes, *out, *days, passphrase)
 	}
-	if *key == "" || *binary == "" || *out == "" || *days < 1 || *days > 90 {
+	if *key == "" || *binary == "" || *out == "" || *days < 1 || *days > 366 {
 		return agentupdate.ErrInvalid
 	}
 	var priv ed25519.PrivateKey

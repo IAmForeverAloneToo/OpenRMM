@@ -65,21 +65,27 @@ flowchart LR
 On a Linux host with Docker Engine and the Compose plugin:
 
 ```bash
+curl -fsSLO https://raw.githubusercontent.com/IAmForeverAloneToo/OpenRMM/main/deploy/install.sh
+```
+
+```bash
 # Public server: automatic Let's Encrypt certificate, dashboard on port 443
-sudo bash deploy/install.sh --image IMAGE:VERSION --domain rmm.example.com
+sudo bash install.sh --domain rmm.example.com
 ```
 
 ```bash
 # LAN or lab server: certificates from the server's own authority
-sudo bash deploy/install.sh --image IMAGE:VERSION --address 192.0.2.10
+sudo bash install.sh --address 192.0.2.10
 ```
+
+The script installs the latest published release (pinned to its exact version); `--image` selects another one.
 
 1. Open the one-time setup link the script prints (valid for one hour) to create the first administrator with a password and an authenticator app.
 2. In the dashboard, go to **Devices → Add device** and download an installer for one device or for a deployment to many.
 3. On each Windows machine, run `install.cmd` (or `install.cmd /quiet` from Intune, Group Policy or a remote shell). The device appears in **Devices** within a minute.
 
 > [!NOTE]
-> Published container images will be available with the first tagged release. Until then, build the image from source; see [DEVELOPMENT.md](docs/DEVELOPMENT.md).
+> Releases are published from version tags by CI (server image on GHCR, signed agent MSI). Until the first release is out, build the image from source and pass it with `--image`; see [DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 Running the install command again repairs or reconfigures the installation without touching data. The full guide is in [INSTALL.md](docs/INSTALL.md).
 

@@ -5,6 +5,7 @@ This guide is for maintainers and for operators who build and sign their own Ope
 ## Contents
 
 - [Overview](#overview)
+- [Publishing a release with CI](#publishing-a-release-with-ci)
 - [Prerequisites](#prerequisites)
 - [Check and build](#check-and-build)
 - [The release signing key](#the-release-signing-key)
@@ -31,8 +32,40 @@ A release consists of:
 
 The agent release is the anchor of a server build: the server takes its version, release sequence and trusted release key from the bundled agent release. A server built without a bundled release reports the version `development` and offers no agent updates or installer downloads until a release is uploaded.
 
-> [!NOTE]
-> The automated release pipeline that builds and publishes signed images and agent packages is not in place yet; see [ROADMAP.md](../ROADMAP.md). Until then, releases are built with the scripts below.
+## Publishing a release with CI
+
+Official releases are built, signed and published by the **Release** workflow (`.github/workflows/release.yml`) when a version tag is pushed:
+
+```bash
+git tag -s v0.1.0 -m "OpenRMM 0.1.0"
+git push origin v0.1.0
+```
+
+The workflow then:
+
+1. Takes the version from the tag and the next release sequence from the previous GitHub release (the first public release continues the local sequence).
+2. Builds the Windows agent with the project's public key pinned, builds its MSI and signs the agent release (valid for one year).
+3. Builds the server image with that signed agent release bundled, and pushes it to `ghcr.io/iamforeveralonetoo/openrmm-server:<version>`.
+4. Signs the server release, pinning the image ID and registry digest, with release notes made from the commits since the previous tag.
+5. Creates the GitHub release with the MSI, `openrmm-agent-release.json`, `openrmm-server-release.json` and `SHA256SUMS`.
+
+Servers find the new release with their daily check and offer it under **Administration → Server updates**; the bundled agent release then reaches devices through the agent rings.
+
+**Dry run.** Running the workflow manually (**Actions → Release → Run workflow**) builds and signs everything with a throwaway key and publishes nothing. Use it to test the pipeline after changes.
+
+### One-time setup: the signing secrets
+
+The workflow signs with the project's release key, stored as two repository secrets. Set them yourself from the folder that holds the encrypted key (they are never printed or committed):
+
+```bash
+gh secret set OPENRMM_SIGNING_KEY --repo IAmForeverAloneToo/OpenRMM < signing-key.json
+gh secret set OPENRMM_SIGNING_PASSPHRASE --repo IAmForeverAloneToo/OpenRMM
+```
+
+The second command prompts for the passphrase. Anyone who can change workflows on `main` or push tags can sign releases with these secrets; protect the repository accordingly.
+
+> [!IMPORTANT]
+> Agents installed from builds older than the one-year validity rule accept release manifests valid for at most 90 days, so they refuse automatic updates to public releases. Reinstall such devices once with the MSI from a public release (`install.cmd` or `scripts/install-agent.ps1`).
 
 ## Prerequisites
 
@@ -104,7 +137,7 @@ The key folder holds:
 | --- | --- | --- |
 | `-Version` | (required) | Agent version, for example `0.2.0` (letters, digits, `.`, `_`, `+`, `-`). |
 | `-KeyDirectory` | `.local/agent-updates-publisher` | Folder with `signing-key.json`, `public.txt` and `sequence.json`. |
-| `-Days` | `30` | Validity of the signed release, 1–90 days. |
+| `-Days` | `365` | Validity of the signed release, 1–366 days. |
 | `-Deploy` | off | Back up and verify the local server, then rebuild and restart it with the new release. |
 
 The script:
@@ -121,7 +154,7 @@ The passphrase is read from `OPENRMM_SIGNING_PASSPHRASE` when it is set; otherwi
 
 At startup, a server verifies its bundled release (signature, hash, size, package structure, validity period) and imports it into its release library as `system:server-build`. To make room, it withdraws the oldest releases it imported itself that no queued job or automatic rollout uses; uploaded releases stay. Roll the release out from **Agent updates** ([AGENT-UPDATES.md](AGENT-UPDATES.md)).
 
-**Release format 2.** The signed manifest binds product, operating system, architecture, version, sequence, key ID, issue and expiry time, the MSI's exact size and SHA-256, and the SHA-256 of the `openrmm-agent.exe` inside the MSI (`agent_sha256`). The maximum package size is 32 MiB and the maximum validity is 90 days.
+**Release format 2.** The signed manifest binds product, operating system, architecture, version, sequence, key ID, issue and expiry time, the MSI's exact size and SHA-256, and the SHA-256 of the `openrmm-agent.exe` inside the MSI (`agent_sha256`). The maximum package size is 32 MiB and the maximum validity is 366 days.
 
 The signer can also be used directly, but the MSI version must be `1.0.<sequence>` and the agent inside it must have been built with that sequence and key, so use `release.ps1` in practice:
 

@@ -19,6 +19,11 @@ import (
 )
 
 const MaxArtifact = 32 * 1024 * 1024
+
+// MaxLife bounds how long a signed agent release stays valid. Public releases
+// are signed for a year, so installers and updates keep working between
+// releases; the expiry still limits how long an old release can be replayed.
+const MaxLife = 366 * 24 * time.Hour
 const MaxIPC = 32768
 
 var Capability = protocol.Capability{Name: "agent_updates", Version: 1}
@@ -55,7 +60,7 @@ func Valid(m protocol.AgentManifest) bool {
 	default:
 		return false
 	}
-	return m.Product == "OpenRMMAgent" && m.OS == "windows" && m.Architecture == "amd64" && Version(m.Version) && m.Sequence > 0 && m.Sequence <= MaxMSISequence && m.Size > 0 && m.Size <= MaxArtifact && Hash(m.Hash) && Hash(m.KeyID) && m.Issued > 0 && m.Expires > m.Issued && m.Expires-m.Issued <= int64(90*24*time.Hour/time.Second)
+	return m.Product == "OpenRMMAgent" && m.OS == "windows" && m.Architecture == "amd64" && Version(m.Version) && m.Sequence > 0 && m.Sequence <= MaxMSISequence && m.Size > 0 && m.Size <= MaxArtifact && Hash(m.Hash) && Hash(m.KeyID) && m.Issued > 0 && m.Expires > m.Issued && m.Expires-m.Issued <= int64(MaxLife/time.Second)
 }
 
 // Build-time trust, set with -ldflags -X by scripts/build.ps1 and

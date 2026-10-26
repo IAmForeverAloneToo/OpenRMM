@@ -8,7 +8,7 @@ param(
 
 # Builds dist/windows-amd64/openrmm-agent.msi from the already built
 # openrmm-agent.exe and openrmm-desktop.exe with wixl in a pinned build image
-# (installer/Dockerfile), run through Docker in the Ubuntu WSL distribution.
+# (installer/Dockerfile), run through Docker (in the Ubuntu WSL distribution on Windows).
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $projectRoot = Split-Path -Parent $PSScriptRoot
@@ -23,11 +23,25 @@ foreach ($file in @('openrmm-agent.exe', 'openrmm-desktop.exe')) { Copy-Item -Li
 foreach ($file in @('LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md')) { Copy-Item -LiteralPath (Join-Path $projectRoot $file) -Destination $stage }
 Copy-Item -LiteralPath (Join-Path $projectRoot 'installer/openrmm-agent.wxs') -Destination $stage
 
-$linuxInstaller = (& wsl.exe -d Ubuntu --exec wslpath -a -u (Join-Path $projectRoot 'installer') | Out-String).Trim()
-$linuxStage = (& wsl.exe -d Ubuntu --exec wslpath -a -u $stage | Out-String).Trim()
-& wsl.exe -d Ubuntu --user root --exec docker build --quiet -t openrmm-wixl:0.106 $linuxInstaller | Out-Null
+# On Windows, Docker runs inside the Ubuntu WSL distribution; on Linux (for
+# example the release workflow) it is called directly.
+if ($IsLinux) {
+    function Invoke-Docker { & docker @args }
+    $linuxInstaller = Join-Path $projectRoot 'installer'
+    $linuxStage = $stage
+    # wixl runs as an unprivileged container user; let it write the MSI into
+    # this throwaway staging folder.
+    & chmod 0777 $stage
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot prepare the MSI staging folder.' }
+}
+else {
+    function Invoke-Docker { & wsl.exe -d Ubuntu --user root --exec docker @args }
+    $linuxInstaller = (& wsl.exe -d Ubuntu --exec wslpath -a -u (Join-Path $projectRoot 'installer') | Out-String).Trim()
+    $linuxStage = (& wsl.exe -d Ubuntu --exec wslpath -a -u $stage | Out-String).Trim()
+}
+Invoke-Docker build --quiet -t openrmm-wixl:0.106 $linuxInstaller | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'Cannot build the pinned wixl image.' }
-& wsl.exe -d Ubuntu --user root --exec docker run --rm --network none --mount "type=bind,src=$linuxStage,dst=/work" openrmm-wixl:0.106 `
+Invoke-Docker run --rm --network none --mount "type=bind,src=$linuxStage,dst=/work" openrmm-wixl:0.106 `
     -a x64 -D "ProductVersion=$ProductVersion" -D "AgentVersion=$AgentVersion" -D 'SourceDir=.' -o openrmm-agent.msi openrmm-agent.wxs
 if ($LASTEXITCODE -ne 0) { throw 'wixl failed to build the agent MSI.' }
 $msi = Join-Path $stage 'openrmm-agent.msi'

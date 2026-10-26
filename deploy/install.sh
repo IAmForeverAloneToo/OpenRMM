@@ -25,7 +25,8 @@ say() { printf '%s\n' "$*"; }
 usage() {
 	cat <<'EOF'
 Usage: install.sh [options]
-  --image REF            Server image with an exact version (IMAGE:VERSION or IMAGE@sha256:...)
+  --image REF            Server image with an exact version (IMAGE:VERSION or IMAGE@sha256:...);
+                         default: the latest published release
   --domain NAME          Public DNS name; HTTPS certificate from Let's Encrypt (needs port 443 reachable)
   --email ADDRESS        Contact address for Let's Encrypt (optional)
   --address LIST         Comma-separated IP addresses or host names agents and browsers use (LAN installs)
@@ -39,6 +40,10 @@ Usage: install.sh [options]
 Options not given on a later run keep their previous values.
 EOF
 }
+
+# Published releases: GitHub releases of this repository, images on GHCR.
+release_repository=IAmForeverAloneToo/OpenRMM
+release_image=ghcr.io/iamforeveralonetoo/openrmm-server
 
 dir=/opt/openrmm
 project=openrmm
@@ -120,8 +125,19 @@ if [ -z "${arg[image]-}" ]; then
 	[ -z "$current" ] || image=$current
 fi
 
+# A first install without --image uses the latest published release, pinned
+# to its exact version.
+if [ -z "$image" ]; then
+	command -v curl >/dev/null 2>&1 || die "curl is needed to find the latest release; install curl or pass --image"
+	latest=$(curl -fsSL -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/$release_repository/releases/latest" |
+		sed -n 's/^[[:space:]]*"tag_name":[[:space:]]*"v\([0-9][0-9.]*[0-9A-Za-z.-]*\)".*/\1/p' | head -n 1) || true
+	[ -n "$latest" ] || die "cannot find the latest release; check the network or pass --image"
+	image="$release_image:$latest"
+	say "Using the latest release: $image"
+fi
+
 # Validation (the server checks the same values again).
-[ -n "$image" ] || die "--image is required on the first run (an exact version, for example openrmm/server:0.6.0)"
+[ -n "$image" ] || die "--image is required (an exact version, for example $release_image:0.1.0)"
 [[ $image =~ ^[A-Za-z0-9][A-Za-z0-9._/:@-]{0,254}$ ]] || die "--image is not a valid image reference"
 last=${image##*/}
 if [[ $image != *@sha256:* ]] && { [[ $last != *:* ]] || [[ $last == *:latest ]]; }; then
