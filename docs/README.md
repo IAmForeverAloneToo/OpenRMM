@@ -17,6 +17,7 @@ Guides for installing, operating and extending OpenRMM. New here? Start with **[
 | Guide | Description |
 | --- | --- |
 | [Server updates](SERVER-UPDATES.md) | Signed server releases installed from the dashboard, with backup and rollback |
+| [Upgrading](UPGRADING.md) | Upgrade paths, going back after a bad update, version notes |
 | [Backup and recovery](RECOVERY.md) | Nightly verified backups, export, restore and upgrades |
 | [Configuration reference](CONFIGURATION.md) | Every server and agent option |
 | [Dependencies](DEPENDENCIES.md) | The dependency policy, inventory and review notes |

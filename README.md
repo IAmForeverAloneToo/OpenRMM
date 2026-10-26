@@ -93,7 +93,7 @@ Running the install command again repairs or reconfigures the installation witho
 
 Start at the **[documentation index](docs/README.md)**. Frequently used pages:
 
-- [Installing the server](docs/INSTALL.md) · [Server updates](docs/SERVER-UPDATES.md) · [Backup and recovery](docs/RECOVERY.md)
+- [Installing the server](docs/INSTALL.md) · [Server updates](docs/SERVER-UPDATES.md) · [Upgrading](docs/UPGRADING.md) · [Backup and recovery](docs/RECOVERY.md)
 - [Enrolling devices](docs/ENROLLMENT.md) · [The Windows agent service](docs/WINDOWS-SERVICE.md) · [Agent updates](docs/AGENT-UPDATES.md)
 - [Incident response](docs/RESPONSE.md) · [Hunting](docs/HUNTING.md) · [Network isolation](docs/ISOLATION.md)
 - [Configuration reference](docs/CONFIGURATION.md) · [Development guide](docs/DEVELOPMENT.md)

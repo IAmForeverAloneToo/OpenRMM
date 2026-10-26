@@ -6,6 +6,7 @@ This guide is for maintainers and for operators who build and sign their own Ope
 
 - [Overview](#overview)
 - [Publishing a release with CI](#publishing-a-release-with-ci)
+  - [Withdrawing a bad release](#withdrawing-a-bad-release)
 - [Prerequisites](#prerequisites)
 - [Check and build](#check-and-build)
 - [The release signing key](#the-release-signing-key)
@@ -54,6 +55,15 @@ Servers find the new release with their daily check and offer it under **Adminis
 **Pre-releases.** A tag with a suffix, such as `v0.1.0-rc.1`, is published as a GitHub pre-release. Servers' update checks and the install script's default use only full releases, so a pre-release is installed only on purpose (`install.sh --image ghcr.io/iamforeveralonetoo/openrmm-server:0.1.0-rc.1`), for example on test machines. Each pre-release still uses the next release sequence.
 
 **Dry run.** Running the workflow manually (**Actions → Release → Run workflow**) builds and signs everything with a throwaway key and publishes nothing. Use it to test the pipeline after changes.
+
+### Withdrawing a bad release
+
+A signed release cannot be recalled: it stays valid until it expires, and anyone holding it could still offer it to a server or device below its sequence. What you can do is stop new installations from picking it up and supersede it.
+
+1. **Hide it.** Edit the GitHub release and select **Set as a pre-release**. Do not delete the release, its tag or its image: servers and devices that installed it keep running it, and the artifacts are needed to investigate. Servers' update checks and the install script's default use only full releases, so a server that has not installed it stops offering it at its next daily check (**Check now** on the page does it at once).
+2. **Supersede it.** Publish a fixed release; it gets the next sequence. If the fix takes time and the bad release did not add a database migration, a release made from the previous good commit also works, since it too gets a new, higher sequence. Servers and agents never go back to a lower sequence, so a fixed release is the only way to move installed systems forward.
+3. **Stop the agent rollout.** Each server release bundles an agent release, which spreads through the rings. A failed agent update pauses the rings by itself; to stop a rollout that does not fail, tell operators to turn off automatic agent updates or withdraw the release under **Agent updates**.
+4. **Tell operators.** Add a note at the top of the release notes. Operators who must go back before a fix is out can follow [Going back after a bad update](UPGRADING.md#going-back-after-a-bad-update). For a security problem, publish a GitHub security advisory ([SECURITY.md](../SECURITY.md)).
 
 ### One-time setup: the signing secrets
 

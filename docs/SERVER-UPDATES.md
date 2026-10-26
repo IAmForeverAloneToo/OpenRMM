@@ -115,11 +115,13 @@ A later run of the install command without `--image` keeps the version that the 
 
 - **Updater shows "Not installed"**: run the install command again; it adds the updater when the Docker socket exists.
 - **An update ended as Rolled back**: the previous version is running again with the data from just before the update. Check the server log of the failed attempt before retrying.
+- **An update succeeded but the new version misbehaves**: see [Going back after a bad update](UPGRADING.md#going-back-after-a-bad-update).
 - **The server does not start after `docker compose up`**: after a dashboard update, `compose.yaml` still names the older image, and an older server refuses the newer database. Run the install command again without `--image`.
 
 ## Related
 
 - [Installing the server](INSTALL.md)
+- [Upgrading](UPGRADING.md)
 - [Backup and recovery](RECOVERY.md)
 - [Agent updates](AGENT-UPDATES.md)
 - [Building and releasing](RELEASE.md)

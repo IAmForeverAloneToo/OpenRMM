@@ -33,12 +33,15 @@ OpenRMM is maintained on a volunteer basis, and there is no bug bounty programme
 
 ## Supported versions
 
-OpenRMM has not had its first tagged release yet. Until then, only the latest commit on `main` receives security fixes. Once releases begin, this section will list the supported versions and the backport policy.
+Only the latest release receives security fixes. While OpenRMM is at 0.x, fixes are not backported: each one ships in a new release, and servers update to it from the dashboard ([UPGRADING.md](docs/UPGRADING.md)). Pre-releases (tags such as `v0.1.0-rc.1`) are for testing and are never supported.
 
 | Version | Supported |
 | --- | --- |
-| `main` (pre-release) | :white_check_mark: |
-| Anything older | :x: |
+| Latest release | :white_check_mark: |
+| Older releases | :x: |
+| Pre-releases | :x: |
+
+Before the first release, the latest commit on `main` receives fixes.
 
 ## Scope
 
@@ -69,5 +72,5 @@ Out of scope:
 - Keep the server updated through **Administration → Server updates**, and agents through **Agent updates**.
 - Use a public domain with an automatic certificate, or distribute the LAN CA to browsers deliberately. Never bypass certificate warnings by habit.
 - Give technicians only the device scope and permissions they need. MFA is mandatory for every account.
-- Back up the `data` and `secrets` volumes together and store the backups securely. See [RECOVERY.md](docs/RECOVERY.md).
+- Check that the nightly backups succeed (**Administration → Backups**) and copy them off the machine regularly with `install.sh backup`. Backups hold the server's keys; store them securely. See [RECOVERY.md](docs/RECOVERY.md).
 - Review [DEPENDENCIES.md](docs/DEPENDENCIES.md) for the dependency policy and how upstream advisories are tracked.
