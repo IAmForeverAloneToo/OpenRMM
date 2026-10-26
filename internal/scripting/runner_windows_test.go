@@ -20,6 +20,9 @@ func TestMain(m *testing.M) {
 }
 
 func TestCancellationEndsOwnedChild(t *testing.T) {
+	if testing.Short() {
+		t.Skip("starts Windows PowerShell; timing-sensitive, run without -short on a real machine")
+	}
 	q := testJob()
 	q.Version.Definition.Timeout = 30
 	q.Version.Definition.Body = `param([string]$Message)
@@ -72,6 +75,9 @@ Start-Sleep -Seconds 60`
 	}
 }
 func TestNativePowerShellDataOutputAndContainment(t *testing.T) {
+	if testing.Short() {
+		t.Skip("starts Windows PowerShell; timing-sensitive, run without -short on a real machine")
+	}
 	if !Supported() {
 		t.Fatal("Windows PowerShell unavailable")
 	}

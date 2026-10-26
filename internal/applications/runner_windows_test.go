@@ -19,6 +19,9 @@ func TestMain(m *testing.M) {
 }
 
 func TestNativeReadOnlyMSIRegistrationAndLiteralMetadata(t *testing.T) {
+	if testing.Short() {
+		t.Skip("starts Windows PowerShell; timing-sensitive, run without -short on a real machine")
+	}
 	d := testDefinition()
 	d.Name = "literal '; throw 'injection'; # $(data) 日本語"
 	d.ProductCode = "{FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF}"
@@ -38,6 +41,9 @@ func TestNativeReadOnlyMSIRegistrationAndLiteralMetadata(t *testing.T) {
 }
 
 func TestNativeMSIIdentityBeforeExecution(t *testing.T) {
+	if testing.Short() {
+		t.Skip("starts Windows PowerShell; timing-sensitive, run without -short on a real machine")
+	}
 	d := testDefinition()
 	// A property-only inert MSI database, created in the private test workspace.
 	// It is opened read-only by the production inspector and never installed.

@@ -11,6 +11,9 @@ import (
 // Only owned PowerShell and its inert sleep child are started. No services,
 // downloads, privileged actions or external machine state are touched.
 func TestNativePersistentPowerShellReadHostInterruptAndProcessJob(t *testing.T) {
+	if testing.Short() {
+		t.Skip("starts Windows PowerShell; timing-sensitive, run without -short on a real machine")
+	}
 	if _, e := Identity(); e != nil {
 		t.Skip("supported non-SYSTEM Windows account required")
 	}

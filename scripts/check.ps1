@@ -1,5 +1,6 @@
 [CmdletBinding()]
-param()
+# -Short skips timing-sensitive native Windows tests (used on CI runners).
+param([switch]$Short)
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -30,7 +31,9 @@ try {
     }
     & go vet -mod=readonly ./...
     if ($LASTEXITCODE -ne 0) { throw 'go vet failed.' }
-    & go test -mod=readonly ./...
+    $testArgs = @('-mod=readonly')
+    if ($Short) { $testArgs += '-short' }
+    & go test @testArgs ./...
     if ($LASTEXITCODE -ne 0) { throw 'Tests failed.' }
     Write-Output 'Formatting, vet, and tests passed.'
 }

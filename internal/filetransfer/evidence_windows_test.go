@@ -177,7 +177,7 @@ func TestOpenEvidenceShadowCopy(t *testing.T) {
 	if testing.Short() {
 		t.Skip("creates a Volume Shadow Copy")
 	}
-	file := filepath.Join(t.TempDir(), "locked.db")
+	file := filepath.Join(longName(t.TempDir()), "locked.db")
 	content := bytes.Repeat([]byte("locked evidence "), 4096)
 	if e := os.WriteFile(file, content, 0600); e != nil {
 		t.Fatal(e)

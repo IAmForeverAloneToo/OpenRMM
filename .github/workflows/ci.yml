@@ -40,9 +40,11 @@ jobs:
       # check.ps1 pins the Go toolchain (go1.27.2) itself; the runner's Go is
       # only the launcher. It verifies dependencies.lock and the npm lockfile,
       # typechecks and tests the web interface, then runs gofmt, vet and tests.
+      # On Windows runners, -short skips the timing-sensitive native
+      # PowerShell tests (they run in full on a real Windows machine).
       - name: Check
         shell: pwsh
-        run: ./scripts/check.ps1
+        run: ./scripts/check.ps1 ${{ runner.os == 'Windows' && '-Short' || '' }}
 
   image:
     name: Container image
