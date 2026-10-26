@@ -27,6 +27,8 @@ type Updater struct {
 	Poll     time.Duration
 	Logf     func(msg string, args ...any)
 	Interval time.Duration
+
+	running, lastRun *BackupRun // backups (schedule.go)
 }
 
 // The journal lives in the backup volume, which only the updater mounts: the
@@ -135,6 +137,9 @@ func (u *Updater) Run(ctx context.Context) {
 			u.status(s.ID, PhaseFailed, s.Version, s.Sequence, "The updater restarted before the update began; nothing was changed.", "")
 		}
 	}
+	if r, e := ReadBackupReport(u.Dir); e == nil {
+		u.lastRun = r.Last
+	}
 	interval := u.Interval
 	if interval <= 0 {
 		interval = 5 * time.Second
@@ -142,8 +147,12 @@ func (u *Updater) Run(ctx context.Context) {
 	beat := time.Time{}
 	for {
 		u.Once(ctx)
+		if u.Backups.Snapshot != nil {
+			u.backups(ctx)
+		}
 		if time.Since(beat) >= time.Minute {
 			u.alive()
+			u.report()
 			beat = time.Now()
 		}
 		select {

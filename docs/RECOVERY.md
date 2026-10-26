@@ -1,11 +1,13 @@
 # Backup and Recovery
 
-This page explains what an OpenRMM server backup must contain, how to take and verify one, and what a restore changes so that old work is never replayed. It is for operators of a self-hosted server.
+This page explains what an OpenRMM server backup contains, how backups are taken and restored, and what a restore changes so that old work is never replayed. It is for operators of a self-hosted server.
 
 ## Contents
 
 - [What to back up](#what-to-back-up)
 - [Production installs](#production-installs)
+  - [Take a backup and copy it off the machine](#take-a-backup-and-copy-it-off-the-machine)
+  - [Restore](#restore)
 - [Local deployment: the recovery tool](#local-deployment-the-recovery-tool)
 - [Take and verify a backup](#take-and-verify-a-backup)
 - [Prepare the revocation list](#prepare-the-revocation-list)
@@ -19,7 +21,7 @@ This page explains what an OpenRMM server backup must contain, how to take and v
 
 ## What to back up
 
-A usable server backup is a matched set, taken at the same time while the server is stopped:
+A usable server backup is a matched set, taken at the same time:
 
 | Part | Contents | Notes |
 | --- | --- | --- |
@@ -29,24 +31,75 @@ A usable server backup is a matched set, taken at the same time while the server
 | TLS (local deployment) | Development HTTPS certificates and keys | Production installs keep certificates in the data and secrets volumes. |
 | Configuration | `install.conf`, `server.env`, `compose.yaml`, the exact image version | Needed to recreate the same deployment. |
 
-A stopped full-volume copy keeps SQLite consistent. See the SQLite guidance on [backups](https://www.sqlite.org/backup.html) and [WAL](https://www.sqlite.org/wal.html), and Docker's guidance on [backing up volumes](https://docs.docker.com/engine/storage/volumes/#back-up-restore-or-migrate-data-volumes).
+A stopped full-volume copy, or SQLite's online backup of a running database, keeps SQLite consistent. See the SQLite guidance on [backups](https://www.sqlite.org/backup.html) and [WAL](https://www.sqlite.org/wal.html), and Docker's guidance on [backing up volumes](https://docs.docker.com/engine/storage/volumes/#back-up-restore-or-migrate-data-volumes).
 
 > [!IMPORTANT]
 > The server backup never contains agent private keys or the agent release signing key. Back up the signing key folder and its passphrase separately (see [RELEASE.md](RELEASE.md)), and back up Windows agent state with a Windows backup process (see [Windows agent state](#windows-agent-state)).
 
 ## Production installs
 
-For a server installed with `deploy/install.sh` ([INSTALL.md](INSTALL.md)):
+A server installed with `deploy/install.sh` ([INSTALL.md](INSTALL.md)) backs itself up. The updater container copies the database and the `secrets` volume into the `openrmm_backups` volume:
 
-- **Updates from the dashboard** take a verified backup of the `data` and `secrets` volumes before every update and roll back automatically on failure. The three newest backups are kept in the `openrmm_backups` volume. See [SERVER-UPDATES.md](SERVER-UPDATES.md).
-- **Regular backups** are your responsibility: stop the server (`cd /opt/openrmm && sudo docker compose stop`), copy the `openrmm_data`, `openrmm_secrets` and `openrmm_evidence` volumes together with the installation folder to protected storage, then start it again (`sudo docker compose start`).
+| Backup | When | Kept |
+| --- | --- | --- |
+| Nightly | Every night at the hour set in **Administration → Backups** (03:00 UTC by default). After downtime it runs as soon as the updater is back. | 7 |
+| On request | **Back up now** in the dashboard, or `install.sh backup` | 5 |
+| Before an update | Every update from the dashboard ([SERVER-UPDATES.md](SERVER-UPDATES.md)) | 3 |
+| Before a restore | Every `install.sh restore` (the replaced state) | 3 |
 
-> [!WARNING]
-> The recovery tool described below supports only the local development layout. Copying volumes back by hand restores the old state as it was: it does not apply the revocation list or the safety steps in [What a restore changes](#what-a-restore-changes). Before accepting traffic on a manually restored server, review revoked devices, administrator and technician credentials, and queued work yourself.
+Nightly and on-request backups run **while the server keeps running**: the database is copied with SQLite's online backup (`VACUUM INTO`), which gives a consistent snapshot without stopping anything. Every other file is copied and compared with its original by SHA-256, and the database copy must pass SQLite's integrity check before the backup counts. A backup that fails is discarded, shown in the dashboard and tried again an hour later.
+
+The **Backups** page lists the backups on the server, the result of the last one and the next scheduled run. Restores stop the server, so they are done on the server machine.
+
+### Take a backup and copy it off the machine
+
+```bash
+sudo bash install.sh backup
+```
+
+This takes a backup now and saves it as one file, `/opt/openrmm/backups/<name>.tar.gz` (root-only), with its checksum list inside. Copy that folder to separate, protected storage regularly.
+
+> [!IMPORTANT]
+> A backup holds the server's keys (the administrator encryption key and the device and server certificate authorities). Anyone with the file can impersonate the server to your agents. Protect and encrypt copies like the server itself.
+
+Case evidence is not part of these backups; it can be much larger. Add `--evidence` to also export the evidence stored since the last export (`/opt/openrmm/backups/evidence/evidence-<time>.tar`). Evidence files never change after collection, so each export holds only new files, and every file is checked against its SHA-256 name when it is added back.
+
+`sudo bash install.sh backups` lists the backups in the volume and the exported files.
+
+### Restore
+
+```bash
+sudo bash install.sh restore nightly-20270115-030000
+sudo bash install.sh restore /path/to/manual-20270115-120000.tar.gz
+```
+
+The restore:
+
+1. imports the file into the backups volume, if a file was given (a backup of the same name already there is never replaced; restore it by name);
+2. stops the server and the updater;
+3. verifies every file of the backup against its checksum;
+4. backs up the current state as `pre-restore-<time>`;
+5. reads the devices revoked in the current database, so they stay revoked;
+6. replaces the `data` and `secrets` contents with the backup and applies the changes in [What a restore changes](#what-a-restore-changes);
+7. starts the server and waits until it is ready.
+
+If the restored database cannot be prepared (for example a backup from a newer version than the installed one), the previous state is put back and the server starts as it was. To undo a restore, restore its `pre-restore-` backup.
+
+| Option | Use |
+| --- | --- |
+| `--revocations FILE` | The current server is lost (new machine). Give a reviewed revocation list for the backup's installation; see [Prepare the revocation list](#prepare-the-revocation-list). Without it, devices revoked after the backup was taken can connect again. |
+| `--skip-safety-backup` | The current database is damaged and cannot be backed up or read. Combine with `--revocations` where possible. |
+
+On a new machine, install the same or a newer version first, copy the backup file over, then restore it. The agents keep their saved server address, so give the new machine the same DNS name or IP address.
+
+To add exported evidence back: `sudo bash install.sh restore-evidence` (all exports under `/opt/openrmm/backups/evidence`, in order) or `sudo bash install.sh restore-evidence FILE`. Files already present are skipped.
+
+> [!NOTE]
+> Without the updater (for example with rootless Docker) there are no nightly backups. Stop the server (`cd /opt/openrmm && sudo docker compose stop`), copy the `openrmm_data`, `openrmm_secrets` and `openrmm_evidence` volumes together with the installation folder to protected storage, then start it again. Copying volumes back by hand does not apply the revocation carry-over or the changes in [What a restore changes](#what-a-restore-changes); review revoked devices, credentials and queued work yourself before accepting traffic.
 
 ## Local deployment: the recovery tool
 
-`scripts/recovery.py` backs up and restores the local Docker deployment started with `scripts/local.ps1` (named `data`, `tls`, `secrets` and optional `evidence` volumes, ports bound to `127.0.0.1`). It:
+For development, `scripts/recovery.py` backs up and restores the local Docker deployment started with `scripts/local.ps1` (named `data`, `tls`, `secrets` and optional `evidence` volumes, ports bound to `127.0.0.1`). It:
 
 - uses only Python's standard library and the Docker CLI, and runs inside WSL as root;
 - never reads the private `.env` file, never prints keys, and never overwrites or deletes an existing deployment or backup;
@@ -169,6 +222,7 @@ The restore makes sure that nothing from the older snapshot is replayed against 
 | Agent updates | Queued jobs are cancelled and dispatched jobs become Unknown. Update reports are invalidated until devices report again. A restore cannot reset a device's replay protection. |
 | Case evidence | Unfinished collections end as failed (see [Case evidence](#case-evidence)). |
 | Audit | A `restore_reconciled` entry is added, and the audit log is trimmed to the newest 1,000 entries. |
+| Isolation | Isolation or release steps that had not finished end as failed. Check the actual state of isolated devices. |
 
 Before accepting traffic, verify the actual state of endpoints and submit any new work explicitly.
 

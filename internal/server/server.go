@@ -287,6 +287,9 @@ func Run(ctx context.Context, c config.Server, logger *slog.Logger) error {
 	}
 	// Daily release check and updates through the sidecar.
 	updates := &serverUpdates{dir: c.UpdaterDir, current: serverupdate.Running(c.ReleaseKeys), checker: serverupdate.Checker{Client: &http.Client{Timeout: 30 * time.Second}}}
+	if e := updates.writeBackupSchedule(ctx, store); e != nil {
+		logger.Warn("the backup schedule could not be handed to the updater; it keeps its previous schedule")
+	}
 	updatesCtx, stopUpdates := context.WithCancel(ctx)
 	updatesDone := make(chan struct{})
 	go func() { defer close(updatesDone); runServerUpdates(updatesCtx, store, updates, logger) }()

@@ -125,7 +125,8 @@ On the first start, the dashboard and agent addresses are stored as the installe
 | Database, Let's Encrypt account and certificate | volume `openrmm_data` |
 | Administrator encryption key, device CA, server CA | volume `openrmm_secrets` |
 | Case evidence | volume `openrmm_evidence` |
-| Update backups and the updater's journal | volume `openrmm_backups` (updater only) |
+| Backups (nightly, on request, before updates and restores) and the updater's journal | volume `openrmm_backups` (updater only) |
+| Backups exported with `install.sh backup` | `/opt/openrmm/backups` (mode 0700) |
 | Update requests and status | volume `openrmm_updater` (server and updater) |
 
 The server container runs:
@@ -140,7 +141,14 @@ The updater container is described in [SERVER-UPDATES.md](SERVER-UPDATES.md#secu
 
 ## Backup and removal
 
-Back up the `data`, `secrets` and `evidence` volumes together while the server is stopped. The `secrets` volume holds the keys that agents and administrator sign-in depend on; a database without its matching secrets cannot be used. See [RECOVERY.md](RECOVERY.md).
+The updater backs up the database and the `secrets` volume every night without stopping the server (**Administration → Backups**). To take a backup and save it as a file you can copy elsewhere, and to restore one:
+
+```bash
+sudo bash install.sh backup [--evidence]
+sudo bash install.sh restore NAME|FILE
+```
+
+The `secrets` volume holds the keys that agents and administrator sign-in depend on; a database without its matching secrets cannot be used. See [RECOVERY.md](RECOVERY.md#production-installs).
 
 To stop the server and keep all volumes:
 

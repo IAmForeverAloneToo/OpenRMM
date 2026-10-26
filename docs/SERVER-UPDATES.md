@@ -75,7 +75,7 @@ The page shows each step as it happens: **Verifying**, **Downloading**, **Backin
 | Health wait for the new version | 5 minutes |
 | Time limit per Docker call | 2 minutes |
 | Time limit for the image download | 30 minutes |
-| Backups kept | The three newest complete backups |
+| Backups kept | The three newest update backups (nightly and other backups are kept separately; see [RECOVERY.md](RECOVERY.md#production-installs)) |
 
 The updater records each step in a journal in the `backups` volume, which the server cannot reach. A damaged journal stops updates instead of being ignored. If the updater is interrupted, for example by a host reboot, it resolves the update when it starts again: if the new version was already confirmed healthy it keeps it, otherwise it rolls back. It acts only on containers of its own Compose project and service.
 

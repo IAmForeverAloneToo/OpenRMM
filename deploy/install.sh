@@ -14,8 +14,12 @@
 #
 # An updater sidecar with access to the Docker socket installs
 # signed server releases from the dashboard, with a verified backup and an
-# automatic rollback. A later run without --image keeps the version the
-# dashboard installed.
+# automatic rollback, and takes a verified backup every night. A later run
+# without --image keeps the version the dashboard installed.
+#
+# Backups and restores:
+#   sudo bash install.sh backup [--evidence]
+#   sudo bash install.sh restore NAME|FILE
 set -euo pipefail
 umask 077
 
@@ -24,7 +28,14 @@ say() { printf '%s\n' "$*"; }
 
 usage() {
 	cat <<'EOF'
-Usage: install.sh [options]
+Usage: install.sh [options]              install, repair or reconfigure
+       install.sh backup [--evidence]    take a backup now and save it under DIR/backups
+       install.sh backups                list the backups
+       install.sh restore NAME|FILE [--revocations FILE] [--skip-safety-backup]
+                                         restore a backup (stops the server for the restore)
+       install.sh restore-evidence [FILE...]
+                                         add exported case evidence back (default: all under DIR/backups/evidence)
+Install options:
   --image REF            Server image with an exact version (IMAGE:VERSION or IMAGE@sha256:...);
                          default: the latest published release
   --domain NAME          Public DNS name; HTTPS certificate from Let's Encrypt (needs port 443 reachable)
@@ -38,6 +49,11 @@ Usage: install.sh [options]
   --release-key HEX      Extra public key trusted for server releases (your own builds)
   -h, --help             Show this help
 Options not given on a later run keep their previous values.
+Backup and restore options:
+  --evidence             Also export case evidence added since the last export (can be large)
+  --revocations FILE     Reviewed revocation list, when the current server is lost (see the recovery guide)
+  --skip-safety-backup   Restore without first backing up the current state (for a damaged database)
+--dir and --project select the installation as above.
 EOF
 }
 
@@ -47,19 +63,29 @@ release_image=ghcr.io/iamforeveralonetoo/openrmm-server
 
 dir=/opt/openrmm
 project=openrmm
+action=install
+case "${1-}" in
+backup | backups | restore | restore-evidence) action=$1; shift ;;
+esac
 declare -A arg=()
+evidence='' revocations='' skip_safety='' targets=()
 while [ $# -gt 0 ]; do
 	case "$1" in
 	-h | --help) usage; exit 0 ;;
 	--dir) [ $# -ge 2 ] || die "--dir needs a value"; dir=$2; shift 2 ;;
 	--project) [ $# -ge 2 ] || die "--project needs a value"; project=$2; shift 2 ;;
 	--image | --domain | --email | --address | --dashboard-port | --agent-port | --acme-directory | --release-key)
+		[ "$action" = install ] || die "$1 is an install option (see --help)"
 		[ $# -ge 2 ] || die "$1 needs a value"
 		key=${1#--}
 		arg[${key//-/_}]=$2
 		shift 2
 		;;
-	*) die "unknown option $1 (see --help)" ;;
+	--evidence) [ "$action" = backup ] || die "--evidence goes with backup"; evidence=1; shift ;;
+	--revocations) [ "$action" = restore ] && [ $# -ge 2 ] || die "--revocations goes with restore and needs a file"; revocations=$2; shift 2 ;;
+	--skip-safety-backup) [ "$action" = restore ] || die "--skip-safety-backup goes with restore"; skip_safety=1; shift ;;
+	-*) die "unknown option $1 (see --help)" ;;
+	*) [ "$action" = restore ] || [ "$action" = restore-evidence ] || die "unexpected argument $1 (see --help)"; targets+=("$1"); shift ;;
 	esac
 done
 
@@ -109,6 +135,27 @@ server_container() {
 		done | head -n 1
 }
 
+# wait_ready waits until the server reports ready (a first Let's Encrypt
+# certificate can take a minute) and shows its log if it does not.
+wait_ready() {
+	local status=starting restarts
+	for _ in $(seq 1 60); do
+		container=$(server_container || true)
+		status=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container" 2>/dev/null || echo starting)
+		[ "$status" = healthy ] && return 0
+		if compose exec -T server /openrmm-server -health >/dev/null 2>&1; then
+			return 0
+		fi
+		# A server that exits at start (for example on a bad setting) restarts
+		# over and over; stop waiting once it has.
+		restarts=$(docker inspect -f '{{.RestartCount}}' "$container" 2>/dev/null || echo 0)
+		[ "$restarts" -lt 2 ] || break
+		sleep 5
+	done
+	compose logs --tail 30 server >&2 || true
+	return 1
+}
+
 # Keep the version the dashboard installed unless --image is given: the
 # server container's image, or, after "docker compose down", the image the
 # updater recorded as installed.
@@ -123,6 +170,115 @@ if [ -z "${arg[image]-}" ]; then
 		[ -n "$current" ] || current=$installed
 	fi
 	[ -z "$current" ] || image=$current
+fi
+
+# Backups and restores run the updater's backup tool in a one-off container
+# with the installation's volumes and no network; it runs as the server's
+# user, so restored files keep the right owner.
+if [ "$action" != install ]; then
+	[ -f "$conf" ] && [ -n "$image" ] || die "no OpenRMM installation found in $dir (see --dir and --project)"
+	backups=$dir/backups
+	tool() { # tool [docker run options --] COMMAND...: run the backup tool
+		local extra=()
+		while [ $# -gt 0 ] && [ "$1" != -- ]; do extra+=("$1"); shift; done
+		[ "${1-}" != -- ] || shift
+		docker run --rm -i --network none --read-only --cap-drop ALL --security-opt no-new-privileges:true -e SQLITE_TMPDIR=/backups \
+			-v "${project}_data:/data" -v "${project}_secrets:/secrets" -v "${project}_backups:/backups" "${extra[@]}" \
+			--entrypoint /openrmm-updater "$image" "$@"
+	}
+	save() { # save PATH COMMAND...: the command's output to PATH, kept only when complete
+		local path=$1
+		shift
+		if "$@" >"$path.part"; then
+			mv -f "$path.part" "$path"
+		else
+			rm -f "$path.part"
+			return 1
+		fi
+	}
+	start() { # start the server again and wait until it is ready
+		if ! output=$(compose up -d 2>&1); then
+			printf '%s\n' "$output" >&2
+			die "Docker Compose could not start the server"
+		fi
+		wait_ready || die "the server did not become ready after the restore; see the log above"
+	}
+	mkdir -p "$backups"
+	chmod 700 "$backups"
+	case "$action" in
+	backups)
+		say "Backups on this server (in the ${project}_backups volume):"
+		tool -- list
+		say ""
+		say "Exported backups in $backups:"
+		ls -1 "$backups" | grep '\.tar\.gz$' || say "  (none)"
+		;;
+	backup)
+		say "Taking a backup (the server keeps running) ..."
+		name=$(tool -- backup) || die "the backup failed"
+		save "$backups/$name.tar.gz" tool -- export "$name" || die "the backup $name could not be saved to $backups"
+		say "Backup $name saved to $backups/$name.tar.gz"
+		if [ -n "$evidence" ]; then
+			mkdir -p "$backups/evidence"
+			since=$(cat "$backups/evidence/.since" 2>/dev/null || echo 0)
+			[[ $since =~ ^[0-9]+$ ]] || since=0
+			now=$(date +%s)
+			file=$backups/evidence/evidence-$(date -u +%Y%m%d-%H%M%S).tar
+			say "Exporting case evidence added since the last export ..."
+			save "$file" tool -v "${project}_evidence:/evidence:ro" -- export-evidence --since "$since" || die "the evidence export failed"
+			printf '%s\n' "$now" >"$backups/evidence/.since"
+			# An empty tar archive is 1 KiB or less.
+			if [ "$(stat -c %s "$file")" -le 1024 ]; then
+				rm -f "$file"
+			else
+				say "Evidence saved to $file"
+			fi
+		fi
+		say "Copy $backups to separate, protected storage: it holds the server's keys."
+		;;
+	restore)
+		[ ${#targets[@]} -eq 1 ] || die "restore needs one backup name or file (see: install.sh backups)"
+		target=${targets[0]}
+		[ -z "$revocations" ] || [ -f "$revocations" ] || die "the revocation list $revocations was not found"
+		if [ -f "$target" ]; then
+			say "Importing $target ..."
+			name=$(tool -- import <"$target") || die "the backup file could not be imported"
+		else
+			name=$target
+		fi
+		[[ $name =~ ^(update|nightly|manual|pre-restore)-[0-9]{8}-[0-9]{6}(-[0-9]{1,5})?$ ]] || die "$name is not a backup name (see: install.sh backups)"
+		options=()
+		[ -z "$skip_safety" ] || options+=(--skip-safety-backup)
+		[ -z "$revocations" ] || options+=(--revocations-stdin)
+		say "Stopping OpenRMM to restore $name ..."
+		compose stop >/dev/null 2>&1 || die "the server could not be stopped"
+		if tool -- restore "$name" "${options[@]}" <"${revocations:-/dev/null}"; then
+			say "Starting the restored server ..."
+			start
+			say ""
+			say "Restored $name. Sign in again with a fresh authenticator code, review technician accounts"
+			say "(they were disabled) and resume alert e-mail in Alert settings."
+		else
+			say "The restore failed; starting the server again ..."
+			start
+			die "the restore failed (see the message above)"
+		fi
+		;;
+	restore-evidence)
+		files=("${targets[@]}")
+		if [ ${#files[@]} -eq 0 ]; then
+			shopt -s nullglob
+			files=("$backups"/evidence/evidence-*.tar)
+		fi
+		[ ${#files[@]} -gt 0 ] || die "no evidence exports found in $backups/evidence"
+		for file in "${files[@]}"; do
+			[ -f "$file" ] || die "$file was not found"
+			say "Adding evidence from $file ..."
+			tool -v "${project}_evidence:/evidence" -- import-evidence <"$file" || die "$file could not be imported"
+		done
+		;;
+	esac
+	exit 0
 fi
 
 # A first install without --image uses the latest published release, pinned
@@ -271,6 +427,7 @@ EOF
     environment:
       OPENRMM_UPDATER_PROJECT: $project
       OPENRMM_UPDATER_KEYS: "$release_key"
+      SQLITE_TMPDIR: /backups
     group_add: ["$socket_gid"]
     network_mode: none
     volumes:
@@ -307,28 +464,7 @@ if ! output=$(compose up -d --remove-orphans 2>&1); then
 	printf '%s\n' "$output" >&2
 	die "Docker Compose could not start the server"
 fi
-
-# Wait until the server reports ready (a first Let's Encrypt certificate can
-# take a minute).
-status=starting
-for _ in $(seq 1 60); do
-	container=$(server_container || true)
-	status=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container" 2>/dev/null || echo starting)
-	[ "$status" = healthy ] && break
-	if compose exec -T server /openrmm-server -health >/dev/null 2>&1; then
-		status=healthy
-		break
-	fi
-	# A server that exits at start (for example on a bad setting) restarts
-	# over and over; stop waiting once it has.
-	restarts=$(docker inspect -f '{{.RestartCount}}' "$container" 2>/dev/null || echo 0)
-	[ "$restarts" -lt 2 ] || break
-	sleep 5
-done
-if [ "$status" != healthy ]; then
-	compose logs --tail 30 server >&2 || true
-	die "the server did not become ready; see the log above, fix the cause and run this command again"
-fi
+wait_ready || die "the server did not become ready; see the log above, fix the cause and run this command again"
 
 # Record the installed image, so a later run after "docker compose down" keeps
 # it (the updater moves this tag when it installs a release).

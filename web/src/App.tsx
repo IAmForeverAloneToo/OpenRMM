@@ -26,6 +26,7 @@ const MetricsReport = lazy(() => import("./pages/reports/MetricsReport").then((m
 const SoftwareReport = lazy(() => import("./pages/reports/SoftwareReport").then((m) => ({ default: m.SoftwareReport })));
 const OrganizationPage = lazy(() => import("./pages/admin/OrganizationPage").then((m) => ({ default: m.OrganizationPage })));
 const ServerUpdatesPage = lazy(() => import("./pages/admin/ServerUpdatesPage").then((m) => ({ default: m.ServerUpdatesPage })));
+const BackupsPage = lazy(() => import("./pages/admin/BackupsPage").then((m) => ({ default: m.BackupsPage })));
 const TechniciansPage = lazy(() => import("./pages/admin/TechniciansPage").then((m) => ({ default: m.TechniciansPage })));
 const CasesPage = lazy(() => import("./pages/cases/CasesPage").then((m) => ({ default: m.CasesPage })));
 const CasePage = lazy(() => import("./pages/cases/CasePage").then((m) => ({ default: m.CasePage })));
@@ -93,6 +94,7 @@ export function App() {
         <Route path="cases/:id" element={<Suspense fallback={<Spinner label="Loading" />}><CasePage /></Suspense>} />
         <Route path="technicians" element={<Suspense fallback={<Spinner label="Loading" />}><TechniciansPage /></Suspense>} />
         <Route path="server-updates" element={<Suspense fallback={<Spinner label="Loading" />}><ServerUpdatesPage /></Suspense>} />
+        <Route path="backups" element={<Suspense fallback={<Spinner label="Loading" />}><BackupsPage /></Suspense>} />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>

@@ -6,7 +6,7 @@ OpenRMM aims to be a complete, self-hosted RMM that also gives incident responde
 
 | Area | Highlights |
 | --- | --- |
-| Platform | Go server in Docker with a one-command install, automatic HTTPS (Let's Encrypt or the server's own CA), and server updates from the dashboard with a verified backup and rollback |
+| Platform | Go server in Docker with a one-command install, automatic HTTPS (Let's Encrypt or the server's own CA), server updates from the dashboard with a verified backup and rollback, and nightly verified backups with export and restore |
 | Windows agent | A single LocalSystem service, installed from a pre-configured MSI, that updates itself through signed releases and pilot rings |
 | Monitoring | Inventory, hardware and OS details, CPU, memory, disk, uptime, metrics history, sessions, logon history, local accounts, BitLocker and Defender status, alerts and health checks |
 | Management | Scripts, schedules and fleet batches, Windows Update and patch policies, MSI deployment, services, processes, software inventory, terminal, remote desktop, file transfer |

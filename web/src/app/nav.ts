@@ -4,6 +4,7 @@ import {
   Briefcase,
   ChartColumn,
   Crosshair,
+  DatabaseBackup,
   HeartPulse,
   LayoutDashboard,
   Layers,
@@ -67,6 +68,7 @@ export const navigation: NavSection[] = [
       { label: "Technicians", to: "/technicians", icon: Users, state: "ready" },
       { label: "Alert settings", to: "/settings/alerts", icon: Settings, state: "ready" },
       { label: "Server updates", to: "/server-updates", icon: ServerCog, state: "ready" },
+      { label: "Backups", to: "/backups", icon: DatabaseBackup, state: "ready" },
     ],
   },
 ];

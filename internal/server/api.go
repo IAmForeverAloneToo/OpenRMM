@@ -231,6 +231,7 @@ func registerAPI(mux *http.ServeMux, a *api) {
 	registerAdminAPI(mux, a)
 	registerInstallerAPI(mux, a)
 	registerServerUpdateAPI(mux, a)
+	registerServerBackupAPI(mux, a)
 	registerCasesAPI(mux, a)
 	registerHuntsAPI(mux, a)
 	registerIsolationAPI(mux, a)
