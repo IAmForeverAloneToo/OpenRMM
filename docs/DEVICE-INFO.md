@@ -181,7 +181,7 @@ The server keeps one row per device: the newest report's status and receipt time
 
 The device detail `GET /api/v1/devices/{id}` includes `system_info`: `capability`, `status` (`ok`, `failed`, `disabled`, `unsupported` or `not_reported`), `reported_at`, `snapshot_at`, `data` (the full report above, or `null`), `primary_ipv4` and `stale`. There is no separate endpoint.
 
-`GET /api/v1/devices` includes, for each device, `primary_ipv4`, `addresses` (every IPv4 and IPv6 address, adapter by adapter), `macs`, `serial`, `manufacturer` and `model` from the last successful snapshot; they are empty when there is none. In the device detail's `device` object these fields are always empty; use `system_info` there.
+`GET /api/v1/devices` includes, for each device, `primary_ipv4`, `addresses` (every IPv4 and IPv6 address, adapter by adapter), `macs`, `serial`, `manufacturer` and `model` from the last successful snapshot; they are empty when there is none. In the device detail's `device` object, `primary_ipv4`, `serial`, `manufacturer` and `model` are filled from the snapshot, but `addresses` and `macs` are always empty; use `system_info` for the full report.
 
 Storage errors return HTTP 503. GET requests never trigger collection.
 

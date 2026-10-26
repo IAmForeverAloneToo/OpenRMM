@@ -123,7 +123,7 @@ Expiring a job in the history cannot undo changes that already started on a devi
 - Technicians can read update history only for devices in their current scope.
 - The agent listener, which accepts only device certificates, has no administrator routes. A download requires the specific dispatched job, the matching device certificate and an unexpired authorization, and stops working after completion.
 - Browser changes require the session's `X-CSRF-Token` header and strictly bounded JSON or upload fields.
-- Changes to the automatic update settings are audited as `agent_rings_saved`; automatic batches are recorded with the actor `system:rings`.
+- Changes to the automatic update settings are audited as `agent_rings_saved`, and automatic pauses as `agent_rings_paused`; automatic batches and pauses are recorded with the actor `system:rings`.
 
 ## Backups and restore
 

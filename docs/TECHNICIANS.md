@@ -101,7 +101,7 @@ New feature routes are administrator-only until their authorization is explicitl
 
 - Every account edit requires review and confirmation, uses revision checks and is audited in the same transaction. A stale or concurrent edit fails instead of overwriting newer settings.
 - Applying an edit invalidates all of that technician's sessions and cancels their work that has not been dispatched yet.
-- Disabling an account also invalidates pending invitations. Re-enabling keeps confirmed credentials unless **Reset credentials** is selected; a reset requires the account to be enabled.
+- Disabling an account also invalidates pending invitations. Re-enabling keeps confirmed credentials unless you select **New invitation** (confirmed with **Reset and invite**), which requires the account to be enabled.
 - Group membership changes take effect on the next authorization check and immediately cancel the technician's queued work for devices that left their scope. Restoring the grant does not bring cancelled requests back.
 - Delegated event log queries, service actions and process terminations check the technician's permission when they are queued and again just before dispatch. Lost permissions, a disabled account or removed scope cancel undispatched work, with an audit record. Work already dispatched may finish; an authorization change cannot undo an action Windows has already received.
 - Remote desktop authorization is checked again during the session. Disabling or editing the account, signing out, losing scope or losing the permission ends the technician's desktop sessions. An ended session cannot be resumed.
@@ -118,7 +118,7 @@ New feature routes are administrator-only until their authorization is explicitl
 ## Backup, restore and local reset
 
 - Server backups include technician accounts, their configuration and encrypted credentials.
-- A restore made with the recovery tool disables all technicians, clears their invitations and recovery codes and advances the authenticator replay floor ([RECOVERY.md](RECOVERY.md)).
+- Any server restore (`install.sh restore` or the development recovery tool) disables all technicians, clears their invitations and recovery codes and advances the authenticator replay floor ([RECOVERY.md](RECOVERY.md)).
 - A local reset of the primary administrator disables all technicians and invalidates their sessions and invitations ([ADMINISTRATOR.md](ADMINISTRATOR.md#recover-the-account)).
 
 After either, review accounts, scope and group membership before re-enabling accounts or issuing new credentials. This prevents an old backup or a local recovery from silently restoring delegated access.

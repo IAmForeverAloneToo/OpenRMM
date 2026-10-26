@@ -13,7 +13,7 @@ The server keeps one latest successful reading per device, plus the latest repor
 
 ## Using it in the dashboard
 
-- The device **Overview** has a **System disk** meter with the drive letter, the used percentage and the free and total space in binary units (GiB/TiB). Used percentage is `100 × (total − available) / total`.
+- The device **Overview** has a **System disk** meter with the drive letter, the used percentage and the free and total space in 1024-based units, labelled GB and TB. Used percentage is `100 × (total − available) / total`.
 - The **Devices** list has a **System disk** column showing **Low**, **OK** or **Unknown**.
 - The dashboard's **Low disk space** count links to the Devices list filtered to low-disk devices.
 

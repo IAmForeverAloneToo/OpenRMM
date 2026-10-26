@@ -39,7 +39,7 @@ Frontend packages are kept lean and locked. Do not add a package for convenience
 | Path | Contents |
 | --- | --- |
 | `web/src/main.tsx` | Entry point: query client, router, theme, CSP nonce handling |
-| `web/src/App.tsx` | Route table; pages are lazy-loaded |
+| `web/src/App.tsx` | Route table; the core pages load directly, the others are lazy-loaded |
 | `web/src/app/` | Application shell (`AppShell.tsx`), navigation (`nav.ts`) and the Ctrl+K command palette |
 | `web/src/components/` | Shared components: `ui.tsx` (buttons, panels, badges, fields), `status.tsx` (status badges), `Dialog.tsx`, `DataTable.tsx`, `Freshness.tsx`, `TargetPicker.tsx`, `CodeEditor.tsx` |
 | `web/src/lib/` | API client, session, hooks, formatting and parsing helpers, types, theme |
@@ -80,7 +80,7 @@ Node.js with npm is required to build. Run the scripts from the repository root:
 - **Left navigation** (`web/src/app/nav.ts`): Dashboard, Devices, Alerts; then **Manage**, **Investigate**, **Reports** and **Administration** (owner only). Technicians see only sections they can use; **Investigate** needs the response permission.
 - **Top bar:** global search (Ctrl+K) and the theme toggle.
 - **Dashboard (home page):** fleet health, active alerts, running jobs and recent activity.
-- **Device console:** a header with status, OS and group, a tool bar (terminal, remote desktop, files, scripts, processes, event logs, updates, metrics) and tabs.
+- **Device console:** a header with status, OS and group, a tool bar (**Live response**, **Remote desktop**, **Files**, **Run script**, **Install app**), a **More** menu and tabs (including processes, event logs, updates and metrics).
 
 Navigation entries carry a state (`ready`, `rebuilding` or `soon`). Entries that are not `ready` show a quiet marker and tooltip.
 

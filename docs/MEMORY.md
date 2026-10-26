@@ -14,7 +14,7 @@ The binding uses `windows.NewLazySystemDLL` from the pinned `golang.org/x/sys/wi
 
 ## Using it in the dashboard
 
-The **Memory** meter on the device **Overview** shows the used percentage and the used and total amounts in binary units (for example GiB). `GET /api/v1/devices/{id}` returns the same data in its `memory` field; the percentage is `null` before the first successful report.
+The **Memory** meter on the device **Overview** shows the used percentage and the used and total amounts in 1024-based units, labelled KB, MB, GB and TB. `GET /api/v1/devices/{id}` returns the same data in its `memory` field; the percentage is `null` before the first successful report.
 
 A reading is current only when the device is online, the latest report succeeded, and the server received the successful reading less than two minutes ago. Older, future-dated, failed, disabled, unsupported and offline or revoked readings are shown as stale. A failed report keeps the last successful reading with its own receipt time.
 

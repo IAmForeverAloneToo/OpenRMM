@@ -47,10 +47,10 @@ OpenRMM includes forensic live response for responders: cases with a tamper-evid
 
 ### Cases
 
-- A **case** has an ID, a title (1–200 characters, no line breaks), a status (open or closed), who opened it and when.
+- A **case** has an ID, a title (1–200 bytes of UTF-8, no line breaks or leading or trailing spaces), a status (open or closed), who opened it and when.
 - Cases are closed, never deleted; a database trigger refuses deletion. A closed case accepts no entries until it is reopened, except evidence downloads (see [Downloads](#downloads)).
 - Case-level actions recorded in the log: `case_opened`, `note`, `case_closed` (with an optional reason) and `case_reopened`.
-- A case cannot be closed while any of its collections, actions or recorded terminal sessions is unfinished (queued, dispatched, uploading or verifying, or a transcript still recording or waiting to be stored). Cancel them or let them finish first. This guarantees that every job's end is recorded in its open case.
+- A case cannot be closed while any of its collections, actions or recorded terminal sessions is unfinished (queued, dispatched, uploading or verifying, or a transcript still recording or waiting to be stored). Searches still waiting for a device are cancelled automatically when the case is closed; cancel the rest or let them finish first. This guarantees that every job's end is recorded in its open case.
 
 ### Custody log format
 
@@ -200,7 +200,7 @@ Evidence is stored outside the database in its own directory:
 
 - Uploads in progress are `incoming/<job>.part`; stored files are `sha256/<first two hex digits>/<sha256>`, read-only (0400) in owner-only directories (0700). Case-less live response results are kept in `scratch/<job>`.
 - **Content-addressed:** identical content is stored once, whichever case or device it came from.
-- **Never pruned automatically,** and OpenRMM has no function to delete case evidence. Backups and restores include the evidence volume; see [RECOVERY.md](RECOVERY.md).
+- **Never pruned automatically,** and OpenRMM has no function to delete case evidence. Server backups do not include evidence: export it with `install.sh backup --evidence` and add it back with `install.sh restore-evidence`; see [RECOVERY.md](RECOVERY.md).
 
 | Limit | Value |
 | --- | --- |
@@ -430,7 +430,7 @@ Accepted risk: an attacker with control of the server, or its administrator, can
 
 - The custody log makes **later** tampering detectable: entries are hash-chained per case, database triggers refuse changes and deletion, and the head hash can be recorded outside OpenRMM at any time. An export can be verified offline with `openrmm-custody verify`.
 - A full-server attacker can still rebuild a consistent chain; only head hashes recorded elsewhere, or earlier exports, reveal that.
-- Backups contain the database and evidence; protect them like the server.
+- Backups and evidence exports contain the database, keys and evidence; protect them like the server.
 
 ## Related
 

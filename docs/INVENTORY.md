@@ -21,7 +21,7 @@ These share the Inventory switch: turning Inventory off (by policy, local lock o
 
 ## States and freshness
 
-| Display | Meaning |
+| State | Meaning |
 | --- | --- |
 | Not reported | No report received; the agent has not advertised this capability. Older agents can continue sending heartbeats. |
 | Collected | The last report succeeded. A current snapshot also requires the device to be online and a server receipt less than 30 minutes old. |

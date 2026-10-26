@@ -79,6 +79,7 @@ Select **Acknowledge** in the details panel. Acknowledgment records who acknowle
 | `settings_changed` | The global rule was changed. Recovery is not claimed. |
 | `policy_changed` | The device's effective rule changed through a monitoring policy. Recovery is not claimed. |
 | `not_monitored` | The device was revoked or left the monitored fleet. Recovery is not claimed. |
+| `rollout_resumed` | An **Agent update failed** alert closed because automatic agent updates were resumed. |
 
 ## Configuring rules
 

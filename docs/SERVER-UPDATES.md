@@ -19,7 +19,7 @@ The primary administrator can update the OpenRMM server from the dashboard (**Ad
 The install command ([INSTALL.md](INSTALL.md)) adds a small `updater` container when the Docker socket is available. The server and the updater never talk over the network; they exchange files in the shared `updater` volume:
 
 1. The server checks GitHub for a newer signed release and shows it on the page.
-2. The administrator selects **Update now** and confirms.
+2. The administrator selects **Update to <version>** and confirms with **Update now**.
 3. The server writes an update request; the updater verifies the release again, backs up, replaces the server container and reports the outcome.
 
 The **Server updates** page shows the running version, whether the updater is installed, the release check, an available update with its release notes, and the history of updates with their backups.

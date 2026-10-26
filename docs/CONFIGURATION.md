@@ -16,7 +16,7 @@ Every option of the OpenRMM server and agent, with its environment variable and 
 
 - Command-line flags override environment variables, which override the defaults.
 - Relative paths are resolved against the process's working directory.
-- Every program accepts `-help`.
+- The server and the agent accept `-help`; `openrmm-updater help` lists the updater's backup commands.
 
 ## Server
 

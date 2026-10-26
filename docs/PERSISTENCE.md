@@ -27,7 +27,7 @@ By default the viewer hides plain Microsoft-signed entries. An entry is hidden o
 
 - the program's signature is valid and the signer is one of Microsoft's own signer names (exact match);
 - the program is not a script host or system tool that runs arbitrary commands (cmd, PowerShell, mshta, wscript/cscript, rundll32, regsvr32, msiexec, certutil and similar);
-- the entry is not a shortcut or WMI consumer;
+- the entry is not in a Startup folder (files or shortcuts) and is not a WMI consumer;
 - outside service-like entries (services, drivers, service DLLs, LSA, print monitors, boot execute, AppInit/AppCert), the entry passes no arguments.
 
 Everything else stays visible.
@@ -36,7 +36,7 @@ Everything else stays visible.
 
 | Type | Where |
 | --- | --- |
-| Run key | `HKLM` and every loaded user hive (`HKU\<SID>`; users who are not signed in are not covered): `…\CurrentVersion\Run`, `RunOnce`, `Policies\Explorer\Run`; machine `RunOnceEx` (every value of its subkeys); also the 32-bit (`WOW6432Node`) machine keys |
+| Run key | `HKLM` and every loaded user hive (`HKU\<SID>`; users who are not signed in are not covered): `…\CurrentVersion\Run`, `RunOnce`, `Policies\Explorer\Run`; machine `RunOnceEx` (every value of its subkeys); also the 32-bit (`WOW6432Node`) machine `Run` and `RunOnce` keys |
 | Winlogon | `Shell`, `Userinit`, `Taskman`, `AppSetup` (machine), `Shell` (users); comma-separated programs are separate entries |
 | Windows Load/Run | Users' `Windows NT\CurrentVersion\Windows` `Load` and `Run` |
 | Logon script | Users' `Environment\UserInitMprLogonScript` |
@@ -85,7 +85,7 @@ Everything else stays visible.
 | Limit | Value |
 | --- | --- |
 | Entries per report | 20,000 |
-| Programs hashed and checked | 5,000 per report (each program once) |
+| Signature checks | 5,000 distinct programs per report (each once); every program is hashed |
 | Program file size for hashing and signature checks | 512 MB |
 | WMI query | Noted in the report if it fails or takes over a minute |
 | Run time | 20 minutes (the response action limit); a report that reaches it keeps its entries and notes that later programs were not hashed or checked |

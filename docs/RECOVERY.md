@@ -47,7 +47,7 @@ A server installed with `deploy/install.sh` ([INSTALL.md](INSTALL.md)) backs its
 | Before an update | Every update from the dashboard ([SERVER-UPDATES.md](SERVER-UPDATES.md)) | 3 |
 | Before a restore | Every `install.sh restore` (the replaced state) | 3 |
 
-Nightly and on-request backups run **while the server keeps running**: the database is copied with SQLite's online backup (`VACUUM INTO`), which gives a consistent snapshot without stopping anything. Every other file is copied and compared with its original by SHA-256, and the database copy must pass SQLite's integrity check before the backup counts. A backup that fails is discarded, shown in the dashboard and tried again an hour later.
+Nightly and on-request backups run **while the server keeps running**: the database is copied with SQLite's online backup (`VACUUM INTO`), which gives a consistent snapshot without stopping anything. Every other file is copied and compared with its original by SHA-256, and the database copy must pass SQLite's integrity check before the backup counts. A backup that fails is discarded and shown in the dashboard; a failed nightly backup is tried again an hour later.
 
 The **Backups** page lists the backups on the server, the result of the last one and the next scheduled run. Restores stop the server, so they are done on the server machine.
 
@@ -221,7 +221,7 @@ The restore makes sure that nothing from the older snapshot is replayed against 
 | Alerts | Pending samples and email deliveries are deleted, conditions become Unknown and alert email is paused. Existing incidents and acknowledgements remain. Resume email with **Resume email** in **Alert settings** after review. |
 | Agent updates | Queued jobs are cancelled and dispatched jobs become Unknown. Update reports are invalidated until devices report again. A restore cannot reset a device's replay protection. |
 | Case evidence | Unfinished collections end as failed (see [Case evidence](#case-evidence)). |
-| Audit | A `restore_reconciled` entry is added, and the audit log is trimmed to the newest 1,000 entries. |
+| Audit | A `restore_reconciled` entry is added. As always, the audit log keeps the newest 1,000 entries, plus live-response entries for a year. |
 | Isolation | Isolation or release steps that had not finished end as failed. Check the actual state of isolated devices. |
 
 Before accepting traffic, verify the actual state of endpoints and submit any new work explicitly.
@@ -232,6 +232,8 @@ Before accepting traffic, verify the actual state of endpoints and submit any ne
 ## Case evidence
 
 The server keeps collected case evidence in its own directory (`/evidence`, the `evidence` volume). See [RESPONSE.md](RESPONSE.md).
+
+On a server installed with `install.sh`, evidence is exported separately with `install.sh backup --evidence` and added back with `install.sh restore-evidence` ([Production installs](#production-installs)). The rest of this section describes the development recovery tool, which copies evidence with the other volumes.
 
 - **Backup.** When the server has an `/evidence` mount, it is copied with the other volumes while the server is stopped, so evidence records and stored files match. The checksum manifest covers every evidence file. The mount's `OPENRMM_SERVER_EVIDENCE_DIR` must be `/evidence`. A deployment without an evidence volume is backed up without evidence.
 - **Restore.** A backup with evidence is restored with a new `evidence` volume. Stored files get owner-only read/write permissions (0600) instead of the server's read-only mode (0400).

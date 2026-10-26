@@ -19,7 +19,7 @@ The agent reports each Windows device's uptime and an estimated last boot time e
 
 ## Using it in the dashboard
 
-The **Uptime** meter on the device **Overview** shows the uptime in days, hours, minutes and seconds **as collected**, and the estimated boot time in UTC from the device clock. The dashboard does not extrapolate uptime between readings or while the device is offline. `GET /api/v1/devices/{id}` returns the same data in its `uptime` field.
+The **Uptime** meter on the device **Overview** shows the uptime **as collected**, in days and hours (hours and minutes under a day), and the estimated boot time in UTC from the device clock. The dashboard does not extrapolate uptime between readings or while the device is offline. `GET /api/v1/devices/{id}` returns the same data in its `uptime` field.
 
 A reading is current only while the device is online and the server received the successful reading less than two minutes ago. Failed, disabled, unsupported, offline or revoked, future-dated and older readings are stale; the last successful reading stays visible with its own receipt time.
 

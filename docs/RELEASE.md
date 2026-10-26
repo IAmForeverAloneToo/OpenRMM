@@ -188,7 +188,7 @@ The signer uses Go's standard-library Ed25519 and AES-GCM and `golang.org/x/cryp
 
 ## Build the server image
 
-The image embeds the web dashboard and the bundled agent release from the source tree, so run `scripts/release.ps1` (or at least `scripts/build.ps1`) first. Then build the image with Docker:
+The image builds the web dashboard itself; only the bundled agent release comes from the source tree, so run `scripts/release.ps1` first. Then build the image with Docker:
 
 ```powershell
 wsl -d Ubuntu --user root --cd "$PWD" --exec docker build -t registry.example.com/openrmm-server:0.2.0 .

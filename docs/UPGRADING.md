@@ -23,7 +23,7 @@ This page explains how to move an OpenRMM server and its agents to a newer relea
 
 | Way | Use it when |
 | --- | --- |
-| **Administration → Server updates → Update now** | The usual way. The updater verifies the signed release, backs up, starts the new version and rolls back automatically if it does not become healthy. See [SERVER-UPDATES.md](SERVER-UPDATES.md). |
+| **Administration → Server updates → Update to &lt;version&gt;** | The usual way. The updater verifies the signed release, backs up, starts the new version and rolls back automatically if it does not become healthy. See [SERVER-UPDATES.md](SERVER-UPDATES.md). |
 | `sudo bash install.sh --image IMAGE:VERSION` | The installation has no updater (for example rootless Docker), or you want a specific version such as a pre-release on a test machine. Take a backup first; the script does not roll back. |
 
 Agents follow on their own: each server release bundles a signed agent release, which reaches devices through the automatic update rings (pilot groups first) when they are on. See [AGENT-UPDATES.md](AGENT-UPDATES.md).

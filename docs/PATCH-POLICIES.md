@@ -6,7 +6,7 @@ Patch policies scan Windows devices for updates, install approved KBs and option
 
 Open **Manage → Patching** (`/patching`) and select **New policy**. The wizard walks through devices, window, updates, restart and a final review.
 
-1. **Devices.** Choose a name and ring label, then explicit device IDs and/or existing groups. Groups expand to a fixed, reviewed snapshot of at most 25 active Windows devices; future group members are not added. A device can belong to only one active patch policy.
+1. **Devices.** Choose a name and ring label, then explicit device IDs and/or existing groups. Groups expand to a fixed, reviewed snapshot of at most 25 devices; every member must be an active Windows device, or the review is refused. Future group members are not added. A device can belong to only one active patch policy.
 2. **Window.** Choose a weekday and a **UTC** start time, with a window of 30–240 minutes. There is no local time or daylight-saving conversion and no catch-up of missed windows. Saving or resuming selects the next window at least one minute in the future.
 3. **Updates.** Choose **Scan only**, or **Install approved updates** with up to 64 numeric KB identifiers.
 4. **Restart.** Restarts are manual by default. You can opt in to a non-forced restart request with a 60-second warning, sent after a deferral of 1–168 hours from the first observed pending restart and only inside a permitted window.
@@ -46,6 +46,9 @@ The window is checked by the policy, by the agent and again by the native worker
 | `pending_restart`, `reboot_deferred` | A restart is known to be required. |
 | `restart_requested` | Windows accepted a restart request. A reboot has not been observed. |
 | `verification_failed`, `unknown` | A mutation failed or was interrupted, verification was incomplete, or the outcome is ambiguous. |
+| `skipped` | The run did not start: the start was missed, or the device was offline or busy. |
+| `blocked` | The run could not proceed, for example because installing or restarting is unavailable on the device. |
+| `paused` | The policy was paused, edited or archived while the run was unfinished. |
 
 The **Recent runs** panel shows the latest 100 runs.
 

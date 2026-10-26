@@ -21,7 +21,7 @@ Open **Administration → Groups & policies** (`/organization`). Groups and moni
 
 - A **group** is a manual, flat set of devices. A device belongs to at most one group.
 - **Tags** are free labels for filtering. They never assign policies.
-- A **monitoring policy** is a complete bundle of alert rules and agent feature switches. It can be assigned to a group or directly to a device.
+- A **monitoring policy** is a complete bundle of alert rules, agent feature switches and the addresses reachable while isolated ([ISOLATION.md](ISOLATION.md)). It can be assigned to a group or directly to a device.
 
 All changes use the primary administrator's existing sign-in and MFA session, and every change is reviewed before it is applied.
 

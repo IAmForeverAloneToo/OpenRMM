@@ -66,6 +66,7 @@ dist/windows-amd64/openrmm-agent.exe
 dist/windows-amd64/openrmm-desktop.exe
 dist/windows-amd64/openrmm-release.exe
 dist/windows-amd64/openrmm-devcert.exe
+dist/windows-amd64/openrmm-custody.exe
 dist/linux-amd64/openrmm-server
 ```
 
@@ -180,7 +181,7 @@ npm test
 | TLS failure | The CA belongs to this server, the address matches the certificate, and it has not expired. Never disable verification. |
 | Port in use | Choose another loopback port with `-listen` and the matching agent `-server` URL. |
 | Container fails after `init` | `local.ps1 -Action logs`; confirm certificate paths and that the data volume is accessible. Do not delete volumes to troubleshoot. |
-| "Newer or modified database schema" | Use the matching build or a compatible backup. Migrations are forward-only. |
+| "database schema is newer than this server; use a compatible build or restore a backup" or "database migration history does not match this build" | Use the matching build or a compatible backup. Migrations are forward-only. |
 
 ## Related
 

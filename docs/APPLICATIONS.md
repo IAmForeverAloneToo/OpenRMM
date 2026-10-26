@@ -19,7 +19,7 @@ Open **Manage → App deployment**, stay on **Catalog** and select **Add applica
 
 | Field | Requirement |
 | --- | --- |
-| Name and description | Name up to 100 characters; description up to 2,000 bytes |
+| Name and description | Name up to 100 bytes; description up to 2,000 bytes |
 | Installer URL | Exact HTTPS URL of an `.msi` file, up to 2,048 characters. No credentials, query string or fragment. |
 | SHA-256 | The installer's hash, verified independently by you |
 | ProductCode | The MSI ProductCode |

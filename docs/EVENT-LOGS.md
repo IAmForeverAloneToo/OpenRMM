@@ -36,7 +36,7 @@ Filter rules:
 | Filter | Rule |
 | --- | --- |
 | Time range | At most 31 days per query. The API accepts any historical UTC window (Unix seconds). |
-| Level | 0 Log always, 1 Critical, 2 Error, 3 Warning, 4 Information, 5 Verbose; **All** leaves it unrestricted. Results also show provider-defined levels up to 255. |
+| Level | 0 Log always, 1 Critical, 2 Error, 3 Warning, 4 Information, 5 Verbose; **Any level** leaves it unrestricted; level 0 can be requested only through the API. Results also show provider-defined levels up to 255. |
 | Event ID | 0–65,535 |
 | Provider | Exact match, at most 256 UTF-8 bytes, no control characters or quotes |
 | Page size | 25, 100 or 250 events |

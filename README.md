@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/IAmForeverAloneToo/OpenRMM/actions/workflows/ci.yml/badge.svg)](https://github.com/IAmForeverAloneToo/OpenRMM/actions/workflows/ci.yml)
 [![License: AGPL-3.0-only](https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg)](LICENSE)
-[![Go](https://img.shields.io/badge/Go-1.27-00ADD8.svg?logo=go&logoColor=white)](go.mod)
+[![Go](https://img.shields.io/badge/Go-1.27-00ADD8.svg?logo=go&logoColor=white)](docs/DEVELOPMENT.md)
 [![Platform](https://img.shields.io/badge/agent-Windows%20x64-0078D6.svg?logo=windows&logoColor=white)](docs/WINDOWS-SERVICE.md)
 [![Server](https://img.shields.io/badge/server-Linux%20%2B%20Docker-2496ED.svg?logo=docker&logoColor=white)](docs/INSTALL.md)
 [![Status](https://img.shields.io/badge/status-pre--release-orange.svg)](ROADMAP.md)
@@ -101,7 +101,7 @@ Start at the **[documentation index](docs/README.md)**. Frequently used pages:
 ## Project status
 
 OpenRMM is under active development towards its first public release. The server and agent described above are working. The roadmap tracks what is still open, notably:
-- the release pipeline that publishes signed images and agent packages;
+- the first tagged release, after testing on dedicated machines;
 - enforcing network isolation, which currently runs as a dry run;
 - agents for platforms other than Windows.
 

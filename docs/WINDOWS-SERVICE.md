@@ -141,7 +141,7 @@ Locks are DWORD values named after the feature under `HKLM\SOFTWARE\Policies\Ope
 | Local accounts | `local_accounts` | `-LocalAccountsMode` | Local user accounts and members of Administrators and Remote Desktop Users, at startup and every 15 minutes. See [local accounts](LOCAL-ACCOUNTS.md). |
 | Services | `services` | `-ServicesMode` | Snapshots and start/stop/restart of any service except `OpenRMMAgent`. See [service management](SERVICE-MANAGEMENT.md). |
 | Processes | `processes` | `-ProcessesMode` | Snapshots and termination, except OpenRMM's own and critical processes. See [processes](PROCESSES.md). |
-| Event logs | `event_logs` | `-EventLogsMode` | System/Application access probe every minute; contents only on request. See [event logs](EVENT-LOGS.md). |
+| Event logs | `event_logs` | `-EventLogsMode` | Access probe of System, Application and 14 key channels every minute; contents only on request. See [event logs](EVENT-LOGS.md). |
 | Windows Update | `windows_updates` | `-WindowsUpdatesMode` | Scan, install and restart. Jobs already accepted by Windows are not cancelled when turned off. See [Windows Update](WINDOWS-UPDATES.md). |
 | Scripts | `scripts` | `-ScriptsMode` | PowerShell scripts and application deployment as SYSTEM. See [scripts](SCRIPTS.md). |
 | Terminal | `terminal` | `-TerminalMode` | Interactive PowerShell as SYSTEM. See [terminal](TERMINAL.md). |

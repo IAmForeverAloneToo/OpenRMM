@@ -81,14 +81,14 @@ The agent builds packages in their own worker, one at a time, so other collectio
   - every file: path, artifact type, size, modified and created times (Unix nanoseconds), SHA-256, method (`snapshot` or `live`), and `incomplete` if reading stopped part-way or the file grew by more than 1 MiB after it was listed;
   - everything left out, with the reason: `size_limit`, `time_limit`, `redirected`, `locked`, `denied`, `gone`, `unreadable`, `folder_unreadable` or `too_many_files` (at most 10,000 listed, the rest counted in `skipped_more`);
   - the shadow copy's ID and time.
-- The download is named `triage-<profile>-<job>.zip`.
+- The download is named `triage-<profile>-<first 8 characters of the job ID>.zip`; characters other than letters, digits, `_` and `-` in the profile name become `-`.
 
 ## Limits
 
 | Limit | Value |
 | --- | --- |
 | Package size | 16 GB (the evidence file limit), or less when the device lacks room |
-| Free space on the device | The ZIP must fit on the state folder's drive with 1 GiB to spare; otherwise the job ends as `no_space` |
+| Free space on the device | The package is limited to the free space on the state folder's drive minus 1 GiB; files that no longer fit are listed as `size_limit`. With less than about 1.1 GiB free, the job ends as `no_space` |
 | Files listed | 200,000 |
 | Files left out, listed by name | 10,000 |
 | Packaging time | 100 minutes |

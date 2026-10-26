@@ -96,7 +96,7 @@ At most 64 sessions are reported. The agent drops sessions with invalid details 
 
 The server decodes reports strictly:
 
-- Every field is required; unknown fields are rejected, and an invalid report is refused as a whole.
+- Every field is required except `skipped`; unknown fields are rejected, and an invalid report is refused as a whole.
 - User is required and at most 256 bytes; domain and client name at most 256 bytes; station at most 64 bytes. Text must be valid UTF-8 without control characters or leading/trailing spaces.
 - The client address must be a canonical IP address. Logon time must not be negative, idle seconds not below `-1`, and session IDs must be distinct.
 - A report for a capability version other than 1 is stored as unsupported.

@@ -51,7 +51,7 @@ Open a script version and choose **Run on devices** (`/scripts/run`). Past batch
 
 1. Choose the exact saved version and name the batch.
 2. Select individual devices and/or groups and enter arguments.
-3. Select **Review**. The review lists the resolved Windows targets and whether each is ready. Overlapping groups and devices count once. Groups use their current membership within the managed fleet; later group changes never add devices.
+3. Select **Review**. The review lists the resolved targets and whether each is ready; a target that is not an active Windows device blocks confirmation. Overlapping groups and devices count once. Groups use their current membership within the managed fleet; later group changes never add devices.
 4. Confirm with **Run on *N* devices**.
 
 Readiness (fresh contact, scripting support and a free script slot) is checked at review and again at confirmation. Every target must be ready, or nothing is queued: if any target cannot be queued, the whole transaction rolls back and no batch or child run is created. A group or organization change before confirmation requires a new review.

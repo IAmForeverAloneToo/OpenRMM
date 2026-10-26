@@ -7,6 +7,7 @@ OpenRMM aims to be a complete, self-hosted RMM that also gives incident responde
 | Area | Highlights |
 | --- | --- |
 | Platform | Go server in Docker with a one-command install, automatic HTTPS (Let's Encrypt or the server's own CA), server updates from the dashboard with a verified backup and rollback, and nightly verified backups with export and restore |
+| Releases | Signed releases built in CI; operators who build their own can trust their own key next to the project key (agents need a build with that key) |
 | Windows agent | A single LocalSystem service, installed from a pre-configured MSI, that updates itself through signed releases and pilot rings |
 | Monitoring | Inventory, hardware and OS details, CPU, memory, disk, uptime, metrics history, sessions, logon history, local accounts, BitLocker and Defender status, alerts and health checks |
 | Management | Scripts, schedules and fleet batches, Windows Update and patch policies, MSI deployment, services, processes, software inventory, terminal, remote desktop, file transfer |
@@ -15,10 +16,8 @@ OpenRMM aims to be a complete, self-hosted RMM that also gives incident responde
 
 ## Next
 
-- **Release pipeline.** Tagged releases are built, tested and signed in CI, and publish a server image together with the matching signed agent package.
+- **First tagged release (0.1.0).** The release pipeline, upgrade notes and release procedures are in place; the release follows once installs, updates and restores are tested on dedicated machines.
 - **Network isolation enforcement.** Isolation is built and runs as a dry run that reports the rules it would apply. Enforcement will be switched on once it is verified on dedicated test machines.
-- **Custom release keys.** Operators who build their own releases will be able to trust their own signing key next to the project key, with no change to the update process.
-- **Release documentation.** A short install guide, upgrade notes, a documented process for withdrawing a bad release, and a review of the network, certificate and secret settings recommended for internet-facing servers.
 
 ## Later
 
