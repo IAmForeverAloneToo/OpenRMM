@@ -1,4 +1,6 @@
-* text=auto
+# Text files are LF in every checkout (gofmt, migration checksums and the
+# embedded installer scripts must be byte-identical on Windows and Linux).
+* text=auto eol=lf
 # Migration checksums must be identical across Windows and Linux checkouts.
 *.sql text eol=lf
 *.sh text eol=lf
