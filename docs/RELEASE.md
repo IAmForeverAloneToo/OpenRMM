@@ -51,6 +51,8 @@ The workflow then:
 
 Servers find the new release with their daily check and offer it under **Administration → Server updates**; the bundled agent release then reaches devices through the agent rings.
 
+**Pre-releases.** A tag with a suffix, such as `v0.1.0-rc.1`, is published as a GitHub pre-release. Servers' update checks and the install script's default use only full releases, so a pre-release is installed only on purpose (`install.sh --image ghcr.io/iamforeveralonetoo/openrmm-server:0.1.0-rc.1`), for example on test machines. Each pre-release still uses the next release sequence.
+
 **Dry run.** Running the workflow manually (**Actions → Release → Run workflow**) builds and signs everything with a throwaway key and publishes nothing. Use it to test the pipeline after changes.
 
 ### One-time setup: the signing secrets

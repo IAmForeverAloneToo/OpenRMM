@@ -1,6 +1,8 @@
 name: Release
 
-# Pushing a version tag (v1.2.3) builds, signs and publishes a release:
+# Pushing a version tag (v1.2.3) builds, signs and publishes a release; a
+# tag with a suffix (v1.2.3-rc.1) publishes a pre-release, which servers'
+# update checks and install.sh's default ignore (for testing on VMs):
 #   - the signed agent MSI, bundled into the server image;
 #   - the server image on GitHub Container Registry;
 #   - the signed server release (openrmm-server-release.json) that servers
@@ -10,7 +12,7 @@ name: Release
 
 on:
   push:
-    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+    tags: ['v[0-9]+.[0-9]+.[0-9]+', 'v[0-9]+.[0-9]+.[0-9]+-*']
   workflow_dispatch:
 
 permissions:
@@ -61,9 +63,13 @@ jobs:
             version="${GITHUB_REF_NAME#v}"
           fi
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "invalid version $version"; exit 1; }
+          # The newest release of any kind (pre-releases included) holds the
+          # highest sequence; every release must use a higher one.
           previous="$BASE_SEQUENCE"
           dir="$(mktemp -d)"
-          if gh release download --repo "$GITHUB_REPOSITORY" --pattern openrmm-server-release.json --dir "$dir" 2>/dev/null; then
+          last_tag="$(gh release list --repo "$GITHUB_REPOSITORY" --limit 1 --json tagName --jq '.[0].tagName // empty')"
+          if [ -n "$last_tag" ]; then
+            gh release download "$last_tag" --repo "$GITHUB_REPOSITORY" --pattern openrmm-server-release.json --dir "$dir"
             previous="$(jq -r '.manifest.sequence' "$dir/openrmm-server-release.json")"
           fi
           [[ "$previous" =~ ^[0-9]+$ ]] || { echo "unreadable previous sequence"; exit 1; }
@@ -204,7 +210,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.meta.outputs.version }}
         run: |
-          gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --verify-tag \
+          prerelease=()
+          case "$VERSION" in *-*) prerelease=(--prerelease) ;; esac
+          gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --verify-tag "${prerelease[@]}" \
             --title "OpenRMM $VERSION" --notes-file out/notes.md \
             "out/openrmm-agent-$VERSION.msi" out/openrmm-agent-release.json out/openrmm-server-release.json out/SHA256SUMS
 
