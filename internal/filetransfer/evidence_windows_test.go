@@ -315,7 +315,8 @@ func TestOpenTriage(t *testing.T) {
 // A junction in a folder the triage walks is refused,
 // so is a file reached through one, and a denied folder.
 func TestTriageRefusesJunctions(t *testing.T) {
-	dir := t.TempDir()
+	// Triage paths come from long-form sources; the temp folder may be 8.3.
+	dir := longName(t.TempDir())
 	volume := filepath.VolumeName(dir)
 	real := filepath.Join(dir, "real")
 	if e := os.MkdirAll(real, 0700); e != nil {
@@ -354,5 +355,29 @@ func TestTriageRefusesJunctions(t *testing.T) {
 	}
 	if _, e := triageSourceFor(volume, "", []string{real}).List(rel(real)); !errors.Is(e, errRedirected) {
 		t.Fatal("denied folder listed", e)
+	}
+}
+
+// A path typed with 8.3 short names (as some temp folders are) is expanded
+// and collected, not mistaken for a redirect.
+func TestOpenEvidenceShortName(t *testing.T) {
+	file := filepath.Join(longName(t.TempDir()), "long-file-name.txt")
+	if e := os.WriteFile(file, []byte("short"), 0600); e != nil {
+		t.Fatal(e)
+	}
+	in, _ := windows.UTF16PtrFromString(file)
+	buf := make([]uint16, 32768)
+	n, e := windows.GetShortPathName(in, &buf[0], uint32(len(buf)))
+	short := windows.UTF16ToString(buf[:n])
+	if e != nil || n == 0 || strings.EqualFold(short, file) {
+		t.Skip("8.3 names are disabled on this volume")
+	}
+	ev, outcome := OpenEvidence(short, EvidenceOptions{})
+	if outcome != "" {
+		t.Fatal("short path refused:", outcome)
+	}
+	defer ev.Close()
+	if b := read(t, ev); string(b) != "short" || !strings.EqualFold(ev.Resolved, file) {
+		t.Fatalf("read %q resolved %q", b, ev.Resolved)
 	}
 }

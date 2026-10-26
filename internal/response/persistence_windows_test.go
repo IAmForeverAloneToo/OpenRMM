@@ -80,7 +80,8 @@ func TestPersistenceReport(t *testing.T) {
 		t.Fatalf("test entry %+v %+v", found, found.Signature)
 	}
 	for _, c := range []string{"service", "driver", "task", "lsa", "boot_execute"} {
-		if counts[c] == 0 {
+		// Scheduled tasks are readable only by administrators.
+		if counts[c] == 0 && (c != "task" || elevated()) {
 			t.Fatal("no entries of", c)
 		}
 	}

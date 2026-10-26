@@ -18,6 +18,24 @@ func canonicalFile(f *os.File) (string, error) {
 	}
 	return strings.TrimPrefix(windows.UTF16ToString(buf[:n]), `\\?\`), nil
 }
+
+// longName expands 8.3 short components (such as PROGRA~1) of an existing
+// path, so it can be compared with the final path Windows reports, which is
+// always long. It resolves no links; a path that cannot be expanded is
+// returned unchanged and still has to pass every later check.
+func longName(p string) string {
+	in, e := windows.UTF16PtrFromString(p)
+	if e != nil {
+		return p
+	}
+	buf := make([]uint16, 32768)
+	n, e := windows.GetLongPathName(in, &buf[0], uint32(len(buf)))
+	if e != nil || n == 0 || n >= uint32(len(buf)) {
+		return p
+	}
+	return windows.UTF16ToString(buf[:n])
+}
+
 func canonical(p string) (string, error) {
 	f, e := os.Open(p)
 	if e != nil {

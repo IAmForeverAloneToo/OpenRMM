@@ -60,6 +60,10 @@ func OpenEvidence(full string, o EvidenceOptions) (Evidence, string) {
 	if !ok {
 		return Evidence{}, "denied"
 	}
+	// A short (8.3) name would never equal the final path checked below.
+	if long := longName(volume + file); strings.EqualFold(filepath.VolumeName(long), volume) {
+		file = long[len(volume):]
+	}
 	full = volume + file
 	a := &localAdapter{roots: fixedDrives, deny: o.Deny}
 	roots, e := a.load()

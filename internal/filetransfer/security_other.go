@@ -8,6 +8,7 @@ import (
 )
 
 func canonical(string) (string, error)       { return "", errors.New("unsupported") }
+func longName(p string) string               { return p }
 func canonicalFile(*os.File) (string, error) { return "", errors.New("unsupported") }
 
 func safeRoot(string) bool     { return false }

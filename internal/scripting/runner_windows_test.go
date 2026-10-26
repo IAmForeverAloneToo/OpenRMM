@@ -34,7 +34,8 @@ Start-Sleep -Seconds 60`
 	defer cancel()
 	done := make(chan protocol.ScriptResult, 1)
 	go func() { done <- RunContained(ctx, state, q) }()
-	deadline := time.Now().Add(10 * time.Second)
+	// Generous: Windows PowerShell can start slowly on a cold machine (CI).
+	deadline := time.Now().Add(60 * time.Second)
 	var raw []byte
 	var e error
 	for time.Now().Before(deadline) {
@@ -75,7 +76,7 @@ func TestNativePowerShellDataOutputAndContainment(t *testing.T) {
 		t.Fatal("Windows PowerShell unavailable")
 	}
 	q := testJob()
-	q.Version.Definition.Timeout = 10
+	q.Version.Definition.Timeout = 60
 	q.Version.Hash = Digest(q.Version)
 	value := "literal '; Write-Output INJECTED; # $(Write-Output injected) `\" 日本語 <script> & |"
 	q.Arguments["Message"] = value

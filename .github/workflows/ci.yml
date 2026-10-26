@@ -30,6 +30,13 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24.22.0
+      # The first Windows PowerShell start on a fresh runner is slow; warm it up
+      # so the agent's native script and terminal tests measure OpenRMM.
+      - name: Warm up Windows PowerShell
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          1..2 | ForEach-Object { & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoLogo -NoProfile -NonInteractive -Command '$PSVersionTable.PSVersion.ToString()' }
       # check.ps1 pins the Go toolchain (go1.27.2) itself; the runner's Go is
       # only the launcher. It verifies dependencies.lock and the npm lockfile,
       # typechecks and tests the web interface, then runs gofmt, vet and tests.

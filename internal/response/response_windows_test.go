@@ -85,7 +85,9 @@ func TestReadOnlyActions(t *testing.T) {
 			withActions++
 		}
 	}
-	if withActions < 5 {
+	// The task folder is readable only by administrators (the agent runs as
+	// SYSTEM); an unelevated test run cannot see it.
+	if withActions < 5 && elevated() {
 		t.Fatal("scheduled tasks", len(r.Tasks), withActions, r.Notes)
 	}
 
@@ -205,3 +207,6 @@ func TestKillDisguisedProcess(t *testing.T) {
 		t.Fatalf("disguised kill %+v", k)
 	}
 }
+
+// elevated reports whether the test runs with an administrator token.
+func elevated() bool { return windows.GetCurrentProcessToken().IsElevated() }

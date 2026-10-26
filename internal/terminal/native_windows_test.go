@@ -23,7 +23,8 @@ func TestNativePersistentPowerShellReadHostInterruptAndProcessJob(t *testing.T) 
 	collect := func(marker string) {
 		t.Helper()
 		var output strings.Builder
-		deadline := time.Now().Add(15 * time.Second)
+		// Generous: Windows PowerShell can start slowly on a cold machine (CI).
+		deadline := time.Now().Add(60 * time.Second)
 		for time.Now().Before(deadline) {
 			b, ended := s.Drain()
 			output.Write(b)
