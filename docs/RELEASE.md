@@ -66,6 +66,16 @@ gh secret set OPENRMM_SIGNING_PASSPHRASE --repo IAmForeverAloneToo/OpenRMM
 
 The second command prompts for the passphrase. Anyone who can change workflows on `main` or push tags can sign releases with these secrets; protect the repository accordingly.
 
+The workflow pins the project's release public key (`RELEASE_PUBLIC_KEY` in `release.yml`) and refuses to sign with any other key. Every run, dry runs included, first checks that the secrets open that key, without signing anything (`openrmm-release -check-key`).
+
+The project's release public key is:
+
+```text
+224cceb1234f8bc04d9c08724e73ff7945d7a2fdc43ab12c54552b0ef7d470ae
+```
+
+Official agents and servers trust exactly this key for updates.
+
 > [!IMPORTANT]
 > Agents installed from builds older than the one-year validity rule accept release manifests valid for at most 90 days, so they refuse automatic updates to public releases. Reinstall such devices once with the MSI from a public release (`install.cmd` or `scripts/install-agent.ps1`).
 

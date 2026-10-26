@@ -27,6 +27,8 @@ env:
   # Highest release sequence used before the first public release; public
   # releases continue from here so existing devices accept them.
   BASE_SEQUENCE: '40'
+  # The project's release public key; signing refuses any other key.
+  RELEASE_PUBLIC_KEY: 224cceb1234f8bc04d9c08724e73ff7945d7a2fdc43ab12c54552b0ef7d470ae
   GOTOOLCHAIN: go1.27.2
   GOFLAGS: -mod=readonly
   GOWORK: 'off'
@@ -97,13 +99,25 @@ jobs:
           umask 077
           key="$RUNNER_TEMP/signing"
           mkdir "$key"
+          # Prove the secrets open the project key (signs nothing). A dry run
+          # without the secrets skips this.
+          if [ -n "$SIGNING_KEY" ] && [ -n "$SIGNING_PASSPHRASE" ]; then
+            mkdir "$key/check"
+            printf '%s' "$SIGNING_KEY" > "$key/check/signing-key.json"
+            opened="$(printf '%s' "$SIGNING_PASSPHRASE" | "$RUNNER_TEMP/openrmm-release" -check-key -key "$key/check/signing-key.json" -passphrase-stdin)" ||
+              { echo "The signing secrets do not open the key (wrong passphrase?)."; exit 1; }
+            rm -rf "$key/check"
+            [ "$opened" = "$RELEASE_PUBLIC_KEY" ] || { echo "OPENRMM_SIGNING_KEY is not the project release key."; exit 1; }
+            echo "The signing secrets open the project release key."
+          elif [ "$DRY_RUN" != true ]; then
+            echo "Set the OPENRMM_SIGNING_KEY and OPENRMM_SIGNING_PASSPHRASE repository secrets."; exit 1
+          fi
           if [ "$DRY_RUN" = true ]; then
             # A throwaway key: a dry run must never touch the real one.
             head -c 32 /dev/urandom | base64 > "$key/passphrase"
             "$RUNNER_TEMP/openrmm-release" -create-key "$key/key" -passphrase-stdin < "$key/passphrase"
             mv "$key/key/signing-key.json" "$key/key/public.txt" "$key/"
           else
-            [ -n "$SIGNING_KEY" ] && [ -n "$SIGNING_PASSPHRASE" ] || { echo "Set the OPENRMM_SIGNING_KEY and OPENRMM_SIGNING_PASSPHRASE repository secrets."; exit 1; }
             printf '%s' "$SIGNING_KEY" > "$key/signing-key.json"
             printf '%s' "$SIGNING_PASSPHRASE" > "$key/passphrase"
             jq -r '.public_key' "$key/signing-key.json" > "$key/public.txt"

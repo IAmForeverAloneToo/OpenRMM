@@ -22,6 +22,8 @@ import (
 
 // Modes:
 //
+//	-check-key -key DIR/signing-key.json -passphrase-stdin
+//	    Open the encrypted key and print its public key; signs nothing.
 //	-create-key DIR -passphrase-stdin
 //	    New encrypted key (signing-key.json), public.txt and a sequence counter.
 //	-encrypt-key -key DIR/private.pem -last-sequence N -passphrase-stdin
@@ -44,6 +46,7 @@ func run(stdin io.Reader) error {
 	f := flag.NewFlagSet("release", flag.ContinueOnError)
 	f.SetOutput(io.Discard)
 	keygen := f.String("create-key", "", "")
+	checkKey := f.Bool("check-key", false, "")
 	encrypt := f.Bool("encrypt-key", false, "")
 	key := f.String("key", "", "")
 	binary := f.String("binary", "", "")
@@ -69,6 +72,24 @@ func run(stdin io.Reader) error {
 		return readPassphrase(stdin)
 	}
 	switch {
+	case *checkKey:
+		if *key == "" || *keygen != "" || *encrypt || *binary != "" || *out != "" {
+			return agentupdate.ErrInvalid
+		}
+		raw, e := os.ReadFile(*key)
+		if e != nil {
+			return errKey
+		}
+		p, e := passphrase()
+		if e != nil {
+			return e
+		}
+		priv, e := openKey(raw, p)
+		if e != nil {
+			return e
+		}
+		fmt.Println(hex.EncodeToString(priv.Public().(ed25519.PublicKey)))
+		return nil
 	case *keygen != "":
 		if *encrypt || *key != "" || *binary != "" || *out != "" {
 			return agentupdate.ErrInvalid
