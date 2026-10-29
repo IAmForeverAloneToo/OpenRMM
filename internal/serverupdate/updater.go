@@ -27,8 +27,13 @@ type Updater struct {
 	Poll     time.Duration
 	Logf     func(msg string, args ...any)
 	Interval time.Duration
+	// Self is this updater's own container (its host name); empty turns
+	// self-updates off (self.go).
+	Self     string
+	Handover time.Duration // how long a new updater may take to take over
 
 	running, lastRun *BackupRun // backups (schedule.go)
+	refreshDue       bool       // compare this updater's image with the server's
 }
 
 // The journal lives in the backup volume, which only the updater mounts: the
@@ -45,6 +50,9 @@ func InstalledRepository(project string) string { return "openrmm-installed-" + 
 type journal struct {
 	HighWater int64   `json:"high_water"`
 	Active    *active `json:"active,omitempty"`
+	// SelfFailed is an image a new updater did not start from; the
+	// updater does not try it again.
+	SelfFailed string `json:"self_failed,omitempty"`
 }
 
 type active struct {
@@ -96,7 +104,7 @@ func (u *Updater) save(j journal) error { return writeJSON(u.statePath(), j) }
 
 func (u *Updater) status(id, phase, version string, sequence int64, detail, backup string) {
 	now := u.now().Unix()
-	s := Status{ID: id, Phase: phase, Version: version, Sequence: sequence, Detail: detail, Backup: backup, UpdatedAt: now, Alive: now, Updater: UpdaterRevision}
+	s := Status{ID: id, Phase: phase, Version: version, Sequence: sequence, Detail: detail, Backup: backup, UpdatedAt: now, Alive: now, Updater: UpdaterRevision, Build: u.Trust.Version}
 	if e := writeJSON(filepath.Join(u.Dir, StatusFile), s); e != nil {
 		u.logf("cannot write the update status", "error", e.Error())
 	}
@@ -110,7 +118,7 @@ func (u *Updater) alive() {
 		u.status("", "idle", "", 0, "", "")
 		return
 	}
-	s.Alive = u.now().Unix()
+	s.Alive, s.Build = u.now().Unix(), u.Trust.Version
 	if e = writeJSON(filepath.Join(u.Dir, StatusFile), s); e != nil {
 		u.logf("cannot write the update status", "error", e.Error())
 	}
@@ -121,6 +129,13 @@ func (u *Updater) owned(c Container) bool { return c.Project == u.Project && c.S
 
 // Run serves requests until the context ends.
 func (u *Updater) Run(ctx context.Context) {
+	if !u.takeOver(ctx) {
+		// Too late to take over: the previous updater keeps running and
+		// removes this container.
+		u.logf("the previous updater is still in charge; waiting to be removed")
+		<-ctx.Done()
+		return
+	}
 	j, e := u.load()
 	switch {
 	case e != nil:
@@ -147,6 +162,12 @@ func (u *Updater) Run(ctx context.Context) {
 	beat := time.Time{}
 	for {
 		u.Once(ctx)
+		if u.refreshDue {
+			u.refreshDue = false
+			if u.refresh(ctx) {
+				return // replaced by a new updater
+			}
+		}
 		if u.Backups.Snapshot != nil {
 			u.backups(ctx)
 		}
@@ -154,6 +175,7 @@ func (u *Updater) Run(ctx context.Context) {
 			u.alive()
 			u.report()
 			beat = time.Now()
+			u.refreshDue = true
 		}
 		select {
 		case <-ctx.Done():
@@ -318,6 +340,7 @@ func (u *Updater) finish(ctx context.Context, j *journal) {
 	}
 	u.status(a.Request, PhaseSucceeded, a.Version, a.Sequence, "", a.Backup)
 	u.logf("server updated", "version", a.Version, "sequence", a.Sequence)
+	u.refreshDue = true
 }
 
 // recover completes or rolls back an update interrupted by a restart.

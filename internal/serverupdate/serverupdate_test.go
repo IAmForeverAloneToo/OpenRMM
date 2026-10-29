@@ -27,12 +27,13 @@ type fakeEngine struct {
 	images     map[string]string // ref → image ID
 	healthy    map[string]bool   // image ID → becomes healthy
 	onStart    func(imageID string)
+	onStop     func(id string)
 	next       int
 }
 
-func (f *fakeEngine) Find(_ context.Context, _, _ string) (Container, error) {
+func (f *fakeEngine) Find(_ context.Context, project, service string) (Container, error) {
 	for _, c := range f.containers {
-		if !strings.HasSuffix(c.Name, previousSuffix) {
+		if c.Project == project && c.Service == service && !strings.HasSuffix(c.Name, previousSuffix) {
 			return *c, nil
 		}
 	}
@@ -63,6 +64,9 @@ func (f *fakeEngine) Tag(_ context.Context, image, repo, tag string) error {
 func (f *fakeEngine) Stop(_ context.Context, id string) error {
 	if c, ok := f.containers[id]; ok {
 		c.Running, c.Health = false, ""
+	}
+	if f.onStop != nil {
+		f.onStop(id)
 	}
 	return nil
 }
@@ -550,5 +554,137 @@ func TestStripDefaults(t *testing.T) {
 	got := string(b)
 	if strings.Contains(got, "OLD_DEFAULT") || strings.Contains(got, "image.version") || strings.Contains(got, "StopSignal") || !strings.Contains(got, "OPENRMM_SERVER_LISTEN") || !strings.Contains(got, "compose.project") || !strings.Contains(got, "-health") {
 		t.Fatal(got)
+	}
+	// The image's own entry point and user follow the new image; the
+	// updater's entry point, set by Compose, is kept.
+	server := map[string]json.RawMessage{"Entrypoint": json.RawMessage(`["/openrmm-server"]`), "User": json.RawMessage(`"10001:10001"`)}
+	updater := map[string]json.RawMessage{"Entrypoint": json.RawMessage(`["/openrmm-updater"]`), "User": json.RawMessage(`"10001:10001"`)}
+	defaults := map[string]json.RawMessage{"Entrypoint": json.RawMessage(`["/openrmm-server"]`), "User": json.RawMessage(`"10001:10001"`)}
+	stripDefaults(server, defaults)
+	stripDefaults(updater, defaults)
+	if len(server) != 0 || len(updater) != 1 || string(updater["Entrypoint"]) != `["/openrmm-updater"]` {
+		t.Fatal(server, updater)
+	}
+}
+
+// selfFixture adds the updater's own container next to a server that
+// already runs the new image.
+func selfFixture(t *testing.T) *fixture {
+	f := newFixture(t)
+	f.engine.containers["old"].ImageID = newImage
+	f.engine.containers["upd"] = &Container{ID: "upd", Name: "openrmm-updater-1", ImageID: oldImage, Running: true, Project: "openrmm", Service: "updater", Created: f.now.Add(-time.Hour)}
+	f.u.Self = "upd"
+	f.u.Handover = 50 * time.Millisecond
+	return f
+}
+
+// copyOf is the updater running in the copy refresh created.
+func (f *fixture) copyOf(id string) *Updater {
+	g := *f.u
+	g.Self = id
+	return &g
+}
+
+// After the server moved to a new image the updater starts a copy of
+// itself with that image; the copy stops the old one and takes its name.
+func TestUpdaterReplacesItself(t *testing.T) {
+	f := selfFixture(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	f.engine.onStop = func(id string) {
+		if id == "upd" {
+			cancel() // Docker stops the old updater
+		}
+	}
+	took := false
+	f.engine.onStart = func(string) {
+		c, e := f.engine.Inspect(context.Background(), "openrmm-updater-1"+nextSuffix)
+		if e != nil {
+			t.Fatal("copy not created", e)
+		}
+		f.engine.containers[c.ID].Created = f.now
+		took = f.copyOf(c.ID).takeOver(context.Background())
+	}
+	if !f.u.refresh(ctx) || !took {
+		t.Fatal("not replaced")
+	}
+	if _, ok := f.engine.containers["upd"]; ok {
+		t.Fatal("old updater kept")
+	}
+	c, e := f.engine.Inspect(context.Background(), "openrmm-updater-1")
+	if e != nil || c.ImageID != newImage || c.Service != "updater" || !c.Running {
+		t.Fatal(c, e)
+	}
+	// The new updater is in sync: nothing more to do.
+	n := f.engine.next
+	if f.copyOf(c.ID).refresh(context.Background()) || f.engine.next != n {
+		t.Fatal("refreshed again")
+	}
+}
+
+// A copy that does not take over is removed and its image not retried.
+func TestUpdaterSelfUpdateFails(t *testing.T) {
+	f := selfFixture(t)
+	if f.u.refresh(context.Background()) {
+		t.Fatal("stopped without a successor")
+	}
+	if len(f.engine.containers) != 2 || f.engine.containers["upd"] == nil || !f.engine.containers["upd"].Running {
+		t.Fatal(f.engine.containers)
+	}
+	if j, _ := f.u.load(); j.SelfFailed != newImage {
+		t.Fatal(j)
+	}
+	n := f.engine.next
+	if f.u.refresh(context.Background()); f.engine.next != n {
+		t.Fatal("failed image retried")
+	}
+	// Nothing happens while an update runs, without a known own container,
+	// or while the server is not healthy.
+	for _, change := range []func(g *fixture){
+		func(g *fixture) {
+			g.u.save(journal{Active: &active{Request: "0123456789abcdef0123456789abcdef", Version: "x", Sequence: 11, Previous: "old", Name: "openrmm-server-1"}})
+		},
+		func(g *fixture) { g.u.Self = "" },
+		func(g *fixture) { g.u.Self = "old" },
+		func(g *fixture) { g.engine.containers["old"].Health = "unhealthy" },
+	} {
+		g := selfFixture(t)
+		change(g)
+		if g.u.refresh(context.Background()) || g.engine.next != 0 {
+			t.Fatal("refresh acted", g.engine.containers)
+		}
+	}
+}
+
+// A copy that starts too late, for example after a host restart, leaves a
+// running predecessor alone and stays idle; without one it takes the name.
+func TestUpdaterTakeOver(t *testing.T) {
+	f := selfFixture(t)
+	f.engine.containers["late"] = &Container{ID: "late", Name: "openrmm-updater-1" + nextSuffix, ImageID: newImage, Running: true, Project: "openrmm", Service: "updater", Created: f.now.Add(-time.Hour)}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	f.copyOf("late").Run(ctx)
+	if c := f.engine.containers["upd"]; c == nil || !c.Running || f.engine.containers["late"].Name != "openrmm-updater-1"+nextSuffix {
+		t.Fatal(f.engine.containers)
+	}
+	if _, e := ReadStatus(f.u.Dir); e == nil {
+		t.Fatal("idle copy wrote a status")
+	}
+	// The running updater replaces the leftover copy with a fresh one.
+	f.engine.onStart = func(string) {}
+	f.u.refresh(context.Background())
+	if _, ok := f.engine.containers["late"]; ok {
+		t.Fatal("leftover copy kept")
+	}
+	// A copy whose predecessor is gone takes the name.
+	delete(f.engine.containers, "upd")
+	f.engine.containers["late"] = &Container{ID: "late", Name: "openrmm-updater-1" + nextSuffix, ImageID: newImage, Running: true, Project: "openrmm", Service: "updater", Created: f.now.Add(-time.Hour)}
+	if !f.copyOf("late").takeOver(context.Background()) || f.engine.containers["late"].Name != "openrmm-updater-1" {
+		t.Fatal(f.engine.containers["late"])
+	}
+	// The status names the updater's own version.
+	f.u.status("", "idle", "", 0, "", "")
+	if s, _ := ReadStatus(f.u.Dir); s.Build != "1.0.0" {
+		t.Fatal(s)
 	}
 }

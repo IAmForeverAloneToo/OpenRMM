@@ -25,6 +25,7 @@ type Container struct {
 	Running      bool
 	Health       string // healthy, unhealthy, starting, or "" without a check
 	RestartCount int
+	Created      time.Time
 	// Project and Service are the Compose labels.
 	Project string
 	Service string
@@ -166,10 +167,11 @@ func (d *Docker) Inspect(ctx context.Context, id string) (Container, error) {
 		return Container{}, e
 	}
 	var v struct {
-		ID           string `json:"Id"`
-		Name         string `json:"Name"`
-		Image        string `json:"Image"`
-		RestartCount int    `json:"RestartCount"`
+		ID           string    `json:"Id"`
+		Name         string    `json:"Name"`
+		Image        string    `json:"Image"`
+		RestartCount int       `json:"RestartCount"`
+		Created      time.Time `json:"Created"`
 		Config       struct {
 			Image  string            `json:"Image"`
 			Labels map[string]string `json:"Labels"`
@@ -185,7 +187,7 @@ func (d *Docker) Inspect(ctx context.Context, id string) (Container, error) {
 	if e := json.Unmarshal(b, &v); e != nil {
 		return Container{}, e
 	}
-	c := Container{ID: v.ID, Name: strings.TrimPrefix(v.Name, "/"), Image: v.Config.Image, ImageID: v.Image, Running: v.State.Running, RestartCount: v.RestartCount,
+	c := Container{ID: v.ID, Name: strings.TrimPrefix(v.Name, "/"), Image: v.Config.Image, ImageID: v.Image, Running: v.State.Running, RestartCount: v.RestartCount, Created: v.Created,
 		Project: v.Config.Labels["com.docker.compose.project"], Service: v.Config.Labels["com.docker.compose.service"], inspect: raw}
 	if v.State.Health != nil {
 		c.Health = v.State.Health.Status
@@ -260,9 +262,9 @@ func (d *Docker) Remove(ctx context.Context, id string) error {
 
 // Clone keeps the container's host settings (ports, volumes, limits,
 // restart policy, security options) and what Compose set on it
-// (environment, labels, health check); everything the old image only
-// defaulted (entry point, user, its environment and labels, ...) comes from
-// the new image instead.
+// (environment, labels, health check, the updater's entry point);
+// everything the old image only defaulted (entry point, user, its
+// environment and labels, ...) comes from the new image instead.
 func (d *Docker) Clone(ctx context.Context, c Container, image, name string) (string, error) {
 	var config map[string]json.RawMessage
 	if e := json.Unmarshal(c.inspect["Config"], &config); e != nil {
@@ -275,7 +277,7 @@ func (d *Docker) Clone(ctx context.Context, c Container, image, name string) (st
 		return "", errors.New("cannot read the previous image's settings")
 	}
 	stripDefaults(config, old.Config)
-	for _, k := range []string{"Hostname", "Entrypoint", "Cmd", "WorkingDir", "User", "Image"} {
+	for _, k := range []string{"Hostname", "Image"} {
 		delete(config, k)
 	}
 	body := map[string]any{}

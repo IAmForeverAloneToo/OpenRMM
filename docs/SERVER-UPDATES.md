@@ -8,6 +8,7 @@ The primary administrator can update the OpenRMM server from the dashboard (**Ad
 - [The release check](#the-release-check)
 - [What makes a release genuine](#what-makes-a-release-genuine)
 - [What happens on Update now](#what-happens-on-update-now)
+  - [The updater updates itself](#the-updater-updates-itself)
 - [Security boundaries](#security-boundaries)
 - [Permissions and audit](#permissions-and-audit)
 - [Without the updater](#without-the-updater)
@@ -67,6 +68,7 @@ Control of a registry account alone therefore cannot change what is installed.
 5. **Finish.**
    - If the new version is healthy, the updater removes the old container and records the sequence. The page shows **Updated**.
    - If not, it removes the new container, restores the backup (verified again first) and starts the previous version. The page shows **Rolled back**.
+6. **Update the updater.** After a successful update the updater replaces itself with the same, already verified image (see [The updater updates itself](#the-updater-updates-itself)).
 
 The page shows each step as it happens: **Verifying**, **Downloading**, **Backing up**, **Starting new version**.
 
@@ -78,6 +80,18 @@ The page shows each step as it happens: **Verifying**, **Downloading**, **Backin
 | Backups kept | The three newest update backups (nightly and other backups are kept separately; see [RECOVERY.md](RECOVERY.md#production-installs)) |
 
 The updater records each step in a journal in the `backups` volume, which the server cannot reach. A damaged journal stops updates instead of being ignored. If the updater is interrupted, for example by a host reboot, it resolves the update when it starts again: if the new version was already confirmed healthy it keeps it, otherwise it rolls back. It acts only on containers of its own Compose project and service.
+
+### The updater updates itself
+
+The updater always runs the same image as the server, so fixes to updates, backups and rollbacks reach installations that are only updated from the dashboard. About once a minute, and right after an update, it compares its own image with the server's. When they differ and the server is healthy:
+
+1. It creates a copy of its own container with the server's image and the same settings, named with the suffix `-next`, and starts it.
+2. The copy stops and removes the old updater and takes its name.
+3. If the copy has not taken over within 2 minutes (for example because it does not start), the old updater removes it and keeps running. It does not try that image again; the next server update, or a run of the install command, does.
+
+The two never work at the same time: the old updater does nothing while it waits, and a copy that starts too late, for example after a host restart in the middle of the handover, leaves the old updater in charge. The **Server updates** page shows the updater's version next to **Installed**.
+
+Updaters of 0.1.0 and earlier cannot update themselves. On those installations, run the install command once after the server update; from then on the updater follows the server.
 
 During an update the dashboard and agent connections are unavailable for a few minutes. Work already running on devices continues and reports back afterwards. After an update, the agent release bundled with the new server is available on **Agent updates** and rolls out according to the agent update settings ([AGENT-UPDATES.md](AGENT-UPDATES.md)).
 
@@ -114,6 +128,7 @@ A later run of the install command without `--image` keeps the version that the 
 ## Troubleshooting
 
 - **Updater shows "Not installed"**: run the install command again; it adds the updater when the Docker socket exists.
+- **The page says the updater runs an older version**: the updater could not replace itself (its log, `docker compose logs updater` in the installation folder, says why), or it is from 0.1.0 or earlier. Run the install command again without `--image`; it recreates the updater with the server's image.
 - **An update ended as Rolled back**: the previous version is running again with the data from just before the update. Check the server log of the failed attempt before retrying.
 - **An update succeeded but the new version misbehaves**: see [Going back after a bad update](UPGRADING.md#going-back-after-a-bad-update).
 - **The server does not start after `docker compose up`**: after a dashboard update, `compose.yaml` still names the older image, and an older server refuses the newer database. Run the install command again without `--image`.

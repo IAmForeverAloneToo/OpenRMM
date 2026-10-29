@@ -90,7 +90,11 @@ func sidecar(logger *slog.Logger) int {
 	if len(trust.Keys) == 0 {
 		logger.Warn("this build trusts no release key; updates will be refused")
 	}
+	// Docker names a container's host after its ID: the updater finds its
+	// own container with it to replace itself after server updates.
+	self, _ := os.Hostname()
 	u := &serverupdate.Updater{
+		Self:    self,
 		Dir:     exchange,
 		Engine:  serverupdate.NewDocker(env("OPENRMM_UPDATER_DOCKER_SOCKET", "/var/run/docker.sock")),
 		Project: project,

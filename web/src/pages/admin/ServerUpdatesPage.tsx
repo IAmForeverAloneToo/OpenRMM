@@ -28,7 +28,7 @@ type UpdateState = {
   check_error: string;
   repository_configured: boolean;
   available: { version: string; sequence: number; notes: string; issued: number; image: string } | null;
-  updater: { phase: string; version: string; detail: string; updated_at: number } | null;
+  updater: { phase: string; version: string; detail: string; updated_at: number; build: string } | null;
   history: ServerUpdate[];
 };
 
@@ -107,7 +107,17 @@ export function ServerUpdatesPage() {
             <dt className="text-muted">Updater</dt>
             <dd className="text-fg">
               {d.updater ? (
-                <span>Installed{d.updater.updated_at ? <span className="text-faint"> · last report {relativeTime(d.updater.updated_at, now)}</span> : null}</span>
+                <>
+                  <span>
+                    Installed{d.updater.build ? <> · <Mono>{d.updater.build}</Mono></> : null}
+                    {d.updater.updated_at ? <span className="text-faint"> · last report {relativeTime(d.updater.updated_at, now)}</span> : null}
+                  </span>
+                  {!d.updater.build ? (
+                    <p className="mt-1 text-muted">This updater is from a release that cannot update itself. Run the install command once to replace it; later updaters follow the server on their own.</p>
+                  ) : d.updater.build !== d.current.version && !running(d.updater.phase) ? (
+                    <p className="mt-1 text-muted">The updater still runs an older version. It replaces itself within a few minutes of an update; if this stays, run the install command once.</p>
+                  ) : null}
+                </>
               ) : (
                 <span className="text-muted">Not installed — run the install command again to add it, or update with the install command.</span>
               )}

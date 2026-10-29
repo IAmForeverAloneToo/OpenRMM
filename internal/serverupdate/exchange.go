@@ -55,6 +55,9 @@ type Status struct {
 	Alive int64 `json:"alive,omitempty"`
 	// Updater is present so the server can tell an updater is installed.
 	Updater int `json:"updater"`
+	// Build is the updater's own release version. Updaters that cannot
+	// replace themselves (0.1.0 and earlier) leave it empty.
+	Build string `json:"build,omitempty"`
 }
 
 // UpdaterRevision is the exchange format version.
@@ -165,7 +168,7 @@ func ReadStatus(dir string) (Status, error) {
 	if e := readJSON(filepath.Join(dir, StatusFile), &s, 8192); e != nil {
 		return Status{}, e
 	}
-	if !validPhase(s.Phase) || s.ID != "" && !protocol.ValidID(s.ID) || len(s.Detail) > 300 || len(s.Backup) > 100 {
+	if !validPhase(s.Phase) || s.ID != "" && !protocol.ValidID(s.ID) || len(s.Detail) > 300 || len(s.Backup) > 100 || len(s.Build) > 64 {
 		return Status{}, errors.New("invalid updater status")
 	}
 	return s, nil

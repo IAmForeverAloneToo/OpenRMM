@@ -39,10 +39,11 @@ func registerServerUpdateAPI(mux *http.ServeMux, a *api) {
 			Version   string `json:"version"`
 			Detail    string `json:"detail"`
 			UpdatedAt int64  `json:"updated_at"`
+			Build     string `json:"build"` // the updater's own version; empty before self-updates
 		}
 		var updater *updaterView
 		if st, ok := u.status(); ok {
-			updater = &updaterView{st.Phase, st.Version, st.Detail, st.UpdatedAt}
+			updater = &updaterView{st.Phase, st.Version, st.Detail, st.UpdatedAt, st.Build}
 		}
 		checkError := settings.CheckError
 		if checkError == "not_configured" {

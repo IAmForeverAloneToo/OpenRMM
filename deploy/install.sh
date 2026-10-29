@@ -14,8 +14,9 @@
 #
 # An updater sidecar with access to the Docker socket installs
 # signed server releases from the dashboard, with a verified backup and an
-# automatic rollback, and takes a verified backup every night. A later run
-# without --image keeps the version the dashboard installed.
+# automatic rollback, and takes a verified backup every night; it replaces
+# itself to follow the server's version. A later run without --image keeps
+# the version the dashboard installed.
 #
 # Backups and restores:
 #   sudo bash install.sh backup [--evidence]
