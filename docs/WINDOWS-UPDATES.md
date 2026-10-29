@@ -125,7 +125,7 @@ Keep both journals across agent upgrades. They contain update metadata and resul
 | Item | Limit |
 | --- | --- |
 | Outstanding jobs per device | 1 |
-| Server job queue | 100 jobs |
+| Server job queue | 1,000 active jobs (at most one per device); finished history is pruned to about 200 jobs |
 | Jobs shown per device | 20 most recent |
 | Completed history | 7 days (older finished jobs may be pruned earlier at capacity) |
 | Local journal history | 100 records, keeping active work, the selected scan and recent submission IDs |

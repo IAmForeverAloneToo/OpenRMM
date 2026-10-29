@@ -88,6 +88,14 @@ func updateEligible(ctx context.Context, tx *sql.Tx, id string, now time.Time, o
 	}
 	return s, nil
 }
+
+// Active (queued or dispatched) jobs are one per device at most; finished
+// history is pruned to about maxFinishedUpdates jobs.
+const (
+	maxActiveUpdates   = 1000
+	maxFinishedUpdates = 200
+)
+
 func (s *Store) QueueUpdateJob(ctx context.Context, q UpdateJob, now time.Time, offline time.Duration) error {
 	tx, e := s.db.BeginTx(ctx, nil)
 	if e != nil {
@@ -151,16 +159,17 @@ func queueUpdateJobTx(ctx context.Context, tx *sql.Tx, q UpdateJob, now time.Tim
 			}
 		}
 	}
-	// Preserve current scan references and still-valid submission intents while
-	// pruning old terminal history to keep routine use below the hard global cap.
-	if _, e = tx.ExecContext(ctx, `DELETE FROM update_jobs WHERE id IN (SELECT id FROM update_jobs WHERE status NOT IN ('queued','dispatched') AND created_at<? AND id<>? AND id NOT IN (SELECT scan FROM (SELECT CASE WHEN json_valid(request_json) THEN json_extract(request_json,'$.scan_id') END AS scan FROM update_jobs WHERE status IN ('queued','dispatched')) WHERE scan IS NOT NULL) ORDER BY created_at,id LIMIT (SELECT MAX(COUNT(*)-99,0) FROM update_jobs))`, now.Add(-2*time.Minute).Unix(), q.ScanID); e != nil {
+	// Keep finished history bounded, preserving current scan references and
+	// recent results. Only active jobs count toward the limit, so a patch
+	// window over many devices is not cut short by history.
+	if _, e = tx.ExecContext(ctx, `DELETE FROM update_jobs WHERE id IN (SELECT id FROM update_jobs WHERE status NOT IN ('queued','dispatched') AND created_at<? AND id<>? AND id NOT IN (SELECT scan FROM (SELECT CASE WHEN json_valid(request_json) THEN json_extract(request_json,'$.scan_id') END AS scan FROM update_jobs WHERE status IN ('queued','dispatched')) WHERE scan IS NOT NULL) ORDER BY created_at,id LIMIT (SELECT MAX(COUNT(*)-?,0) FROM update_jobs WHERE status NOT IN ('queued','dispatched')))`, now.Add(-2*time.Minute).Unix(), q.ScanID, maxFinishedUpdates-1); e != nil {
 		return e
 	}
 	var n int
-	if e = tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM update_jobs").Scan(&n); e != nil {
+	if e = tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM update_jobs WHERE status IN ('queued','dispatched')").Scan(&n); e != nil {
 		return e
 	}
-	if n >= 100 {
+	if n >= maxActiveUpdates {
 		return ErrUpdateJob
 	}
 	q.UpdateJob.ExpiresAt = now.Add(time.Minute).Unix()

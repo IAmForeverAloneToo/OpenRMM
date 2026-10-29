@@ -141,8 +141,8 @@ A [server restore](RECOVERY.md) cancels queued script work, marks dispatched and
 
 | Item | Limit |
 | --- | --- |
-| Scripts | 100 |
-| Versions | 500 in total |
+| Scripts | 1,000 |
+| Versions | The newest 10 of each script; older versions are deleted when a new one is saved, unless a run, schedule, batch or application still uses them. 15,000 in total. |
 | Script body | 64 KiB of UTF-8 |
 | Description | 2,000 bytes |
 | Parameters | 8; names up to 32 ASCII characters; values up to 1,024 UTF-8 bytes |

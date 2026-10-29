@@ -55,7 +55,7 @@ Each schedule has a revision. If it changed elsewhere since you loaded it, the c
 | Item | Limit |
 | --- | --- |
 | Active and paused schedules | 100 |
-| Retained schedules (all states) | 500 |
+| Retained schedules (all states) | 500; completed and cancelled schedules are deleted 30 days after they finished, with their occurrences |
 | Occurrence records | 2,000 or 30 days, globally |
 | Occurrences shown per schedule | Latest 50 |
 | Run history | 2,000 runs or 30 days (shared with all script runs) |

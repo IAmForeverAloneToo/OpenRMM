@@ -210,7 +210,43 @@ func evaluateHealth(ctx context.Context, tx *sql.Tx, now time.Time, offline, las
 	if e := expireActions(ctx, tx, now); e != nil {
 		return e
 	}
-	rows, e := tx.QueryContext(ctx, "SELECT "+healthColumns+" FROM health_checks ORDER BY id LIMIT 100")
+	// Checks no longer monitored (disabled, or on a revoked or unlisted
+	// device) lose their state and open alert once.
+	rows, e := tx.QueryContext(ctx, `SELECT id FROM health_checks WHERE (enabled=0 OR device_id NOT IN (`+monitoredDevices+`)) AND (id IN (SELECT check_id FROM health_states) OR id IN (SELECT check_id FROM health_samples) OR id IN (SELECT h.check_id FROM health_attempts h JOIN service_actions a ON a.id=h.action_id WHERE a.status='queued') OR EXISTS(SELECT 1 FROM alerts WHERE kind='check:'||health_checks.id AND status='active'))`)
+	if e != nil {
+		return e
+	}
+	var unmonitored []string
+	for rows.Next() {
+		var id string
+		if e = rows.Scan(&id); e != nil {
+			rows.Close()
+			return e
+		}
+		unmonitored = append(unmonitored, id)
+	}
+	e = rows.Err()
+	rows.Close()
+	if e != nil {
+		return e
+	}
+	for _, id := range unmonitored {
+		if e = closeHealth(ctx, tx, id, "not_monitored", now); e != nil {
+			return e
+		}
+	}
+	// A revoked device never reports again: 30 days after the revocation its
+	// checks go, with their response history.
+	revokedLong := now.Add(-30 * 24 * time.Hour).Unix()
+	for _, q := range []string{
+		"DELETE FROM health_attempts WHERE check_id IN (SELECT c.id FROM health_checks c JOIN devices d ON d.id=c.device_id WHERE d.revoked_at<?)",
+		"DELETE FROM health_checks WHERE device_id IN (SELECT id FROM devices WHERE revoked_at<?) AND id NOT IN (SELECT check_id FROM health_states) AND id NOT IN (SELECT check_id FROM health_samples)",
+	} {
+		if _, e = tx.ExecContext(ctx, q, revokedLong); e != nil {
+			return e
+		}
+	}
+	rows, e = tx.QueryContext(ctx, "SELECT "+healthColumns+" FROM health_checks WHERE enabled=1 AND device_id IN ("+monitoredDevices+") ORDER BY id LIMIT ?", maxHealthChecks)
 	if e != nil {
 		return e
 	}
@@ -227,18 +263,6 @@ func evaluateHealth(ctx context.Context, tx *sql.Tx, now time.Time, offline, las
 	rows.Close()
 	if e != nil {
 		return e
-	}
-	for id, c := range checks {
-		var active int
-		if e = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM (SELECT id FROM devices WHERE revoked_at IS NULL ORDER BY enrolled_at DESC,id LIMIT 1000) WHERE id=?`, c.DeviceID).Scan(&active); e != nil {
-			return e
-		}
-		if !c.Enabled || active != 1 {
-			if e = closeHealth(ctx, tx, id, "not_monitored", now); e != nil {
-				return e
-			}
-			delete(checks, id)
-		}
 	}
 	rows, e = tx.QueryContext(ctx, "SELECT seq,check_id,revision,condition,received_at FROM health_samples ORDER BY seq LIMIT 2000")
 	if e != nil {

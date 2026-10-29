@@ -449,6 +449,11 @@ func (s *Store) EvaluatePatchPolicies(ctx context.Context, now time.Time, offlin
 	if e = pauseDamagedPatchPolicies(ctx, tx, damaged, now); e != nil {
 		return e
 	}
+	// Archived policies are kept 90 days, like their runs, so they do not use
+	// up the policy limit for good.
+	if _, e = tx.ExecContext(ctx, "DELETE FROM patch_policies WHERE state='archived' AND updated_at<? AND NOT EXISTS(SELECT 1 FROM patch_runs r WHERE r.policy_id=patch_policies.id)", now.Add(-90*24*time.Hour).Unix()); e != nil {
+		return e
+	}
 	if _, e = tx.ExecContext(ctx, "DELETE FROM patch_runs WHERE finished_at IS NOT NULL AND (scheduled_at<? OR id IN(SELECT id FROM patch_runs WHERE finished_at IS NOT NULL ORDER BY scheduled_at,id LIMIT(SELECT MAX(COUNT(*)-1900,0) FROM patch_runs)))", now.Add(-90*24*time.Hour).Unix()); e != nil {
 		return e
 	}
@@ -457,7 +462,9 @@ func (s *Store) EvaluatePatchPolicies(ctx context.Context, now time.Time, offlin
 		if p.State != "active" || p.NextAt > now.Unix() {
 			continue
 		}
-		if created+len(p.Definition.Devices) > 25 {
+		// Starts are spread over ticks (every 5 s); a start more than a
+		// minute late is missed, so this allows about 1,200 a minute.
+		if created+len(p.Definition.Devices) > 100 {
 			break
 		}
 		created += len(p.Definition.Devices)

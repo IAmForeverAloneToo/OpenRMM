@@ -80,6 +80,15 @@ type HealthAttempt struct {
 
 const healthColumns = "id,device_id,name,kind,service_name,enabled,hold_seconds,recovery_seconds,severity,email,response,cooldown_seconds,revision"
 
+// maxHealthChecks bounds the live (enabled, monitored) checks fleet-wide and
+// maxStoredHealthChecks all stored ones; checks of revoked devices are
+// removed. monitoredDevices are the devices alerting evaluates.
+const (
+	maxHealthChecks       = 2000
+	maxStoredHealthChecks = 5000
+	monitoredDevices      = "SELECT id FROM devices WHERE revoked_at IS NULL ORDER BY enrolled_at DESC,id LIMIT 1000"
+)
+
 func scanHealth(row interface{ Scan(...any) error }) (HealthCheck, error) {
 	var c HealthCheck
 	e := row.Scan(&c.ID, &c.DeviceID, &c.Name, &c.Kind, &c.Service, &c.Enabled, &c.HoldSeconds, &c.RecoverySeconds, &c.Severity, &c.Email, &c.Response, &c.CooldownSeconds, &c.Revision)
@@ -120,11 +129,13 @@ func (s *Store) ChangeHealthCheck(ctx context.Context, c HealthChange, actor, di
 		if v.Revision != 0 || c.Rearm {
 			return "", ErrHealthCheck
 		}
-		var total, perDevice int
-		if e = tx.QueryRowContext(ctx, "SELECT COUNT(*),COALESCE(SUM(device_id=?),0) FROM health_checks", v.DeviceID).Scan(&total, &perDevice); e != nil {
+		// Live checks (enabled, on a monitored device) count toward the
+		// limits; stored ones, disabled included, have a wider bound.
+		var stored, total, perDevice int
+		if e = tx.QueryRowContext(ctx, "SELECT COUNT(*),COALESCE(SUM(enabled=1 AND device_id IN ("+monitoredDevices+")),0),COALESCE(SUM(enabled=1 AND device_id=?),0) FROM health_checks", v.DeviceID).Scan(&stored, &total, &perDevice); e != nil {
 			return "", e
 		}
-		if total >= 100 || perDevice >= 10 {
+		if stored >= maxStoredHealthChecks || total >= maxHealthChecks || perDevice >= 10 {
 			return "", ErrHealthCheck
 		}
 	} else if e != nil || old.Revision != v.Revision || old.DeviceID != v.DeviceID {
@@ -222,7 +233,7 @@ func (s *Store) HealthChecksForSession(ctx context.Context, v Session, device st
 	scope, args := technicianScope(v, "c.device_id")
 	args = append([]any{device, device}, args...)
 	columns := "c." + strings.ReplaceAll(healthColumns, ",", ",c.")
-	rows, e := s.db.QueryContext(ctx, `SELECT `+columns+`,d.hostname,COALESCE(h.state_json,'{}'),COALESCE(h.attempt_id,''),COALESCE(g.blocked,0),COALESCE(g.last_attempt,0),(SELECT last_sweep FROM alert_runtime WHERE id=1),d.revoked_at FROM health_checks c JOIN devices d ON d.id=c.device_id LEFT JOIN health_states h ON h.check_id=c.id LEFT JOIN health_guards g ON g.device_id=c.device_id AND g.service_key=c.service_key WHERE (?='' OR c.device_id=?) AND `+scope+` ORDER BY c.created_at,c.id LIMIT 100`, args...)
+	rows, e := s.db.QueryContext(ctx, `SELECT `+columns+`,d.hostname,COALESCE(h.state_json,'{}'),COALESCE(h.attempt_id,''),COALESCE(g.blocked,0),COALESCE(g.last_attempt,0),(SELECT last_sweep FROM alert_runtime WHERE id=1),d.revoked_at FROM health_checks c JOIN devices d ON d.id=c.device_id LEFT JOIN health_states h ON h.check_id=c.id LEFT JOIN health_guards g ON g.device_id=c.device_id AND g.service_key=c.service_key WHERE (?='' OR c.device_id=?) AND `+scope+` ORDER BY c.created_at,c.id LIMIT 5000`, args...)
 	if e != nil {
 		return nil, e
 	}

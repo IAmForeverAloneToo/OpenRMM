@@ -81,7 +81,7 @@ A start result does not prove recovery. The incident recovers only when fresh he
 
 | Item | Limit |
 | --- | --- |
-| Checks | 100 in total, 10 per device (disabled checks count) |
+| Checks | 2,000 live checks in total and 10 per device (enabled checks on active devices); 5,000 stored including disabled ones. Checks of a device revoked more than 30 days ago are removed with their response history. |
 | Check name | 80 characters (128 UTF-8 bytes) |
 | Trigger duration | 1–1,440 minutes |
 | Recovery duration | 1–60 minutes |

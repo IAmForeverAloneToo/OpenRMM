@@ -33,6 +33,15 @@ func scanScriptVersion(row interface{ Scan(...any) error }) (ScriptVersion, erro
 
 const scriptVersionColumns = "id,script_id,version,sha256,definition_json,created_at,actor"
 
+// A script keeps its newest keptScriptVersions versions, and older ones only
+// while a run, schedule, batch or application uses them.
+const (
+	maxScripts         = 1000
+	keptScriptVersions = 10
+	maxScriptVersions  = 15000
+	usedScriptVersions = "SELECT version_id FROM script_runs UNION SELECT version_id FROM script_schedules UNION SELECT version_id FROM script_batches UNION SELECT mutation_runner FROM application_versions UNION SELECT verification_runner FROM application_versions"
+)
+
 func (s *Store) CreateScriptVersion(ctx context.Context, v ScriptVersion, now time.Time) (ScriptVersion, error) {
 	if !protocol.ValidID(v.ID) || !protocol.ValidID(v.ScriptID) || !scripting.DefinitionValid(v.Definition) || v.Actor == "" || !scripting.Text(v.Actor, 128, false) {
 		return v, ErrScript
@@ -50,13 +59,17 @@ func (s *Store) CreateScriptVersion(ctx context.Context, v ScriptVersion, now ti
 		return v, ErrScript
 	}
 	var total, scripts, number int
-	if e = tx.QueryRowContext(ctx, "SELECT COUNT(*),COUNT(DISTINCT script_id) FROM script_versions").Scan(&total, &scripts); e != nil {
-		return v, e
-	}
 	if e = tx.QueryRowContext(ctx, "SELECT COALESCE(MAX(version),0) FROM script_versions WHERE script_id=?", v.ScriptID).Scan(&number); e != nil {
 		return v, e
 	}
-	if total >= 500 || number == 0 && scripts >= 100 {
+	// Older versions nothing uses any more make room for the new one.
+	if _, e = tx.ExecContext(ctx, "DELETE FROM script_versions WHERE script_id=? AND version<=? AND id NOT IN ("+usedScriptVersions+")", v.ScriptID, number-keptScriptVersions+1); e != nil {
+		return v, e
+	}
+	if e = tx.QueryRowContext(ctx, "SELECT COUNT(*),COUNT(DISTINCT script_id) FROM script_versions").Scan(&total, &scripts); e != nil {
+		return v, e
+	}
+	if total >= maxScriptVersions || number == 0 && scripts >= maxScripts {
 		return v, ErrScript
 	}
 	v.Number = number + 1

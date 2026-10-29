@@ -425,5 +425,10 @@ func (s *Store) evaluateScriptSchedules(ctx context.Context, now time.Time, offl
 	if _, e = tx.ExecContext(ctx, `DELETE FROM script_schedule_occurrences WHERE recorded_at<? OR id IN(SELECT id FROM script_schedule_occurrences ORDER BY id DESC LIMIT -1 OFFSET 2000)`, now.Add(-30*24*time.Hour).Unix()); e != nil {
 		return e
 	}
+	// Finished schedules are kept 30 days, like their occurrences, so they
+	// do not use up the schedule limit for good.
+	if _, e = tx.ExecContext(ctx, `DELETE FROM script_schedules WHERE state IN('completed','cancelled') AND updated_at<? AND NOT EXISTS(SELECT 1 FROM script_schedule_occurrences o WHERE o.schedule_id=script_schedules.id)`, now.Add(-30*24*time.Hour).Unix()); e != nil {
+		return e
+	}
 	return tx.Commit()
 }

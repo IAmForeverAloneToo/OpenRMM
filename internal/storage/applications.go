@@ -205,7 +205,7 @@ func (s *Store) ChangeApplication(ctx context.Context, c ApplicationChange, acto
 	if e = tx.QueryRowContext(ctx, "SELECT COUNT(*),COUNT(DISTINCT script_id) FROM script_versions").Scan(&scriptCount, &scriptFamilies); e != nil {
 		return v, "", e
 	}
-	if count >= 200 || existing == 0 && (appCount >= 50 || scriptFamilies > 98) || scriptCount > 498 {
+	if count >= 200 || existing == 0 && (appCount >= 50 || scriptFamilies > maxScripts-2) || scriptCount > maxScriptVersions-2 {
 		return v, "", ErrApplication
 	}
 	previous, e := applicationVersionsTx(ctx, tx, c.ApplicationID)

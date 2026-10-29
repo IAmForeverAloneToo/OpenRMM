@@ -189,7 +189,7 @@ func TestUpdateHistoryCapacityPreservesRecentIntents(t *testing.T) {
 		if e != nil {
 			t.Fatal(e)
 		}
-		for i := 0; i < 100; i++ {
+		for i := 0; i < maxFinishedUpdates+50; i++ {
 			j := protocol.UpdateJob{ID: fmt.Sprintf("%032x", i), Action: "scan", ExpiresAt: now.Add(time.Minute).Unix()}
 			raw, _ := json.Marshal(j)
 			if _, e = tx.Exec("INSERT INTO update_jobs(id,device_id,actor,created_at,expires_at,status,request_json) VALUES(?,?,'admin',?,?,'succeeded',?)", j.ID, d.ID, created, now.Unix(), string(raw)); e != nil {
@@ -199,17 +199,15 @@ func TestUpdateHistoryCapacityPreservesRecentIntents(t *testing.T) {
 		if e = tx.Commit(); e != nil {
 			t.Fatal(e)
 		}
-		e = s.QueueUpdateJob(ctx, q, now, time.Minute)
-		if recent && !errors.Is(e, ErrUpdateJob) {
-			t.Fatal("recent intent pruned")
-		}
-		if !recent && e != nil {
-			t.Fatal("old terminal history did not prune", e)
+		// Finished history never blocks a new job (a patch window over many
+		// devices); old history is pruned to its bound, recent results stay.
+		if e = s.QueueUpdateJob(ctx, q, now, time.Minute); e != nil {
+			t.Fatal("history blocked a new job", e)
 		}
 		var n int
-		s.db.QueryRow("SELECT COUNT(*) FROM update_jobs").Scan(&n)
-		if n != 100 {
-			t.Fatal("history exceeded bound", n)
+		s.db.QueryRow("SELECT COUNT(*) FROM update_jobs WHERE status NOT IN ('queued','dispatched')").Scan(&n)
+		if recent && n != maxFinishedUpdates+50 || !recent && n != maxFinishedUpdates-1 {
+			t.Fatal("finished history", n)
 		}
 	}
 }

@@ -78,14 +78,15 @@ After a pending restart, a failed or interrupted mutation, or an uncertain outco
 
 | Item | Limit |
 | --- | --- |
-| Policies | 100, including archived policies |
+| Policies | 100, including archived policies; an archived policy is deleted 90 days after archiving, once its runs have been pruned |
 | Targets per policy | 25 |
 | Active policies per device | 1 |
 | Approved KBs per policy | 64 |
 | Window length | 30–240 minutes |
 | Restart deferral | 1–168 hours |
 | Run history | 2,000 runs, up to 90 days |
-| Update job queue | 100 jobs (shared with manual Windows Update work) |
+| Update job queue | 1,000 active jobs (queued or dispatched, at most one per device; shared with manual Windows Update work); finished history is pruned to about 200 jobs |
+| Window starts | Up to 100 devices every 5 seconds; a start more than a minute late is recorded as missed |
 
 Completed run history is pruned; device holds are separate durable state. A [server restore](RECOVERY.md) pauses all policies, ends unfinished runs as Unknown and keeps device holds.
 
