@@ -37,6 +37,8 @@ func (u *serverUpdates) check(ctx context.Context, s *storage.Store, now time.Ti
 	switch {
 	case errors.Is(e, serverupdate.ErrNotConfigured):
 		problem = "not_configured"
+	case errors.Is(e, serverupdate.ErrNoRelease):
+		// Only pre-releases (or nothing) so far: nothing to offer, no error.
 	case e != nil:
 		available, problem = previous.Available, e.Error()
 	case !serverupdate.Verify(r, u.current.Keys):

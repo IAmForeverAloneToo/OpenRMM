@@ -383,8 +383,10 @@ func TestChecker(t *testing.T) {
 	if _, e = (Checker{Client: srv.Client(), Repo: "example/redirect"}).Latest(ctx); e == nil {
 		t.Fatal("redirect to another host followed")
 	}
-	if _, e = (Checker{Client: srv.Client(), Repo: "example/missing"}).Latest(ctx); e == nil {
-		t.Fatal("missing release accepted")
+	// No full release yet (GitHub's latest ignores pre-releases): reported
+	// as such, not as a failure.
+	if _, e = (Checker{Client: srv.Client(), Repo: "example/missing"}).Latest(ctx); !errors.Is(e, ErrNoRelease) {
+		t.Fatal("missing release not reported as none published", e)
 	}
 }
 

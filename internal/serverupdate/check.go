@@ -29,6 +29,12 @@ const AssetName = "openrmm-server-release.json"
 // ErrNotConfigured means the build has no release repository yet.
 var ErrNotConfigured = errors.New("this build has no release repository configured")
 
+// ErrNoRelease means the repository has no full release yet (pre-releases
+// are never offered); it is not a failure of the check.
+var ErrNoRelease = errors.New("no release has been published yet")
+
+var errNotFound = errors.New("not found")
+
 // apiBase is replaced in tests.
 var apiBase = "https://api.github.com"
 
@@ -89,7 +95,7 @@ func (c Checker) get(ctx context.Context, cl *http.Client, raw string, accept st
 	}
 	defer res.Body.Close()
 	if res.StatusCode == http.StatusNotFound {
-		return nil, errors.New("no published release was found")
+		return nil, errNotFound
 	}
 	if res.StatusCode != http.StatusOK {
 		return nil, errors.New("the release service answered with an error")
@@ -110,6 +116,9 @@ func (c Checker) Latest(ctx context.Context) (Release, error) {
 	}
 	cl := c.client()
 	b, e := c.get(ctx, cl, apiBase+"/repos/"+repo+"/releases/latest", "application/vnd.github+json", 1<<20)
+	if errors.Is(e, errNotFound) {
+		return Release{}, ErrNoRelease
+	}
 	if e != nil {
 		return Release{}, e
 	}
@@ -131,6 +140,9 @@ func (c Checker) Latest(ctx context.Context) (Release, error) {
 			return Release{}, errors.New("the signed release file has an unexpected size")
 		}
 		raw, e := c.get(ctx, cl, a.URL, "application/octet-stream", 64*1024)
+		if errors.Is(e, errNotFound) {
+			return Release{}, errors.New("the signed release file could not be downloaded")
+		}
 		if e != nil {
 			return Release{}, e
 		}
