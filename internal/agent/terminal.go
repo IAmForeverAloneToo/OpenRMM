@@ -17,7 +17,8 @@ func (s *heartbeatSession) terminalExchange(ctx context.Context, p terminal.Exch
 
 // An error destroys this connection epoch and shell. No input or start request
 // is retried; a fresh peer causes the server to retire any ambiguous old session.
-func runTerminal(ctx context.Context, state string, exchange func(context.Context, terminal.Exchange) (terminal.Reply, error), start func(string) (terminal.Shell, error), identity string, allowed func() bool) {
+// idleWait spaces the exchanges while no session runs (see wake.go).
+func runTerminal(ctx context.Context, state string, exchange func(context.Context, terminal.Exchange) (terminal.Reply, error), start func(string) (terminal.Shell, error), identity string, allowed func() bool, idleWait func(context.Context, time.Duration) bool) {
 	peer, e := terminal.RandomID()
 	if e != nil {
 		return
@@ -158,11 +159,11 @@ func runTerminal(ctx context.Context, state string, exchange func(context.Contex
 				}
 			}
 		}
-		delay := 250 * time.Millisecond
+		delay, wait := 250*time.Millisecond, waitContext
 		if request == nil {
-			delay = pace.next(err, time.Second)
+			delay, wait = pace.next(err, time.Second), idleWait
 		}
-		if !waitContext(ctx, delay) {
+		if !wait(ctx, delay) {
 			return
 		}
 	}

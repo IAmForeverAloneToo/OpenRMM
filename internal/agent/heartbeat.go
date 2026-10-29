@@ -80,6 +80,9 @@ type heartbeatSession struct {
 	skewNoticed, renewNoticed time.Time
 	// hashes caches image hashes for response actions.
 	hashes response.HashCache
+	// wake replaces idle polling with one work wait (wake.go); nil in tests.
+	wake    *waker
+	desktop desktopRelay
 }
 
 func newHeartbeatSession(c config.Agent, metadata protocol.Heartbeat) (*heartbeatSession, error) {
@@ -105,7 +108,9 @@ func (s *heartbeatSession) reload() error {
 	if err != nil {
 		return errors.New("cannot read saved device certificate")
 	}
-	transport := &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS13, RootCAs: roots, Certificates: []tls.Certificate{pair}}, MaxIdleConns: 1, MaxIdleConnsPerHost: 1, IdleConnTimeout: 90 * time.Second}
+	// A few idle connections, so the held work wait and the workers reuse
+	// connections instead of each request starting a new TLS handshake.
+	transport := &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS13, RootCAs: roots, Certificates: []tls.Certificate{pair}}, MaxIdleConns: 4, MaxIdleConnsPerHost: 4, IdleConnTimeout: 90 * time.Second}
 	s.transportMu.Lock()
 	defer s.transportMu.Unlock()
 	if s.transport != nil {
@@ -345,6 +350,10 @@ func runOnce(ctx context.Context, local config.Agent, disabled []string, logger 
 		featureInterval = 15 * time.Minute
 	}
 	var workers sync.WaitGroup
+	wake := newWaker()
+	session.wake = wake
+	workers.Add(1)
+	go func() { defer workers.Done(); session.runWake(ctx, wake) }()
 	updateClient := agentupdate.NewAgentClient()
 	selfHash := strings.Repeat("0", 64)
 	if c.Service {
@@ -378,7 +387,7 @@ func runOnce(ctx context.Context, local config.Agent, disabled []string, logger 
 		workers.Add(1)
 		go func() {
 			defer workers.Done()
-			runFileJobs(ctx, fileAdapter, session.pollFile, session.sendFileResult, waitContext, logger)
+			runFileJobs(ctx, fileAdapter, session.pollFile, session.sendFileResult, wake.waiter(protocol.WorkFiles), logger)
 		}()
 	}
 	if c.Response {
@@ -390,7 +399,7 @@ func runOnce(ctx context.Context, local config.Agent, disabled []string, logger 
 			workers.Add(1)
 			go func() {
 				defer workers.Done()
-				runTerminal(ctx, c.State, session.terminalExchange, terminal.Start, identity, func() bool { return true })
+				runTerminal(ctx, c.State, session.terminalExchange, terminal.Start, identity, func() bool { return true }, wake.waiter(protocol.WorkTerminal))
 			}()
 		} else {
 			logger.Warn("interactive terminal unsupported for this OS or account")
@@ -420,7 +429,7 @@ func runOnce(ctx context.Context, local config.Agent, disabled []string, logger 
 			defer workers.Done()
 			runScripts(ctx, c.State, session.pollScript, session.scriptProgress, func(ctx context.Context, q protocol.ScriptJob) protocol.ScriptResult {
 				return scripting.RunContained(ctx, c.State, q)
-			}, waitContext, logger)
+			}, wake.waiter(protocol.WorkScripts), logger)
 		}()
 	}
 	processAdapter := processes.NewAdapter()
@@ -430,7 +439,7 @@ func runOnce(ctx context.Context, local config.Agent, disabled []string, logger 
 			defer workers.Done()
 			runProcessActions(ctx, processAdapter, session.pollProcessAction, func(ctx context.Context, r protocol.ProcessResult) error {
 				return session.send(ctx, "/api/v1/agent/process-actions/result", r)
-			}, waitContext, logger)
+			}, wake.waiter(protocol.WorkProcesses), logger)
 		}()
 	}
 	serviceAdapter := winservices.NewAdapter()
@@ -445,7 +454,7 @@ func runOnce(ctx context.Context, local config.Agent, disabled []string, logger 
 			defer workers.Done()
 			runUpdateJobs(ctx, c.State, updateAdapter, session.pollUpdateJob, func(ctx context.Context, p protocol.UpdateProgress) error {
 				return session.send(ctx, "/api/v1/agent/updates/progress", p)
-			}, waitContext, logger)
+			}, wake.waiter(protocol.WorkUpdates), logger)
 		}()
 	}
 	eventAdapter := eventlogs.NewAdapter()
@@ -455,7 +464,7 @@ func runOnce(ctx context.Context, local config.Agent, disabled []string, logger 
 			defer workers.Done()
 			runEventQueries(ctx, eventAdapter, session.pollEventQuery, func(ctx context.Context, r protocol.EventResult) error {
 				return session.send(ctx, "/api/v1/agent/event-logs/result", r)
-			}, waitContext, logger)
+			}, wake.waiter(protocol.WorkEvents), logger)
 		}()
 	}
 
@@ -465,7 +474,7 @@ func runOnce(ctx context.Context, local config.Agent, disabled []string, logger 
 			defer workers.Done()
 			runServiceActions(ctx, serviceAdapter, session.pollAction, func(ctx context.Context, r protocol.ServiceResult) error {
 				return session.send(ctx, "/api/v1/agent/service-actions/result", r)
-			}, waitContext, logger)
+			}, wake.waiter(protocol.WorkServices), logger)
 		}()
 	}
 	for _, job := range []features.Job{

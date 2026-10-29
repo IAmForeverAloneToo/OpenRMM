@@ -144,6 +144,42 @@ func TestExpiryDisconnectLimitsAndAuditFailure(t *testing.T) {
 		})
 	}
 }
+
+// While the agent waits for work, the hub keeps the device present (it no
+// longer exchanges every second) and asks it to exchange for a new session.
+func TestWaitingKeepsPresenceAndAsksForSessions(t *testing.T) {
+	ctx := context.Background()
+	h := NewHub(func(context.Context, string, string, time.Time) error { return nil }, func(context.Context, string, string, string, string, time.Time) error { return nil })
+	now := time.Unix(1800000000, 0)
+	h.now = func() time.Time { return now }
+	if !h.Waiting("dev") {
+		t.Fatal("unknown device not asked to exchange")
+	}
+	if _, e := h.Exchange(ctx, "dev", Exchange{Peer: strings.Repeat("a", 32), Identity: "sid"}); e != nil {
+		t.Fatal(e)
+	}
+	for i := 0; i < 5; i++ {
+		now = now.Add(4 * time.Second)
+		if h.Waiting("dev") {
+			t.Fatal("present device asked to exchange", i)
+		}
+	}
+	if _, e := h.Create(ctx, "dev", "owner", "admin"); e != nil {
+		t.Fatal("session refused after 20 s of waiting", e)
+	}
+	if !h.Waiting("dev") {
+		t.Fatal("starting session not signalled")
+	}
+	now = now.Add(9 * time.Second)
+	h2 := NewHub(func(context.Context, string, string, time.Time) error { return nil }, func(context.Context, string, string, string, string, time.Time) error { return nil })
+	h2.now = func() time.Time { return now }
+	_, _ = h2.Exchange(ctx, "dev", Exchange{Peer: strings.Repeat("a", 32), Identity: "sid"})
+	now = now.Add(9 * time.Second)
+	if !h2.Waiting("dev") {
+		t.Fatal("expired presence kept")
+	}
+}
+
 func TestGlobalBoundAndProtocolLimits(t *testing.T) {
 	ctx := context.Background()
 	h := NewHub(func(context.Context, string, string, time.Time) error { return nil }, func(context.Context, string, string, string, string, time.Time) error { return nil })

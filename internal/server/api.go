@@ -7,6 +7,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/IAmForeverAloneToo/OpenRMM/internal/auth"
@@ -94,8 +95,34 @@ func (a *api) currentSession(r *http.Request) (storage.Session, string, error) {
 // route registers an authenticated handler. Every state-changing method must
 // carry the session's CSRF token in X-CSRF-Token, in addition to the
 // cross-origin protection applied to the whole listener.
+// workWake decides, per route, which waiting agents a change may have given
+// work: the device in the path, or every device for fleet-wide operations.
+// Reads and session input (typing, mouse) wake nobody.
+func workWake(pattern string) func(*api, *http.Request) {
+	method, path, _ := strings.Cut(pattern, " ")
+	switch {
+	case method == http.MethodGet || method == http.MethodHead || strings.HasSuffix(path, "/input"):
+		return nil
+	case strings.HasPrefix(path, "/api/v1/devices/{id}/"):
+		return func(a *api, r *http.Request) {
+			if a.devices != nil {
+				a.devices.Notify(r.PathValue("id"))
+			}
+		}
+	}
+	return func(a *api, _ *http.Request) {
+		if a.devices != nil {
+			a.devices.Notify("")
+		}
+	}
+}
+
 func (a *api) route(mux *http.ServeMux, pattern string, p access, h apiHandler) {
+	wake := workWake(pattern)
 	mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
+		if wake != nil {
+			defer wake(a, r)
+		}
 		s, _, err := a.currentSession(r)
 		if err != nil {
 			if errors.Is(err, storage.ErrAuthentication) {

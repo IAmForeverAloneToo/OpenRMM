@@ -179,7 +179,7 @@ func (s *heartbeatSession) runAgentUpgrades(ctx context.Context, state, hash str
 				continue
 			}
 		}
-		if !waitContext(ctx, pace.next(failure, 5*time.Second)) {
+		if !s.wake.waiter(protocol.WorkUpgrades)(ctx, pace.next(failure, 5*time.Second)) {
 			return
 		}
 	}

@@ -159,6 +159,29 @@ func (h *Hub) sweep(ctx context.Context) error {
 	}
 	return first
 }
+
+// Waiting is called while the device's agent waits for work with its
+// companion connected and no session running: it keeps the device present
+// for new sessions and reports whether the agent should exchange now,
+// because a session is waiting for it or the hub has no presence for it.
+func (h *Hub) Waiting(device string) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	now := h.now()
+	p, ok := h.present[device]
+	if ok && p.peer != "" && now.Sub(p.at) <= 10*time.Second && !now.Before(p.at) {
+		p.at = now
+		h.present[device] = p
+	} else {
+		ok = false
+	}
+	for _, s := range h.sessions {
+		if s.device == device {
+			return true
+		}
+	}
+	return !ok
+}
 func (h *Hub) Create(ctx context.Context, device, owner, actor string, control bool, display int, quality string) (Request, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()

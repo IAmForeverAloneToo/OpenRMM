@@ -123,6 +123,29 @@ func (h *Hub) sweep(ctx context.Context) error {
 	}
 	return first
 }
+
+// Waiting is called while the device's agent waits for work with its
+// terminal idle: it keeps the device present for new sessions (the agent
+// exchanges only when woken) and reports whether the agent should exchange
+// now, because a session is starting or the hub has no presence for it.
+func (h *Hub) Waiting(device string) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	now := h.now()
+	p, ok := h.present[device]
+	if ok && now.Sub(p.at) <= 8*time.Second && !now.Before(p.at) {
+		p.at = now
+		h.present[device] = p
+	} else {
+		ok = false
+	}
+	for _, s := range h.sessions {
+		if s.device == device && s.state == "starting" {
+			return true
+		}
+	}
+	return !ok
+}
 func (h *Hub) Create(ctx context.Context, device, owner, actor string) (Request, error) {
 	return h.CreateRecorded(ctx, device, owner, actor, "", nil)
 }

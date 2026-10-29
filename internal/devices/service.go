@@ -41,6 +41,8 @@ type Service struct {
 	mu       sync.Mutex
 	attempts map[string]attempt
 	reports  map[string]reportBudget // feature reports per device (reportAllowed)
+	work     workSignals             // wakes agents waiting for work (work.go)
+	workHold time.Duration           // tests: shorter work waits
 	// Immutable after startup; zero uses the 120-second default.
 	OfflineAfter time.Duration
 	// Immutable after startup: the PEM file of the CA that

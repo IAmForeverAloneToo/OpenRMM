@@ -37,7 +37,7 @@ On a fresh **Services** tab, each row offers **Start**, **Stop** and **Restart**
 
 - The server requires an active online device, a fresh supported snapshot and the advertised rights before queueing.
 - Only one action can be outstanding per device.
-- The agent polls about every five seconds over its existing outbound mTLS connection. There is no inbound management listener on the device.
+- The agent picks up an action within about a second over its existing outbound mTLS connection, which waits for work ([HEARTBEATS.md](HEARTBEATS.md#waiting-for-work)). There is no inbound management listener on the device.
 
 How each action behaves:
 

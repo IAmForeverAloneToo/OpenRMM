@@ -292,6 +292,32 @@ func DeviceHandler(service *devices.Service) http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(v)
 	})
+	// One held request replaces each worker's frequent idle check.
+	mux.HandleFunc("POST /api/v1/agent/work", func(w http.ResponseWriter, r *http.Request) {
+		transferDeadline(w, protocol.WorkWaitSeconds*time.Second+10*time.Second)
+		if _, err := service.Authenticate(r.Context(), r.TLS); err != nil {
+			deviceAuthenticationError(w, err)
+			return
+		}
+		var in protocol.WorkWait
+		if !readJSONLimit(w, r, &in, 4096) {
+			return
+		}
+		v, err := service.WaitWork(r.Context(), r.TLS, in)
+		switch {
+		case errors.Is(err, devices.ErrWork):
+			http.Error(w, "Invalid work wait.", 400)
+			return
+		case errors.Is(err, storage.ErrAuthentication):
+			deviceAuthenticationError(w, err)
+			return
+		case err != nil:
+			http.Error(w, "Work waits are temporarily unavailable.", 503)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(v)
+	})
 	mux.HandleFunc("POST /api/v1/agent/features", func(w http.ResponseWriter, r *http.Request) {
 		if _, err := service.Authenticate(r.Context(), r.TLS); err != nil {
 			deviceAuthenticationError(w, err)

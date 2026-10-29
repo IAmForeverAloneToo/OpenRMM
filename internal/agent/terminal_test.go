@@ -44,7 +44,7 @@ func TestTerminalTransportFailureTerminatesAndChangesPeerWithoutReplay(t *testin
 			cancel()
 			return terminal.Reply{}, nil
 		}
-	}, func(string) (terminal.Shell, error) { starts++; return shell, nil }, "sid", func() bool { return true })
+	}, func(string) (terminal.Shell, error) { starts++; return shell, nil }, "sid", func() bool { return true }, waitContext)
 	if starts != 1 || len(shell.inputs) != 1 || shell.inputs[0] != "once\r" {
 		t.Fatal("replayed input/start")
 	}
@@ -62,7 +62,7 @@ func TestTerminalRejectsDuplicateInputsAndMalformedRequests(t *testing.T) {
 			r.Inputs = []terminal.Input{{Sequence: 1, Data: "once\r"}}
 		}
 		return r, nil
-	}, func(string) (terminal.Shell, error) { return shell, nil }, "sid", func() bool { return true })
+	}, func(string) (terminal.Shell, error) { return shell, nil }, "sid", func() bool { return true }, waitContext)
 	if len(shell.inputs) != 1 || shell.closes == 0 {
 		t.Fatal("duplicate reached shell")
 	}
@@ -97,7 +97,7 @@ func TestTerminalLocalDisableStopsShellWithoutFurtherRemoteInput(t *testing.T) {
 			cancel()
 		}
 		return allowed
-	})
+	}, waitContext)
 	if calls != 2 || shell.closes != 1 || len(shell.inputs) != 0 {
 		t.Fatal("local disable did not close session", calls, shell.closes)
 	}
@@ -125,7 +125,7 @@ func TestTerminalRecoversAfterInvalidRequest(t *testing.T) {
 			cancel()
 			return terminal.Reply{}, nil
 		}
-	}, func(string) (terminal.Shell, error) { starts++; return shell, nil }, "sid", func() bool { return true })
+	}, func(string) (terminal.Shell, error) { starts++; return shell, nil }, "sid", func() bool { return true }, waitContext)
 	if starts != 1 || len(peers) != 2 {
 		t.Fatal("terminal did not recover with a fresh peer", starts, len(peers))
 	}

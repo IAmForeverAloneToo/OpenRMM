@@ -23,6 +23,16 @@ After the agent stops, allow up to two minutes plus the page's ten-second refres
 
 Status reports recent successful contact, not a guarantee that the device is reachable at the moment you view it. The page's background refreshes count as browser session activity; the absolute eight-hour session limit still applies.
 
+### Waiting for work
+
+Besides heartbeats and feature reports, the agent does not keep asking the server whether it has work. It holds one request open (`POST /api/v1/agent/work`) that names the kinds of work its idle workers can take: file transfers, scripts, processes, services, event logs, Windows Update, agent updates, terminal and remote desktop.
+
+- The server answers as soon as it has work for one of them, or after 25 seconds. A change in the dashboard wakes the waiting agent at once; work queued by the server's own schedulers (script schedules, patch windows, automatic agent updates) is found within about 12 seconds.
+- Only the named workers then ask for their work; the others keep sleeping. Each idle worker still checks on its own every two minutes.
+- While the agent waits, the server keeps the device available for new terminal and remote desktop sessions. When nobody is connected to the desktop, the agent answers the desktop companion itself and tells the server only about changes, a session to start, and about once a minute.
+- Evidence collection keeps its own check every 15 seconds.
+- Measured with all features on, an idle agent sends about 25 requests a minute (most of them feature reports), down from about 170 before agent 0.1.3. With a server that does not support waits, the agent falls back to its earlier intervals.
+
 ## Running a console agent
 
 For debugging, an enrolled agent can run in a console from the repository root (stop the installed service first and use its state directory, see [WINDOWS-SERVICE.md](WINDOWS-SERVICE.md)):
