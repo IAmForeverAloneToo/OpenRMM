@@ -17,9 +17,12 @@ compose() {
     docker compose --env-file deploy/local.env -f compose.yaml -f "$artifacts/override.yaml" -p "$project" "$@"
 }
 cleanup() {
+    status=$?
     # These resources belong to this unique test project. The normal development
     # project's data and certificates are never mounted or removed by this test.
     compose down --volumes >/dev/null 2>&1 || true
+    # The artifacts are kept only when the check failed, for inspection.
+    [ "$status" -ne 0 ] || rm -rf "$artifacts"
 }
 trap cleanup EXIT HUP INT TERM
 printf 'FROM scratch\nCOPY . /\n' > "$artifacts/context.Dockerfile"
