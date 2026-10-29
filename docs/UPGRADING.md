@@ -80,6 +80,15 @@ Only the latest release receives fixes, including security fixes. Pre-releases a
 
 ## Version notes
 
+### 0.1.3
+
+Scale and long-running servers; nothing to do when updating.
+
+- **Agents wait for work instead of polling.** An idle agent with all features on sends about 25 requests a minute instead of about 170, and work from the dashboard reaches it at once ([HEARTBEATS.md](HEARTBEATS.md#waiting-for-work)). This takes effect as agents update to 0.1.3 through the rings; older agents keep polling and keep working.
+- **Limits no longer fill up for good.** Old script versions are pruned (the newest 10 per script and any still in use are kept; up to 1,000 scripts), finished schedules are deleted after 30 days, archived patch policies after 90 days, and only live health checks (up to 2,000) and active Windows Update jobs (up to 1,000) count toward their limits. Patch windows over many devices are no longer cut short.
+- **Audit retention by age.** Actions by people are kept a year, automatic events 30 days, at most 500,000 events ([ADMINISTRATOR.md](ADMINISTRATOR.md)). The server adds an index on its first start (database migration 52).
+- **Metric history for the whole fleet.** The bound grows with the number of active devices, so each keeps its full 2 days of 5-minute and 30 days of hourly data ([METRICS.md](METRICS.md)).
+
 ### 0.1.2
 
 Hardening; nothing to do when updating.
