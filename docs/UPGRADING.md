@@ -80,6 +80,15 @@ Only the latest release receives fixes, including security fixes. Pre-releases a
 
 ## Version notes
 
+### 0.1.2
+
+Hardening; nothing to do when updating.
+
+- **Damaged records stay local.** A database record that cannot be read no longer stops alerting, patching, schedules or agent rollouts for every device, or the server from starting. A damaged schedule or patch policy is paused, a damaged patch run ends as unknown (each recorded once in the audit log), and a damaged monitoring policy switches every feature off for its devices until it is saved again ([ORGANIZATION.md](ORGANIZATION.md)).
+- **Feature reports are limited per device** (a burst of 30, then one a second; agents send about 12 a minute). One device can no longer flood the shared alert queue and reset alerting for the whole fleet.
+- **Slow links.** Agent updates, installer downloads, release uploads and file transfers get more time than the 10-second default. Agent update downloads have their own, larger pool; agents from this release wait for a busy server instead of failing the update.
+- **Agent update alerts are e-mailed** when alert e-mail is set up; before, the e-mail was always cancelled.
+
 ### 0.1.1
 
 - **The updater updates itself.** After each server update, the updater sidecar replaces itself with the server's version ([SERVER-UPDATES.md](SERVER-UPDATES.md#the-updater-updates-itself)). The 0.1.0 updater cannot do this yet: after updating to 0.1.1 from the dashboard, run `sudo bash install.sh` (without `--image`) once. The **Server updates** page reminds you until it is done.

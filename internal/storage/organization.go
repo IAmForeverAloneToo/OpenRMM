@@ -29,6 +29,10 @@ type MonitoringPolicy struct {
 	// IsolationAllow lists addresses or networks that stay reachable while a
 	// device is isolated; empty by default.
 	IsolationAllow []string `json:"isolation_allow"`
+	// Damaged: the stored settings could not be read. Its devices get the
+	// default alert rules and every feature off until the policy is saved
+	// again (fail closed: a lost "off" must not turn a feature back on).
+	Damaged bool `json:"damaged,omitempty"`
 }
 type DeviceGroup struct {
 	ID       string `json:"id"`
@@ -202,12 +206,18 @@ func organizationTx(ctx context.Context, tx *sql.Tx, devices bool) (Organization
 		}
 		var ok bool
 		if json.Unmarshal([]byte(raw), &p.Rules) != nil || !validPolicyRules(p.Rules) || json.Unmarshal([]byte(features), &p.Features) != nil || json.Unmarshal([]byte(allow), &p.IsolationAllow) != nil || !protocol.ValidAllowList(p.IsolationAllow) {
-			e = ErrOrganization
-			break
+			ok = false
+		} else {
+			p.Features, ok = normalizeFeatures(p.Features)
 		}
-		if p.Features, ok = normalizeFeatures(p.Features); !ok {
-			e = ErrOrganization
-			break
+		if !ok {
+			// One damaged policy must not stop alerting and the dashboard
+			// for the whole fleet.
+			p.Rules, p.IsolationAllow, p.Damaged = o.Defaults, []string{}, true
+			p.Features = map[string]bool{}
+			for _, k := range protocol.AgentFeatures {
+				p.Features[k] = false
+			}
 		}
 		o.Policies = append(o.Policies, p)
 	}
@@ -246,9 +256,8 @@ func organizationTx(ctx context.Context, tx *sql.Tx, devices bool) (Organization
 		if e = rows.Scan(&d.ID, &d.Hostname, &d.GroupID, &d.PolicyID, &raw); e != nil {
 			break
 		}
-		if json.Unmarshal([]byte(raw), &d.Tags) != nil {
-			e = ErrOrganization
-			break
+		if json.Unmarshal([]byte(raw), &d.Tags) != nil || d.Tags == nil {
+			d.Tags = []string{} // damaged tags read as none
 		}
 		o.Devices = append(o.Devices, d)
 	}

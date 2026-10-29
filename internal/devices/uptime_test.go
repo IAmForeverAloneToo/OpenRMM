@@ -50,6 +50,44 @@ func TestUptimeUsesAuthenticatedDeviceAndServerTime(t *testing.T) {
 	}
 }
 
+// A device that reports faster than any agent is refused, alone: other
+// devices keep reporting, and the budget refills at one report a second.
+func TestFeatureReportsLimitedPerDevice(t *testing.T) {
+	s, _, _, now := fixture(t)
+	ctx := context.Background()
+	token, _, _ := s.NewToken(ctx)
+	first, err := s.Enroll(ctx, request(t, token), "peer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, _, _ = s.NewToken(ctx)
+	second, err := s.Enroll(ctx, request(t, token), "peer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	report := protocol.FeatureReport{Capability: uptime.Capability, Status: "ok", Data: json.RawMessage(`{"uptime_seconds":3600,"estimated_boot_at":4102444800}`)}
+	for i := 0; i < reportBurst; i++ {
+		if _, err := s.Feature(ctx, state(t, first), report); err != nil {
+			t.Fatal("report within the burst refused", i, err)
+		}
+	}
+	if _, err := s.Feature(ctx, state(t, first), report); !errors.Is(err, ErrReportsLimited) {
+		t.Fatal("flood accepted", err)
+	}
+	if _, err := s.Feature(ctx, state(t, second), report); err != nil {
+		t.Fatal("another device limited", err)
+	}
+	*now = now.Add(5 * reportRate)
+	for i := 0; i < 5; i++ {
+		if _, err := s.Feature(ctx, state(t, first), report); err != nil {
+			t.Fatal("refilled budget refused", i, err)
+		}
+	}
+	if _, err := s.Feature(ctx, state(t, first), report); !errors.Is(err, ErrReportsLimited) {
+		t.Fatal("budget refilled too fast", err)
+	}
+}
+
 func TestUptimePresentationAndFreshness(t *testing.T) {
 	now := time.Unix(1800000000, 0)
 	stamp := now.Unix()

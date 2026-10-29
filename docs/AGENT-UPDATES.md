@@ -87,7 +87,7 @@ Automatic batches go through the same review and checks as manual ones and are r
 
 ## Self-update on the device
 
-1. **Download.** The agent receives the job, checks that the release is fresh, signed by a built-in key and meant for the agent it is running, downloads the MSI into its state folder and verifies its hash, size and package header.
+1. **Download.** The agent receives the job, checks that the release is fresh, signed by a built-in key and meant for the agent it is running, downloads the MSI into its state folder and verifies its hash, size and package header. A download may take up to 30 minutes, for slow links. The server serves up to 32 downloads at once; when it is busy, the agent waits and asks again while the job is valid instead of failing the update (agents before 0.1.2 allow 2 minutes and report a busy server as a failed update).
 2. **Helper.** It starts the on-demand update helper: a copy of itself at `%ProgramData%\OpenRMM Agent\update\openrmm-update-helper.exe`, detached so that it survives Windows Installer stopping the agent service. Only one helper runs at a time.
 3. **Record.** The helper verifies the release against the built-in keys and the replay counter, and refuses the update unless the rollback package matches the running agent. It records the transaction and consumes the sequence in its journal (`update\journal.json`) before changing anything.
 4. **Install.** It stops the agent service and runs `msiexec /i <package> /qn /norestart`. A restart request from Windows Installer is never acted on. Installer logs go to the `update` folder.

@@ -63,6 +63,11 @@ func (s *Store) ScriptSchedules(ctx context.Context, device string) ([]ScriptSch
 	vs := []ScriptSchedule{}
 	for rows.Next() {
 		v, e := scanSchedule(rows)
+		if errors.Is(e, ErrSchedule) && v.ID != "" {
+			// Damaged arguments: listed (paused by the evaluator) so it can be
+			// cancelled; it cannot be resumed.
+			v.Arguments, e = map[string]string{}, nil
+		}
 		if e != nil {
 			return nil, e
 		}
@@ -103,6 +108,9 @@ func (s *Store) FleetScriptSchedules(ctx context.Context) ([]FleetSchedule, erro
 	out := []FleetSchedule{}
 	for _, id := range ids {
 		v, e := scanSchedule(s.db.QueryRowContext(ctx, "SELECT "+scheduleColumns+" FROM script_schedules WHERE id=?", id))
+		if errors.Is(e, ErrSchedule) && v.ID != "" {
+			v.Arguments, e = map[string]string{}, nil // damaged: listed so it can be cancelled
+		}
 		if e != nil {
 			return nil, e
 		}
@@ -235,6 +243,9 @@ func (s *Store) ChangeScriptSchedule(ctx context.Context, device, id, actor, act
 	}
 	defer tx.Rollback()
 	v, e := scanSchedule(tx.QueryRowContext(ctx, "SELECT "+scheduleColumns+" FROM script_schedules WHERE id=? AND device_id=?", id, device))
+	if errors.Is(e, ErrSchedule) && v.ID != "" && action == "cancel" {
+		e = nil // damaged arguments: it can only be cancelled
+	}
 	if e != nil || v.Revision != revision {
 		return ErrSchedule
 	}
@@ -329,9 +340,13 @@ func (s *Store) evaluateScriptSchedules(ctx context.Context, now time.Time, offl
 	if e != nil {
 		return e
 	}
-	vs := []ScriptSchedule{}
+	vs, damaged := []ScriptSchedule{}, []ScriptSchedule{}
 	for rows.Next() {
 		v, e := scanSchedule(rows)
+		if errors.Is(e, ErrSchedule) && v.ID != "" {
+			damaged = append(damaged, v)
+			continue
+		}
 		if e != nil {
 			rows.Close()
 			return e
@@ -342,6 +357,24 @@ func (s *Store) evaluateScriptSchedules(ctx context.Context, now time.Time, offl
 	rows.Close()
 	if e != nil {
 		return e
+	}
+	// A schedule whose stored arguments cannot be read is paused (once), so
+	// it neither runs with wrong arguments nor stops the other schedules.
+	for _, v := range damaged {
+		if startup {
+			if e = cancelScheduledQueue(ctx, tx, v.ID, now, "server_restart"); e != nil {
+				return e
+			}
+		}
+		if v.State != "active" {
+			continue
+		}
+		if _, e = tx.ExecContext(ctx, "UPDATE script_schedules SET state='paused',revision=revision+1,updated_at=? WHERE id=?", now.Unix(), v.ID); e != nil {
+			return e
+		}
+		if e = auditDevice(ctx, tx, now, "scheduler", "script_schedule_damaged", v.DeviceID+":"+v.ID, "paused"); e != nil {
+			return e
+		}
 	}
 	for _, v := range vs {
 		if startup {

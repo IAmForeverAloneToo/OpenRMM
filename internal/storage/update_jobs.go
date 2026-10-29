@@ -153,7 +153,7 @@ func queueUpdateJobTx(ctx context.Context, tx *sql.Tx, q UpdateJob, now time.Tim
 	}
 	// Preserve current scan references and still-valid submission intents while
 	// pruning old terminal history to keep routine use below the hard global cap.
-	if _, e = tx.ExecContext(ctx, `DELETE FROM update_jobs WHERE id IN (SELECT id FROM update_jobs WHERE status NOT IN ('queued','dispatched') AND created_at<? AND id<>? AND id NOT IN (SELECT json_extract(request_json,'$.scan_id') FROM update_jobs WHERE status IN ('queued','dispatched')) ORDER BY created_at,id LIMIT (SELECT MAX(COUNT(*)-99,0) FROM update_jobs))`, now.Add(-2*time.Minute).Unix(), q.ScanID); e != nil {
+	if _, e = tx.ExecContext(ctx, `DELETE FROM update_jobs WHERE id IN (SELECT id FROM update_jobs WHERE status NOT IN ('queued','dispatched') AND created_at<? AND id<>? AND id NOT IN (SELECT scan FROM (SELECT CASE WHEN json_valid(request_json) THEN json_extract(request_json,'$.scan_id') END AS scan FROM update_jobs WHERE status IN ('queued','dispatched')) WHERE scan IS NOT NULL) ORDER BY created_at,id LIMIT (SELECT MAX(COUNT(*)-99,0) FROM update_jobs))`, now.Add(-2*time.Minute).Unix(), q.ScanID); e != nil {
 		return e
 	}
 	var n int

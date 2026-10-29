@@ -161,13 +161,17 @@ func (s *heartbeatSession) pulse(ctx context.Context) error {
 }
 
 func (s *heartbeatSession) send(ctx context.Context, path string, input any) error {
-	s.transportMu.RLock()
-	id := s.value.Credential.DeviceID
-	s.transportMu.RUnlock()
 	var receipt protocol.HeartbeatReceipt
 	if err := s.call(ctx, path, input, &receipt); err != nil {
 		return err
 	}
+	return s.checkReceipt(receipt)
+}
+
+func (s *heartbeatSession) checkReceipt(receipt protocol.HeartbeatReceipt) error {
+	s.transportMu.RLock()
+	id := s.value.Credential.DeviceID
+	s.transportMu.RUnlock()
 	if receipt.DeviceID != id || receipt.ReceivedAt <= 0 {
 		return errors.New("server returned an invalid heartbeat receipt")
 	}
@@ -374,9 +378,7 @@ func runOnce(ctx context.Context, local config.Agent, disabled []string, logger 
 		workers.Add(1)
 		go func() {
 			defer workers.Done()
-			runFileJobs(ctx, fileAdapter, session.pollFile, func(ctx context.Context, r protocol.FileResult) error {
-				return session.send(ctx, "/api/v1/agent/files/result", r)
-			}, waitContext, logger)
+			runFileJobs(ctx, fileAdapter, session.pollFile, session.sendFileResult, waitContext, logger)
 		}()
 	}
 	if c.Response {

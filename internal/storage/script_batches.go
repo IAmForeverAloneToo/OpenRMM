@@ -245,7 +245,7 @@ func (s *Store) SubmitScriptBatch(ctx context.Context, c ScriptBatchChange, acto
 	}
 	// Keep records longer than confirmation lifetime, and never prune a batch
 	// with active children. Run results retain their existing separate bounds.
-	_, e = tx.ExecContext(ctx, `DELETE FROM script_batches WHERE created_at<? AND (created_at<? OR id IN(SELECT id FROM script_batches ORDER BY created_at DESC,id DESC LIMIT -1 OFFSET 199)) AND NOT EXISTS(SELECT 1 FROM json_each(script_batches.targets_json) t JOIN script_runs r ON r.id=json_extract(t.value,'$.run_id') WHERE r.status IN('queued','dispatched','running'))`, now.Add(-5*time.Minute).Unix(), now.Add(-30*24*time.Hour).Unix())
+	_, e = tx.ExecContext(ctx, `DELETE FROM script_batches WHERE created_at<? AND (created_at<? OR id IN(SELECT id FROM script_batches ORDER BY created_at DESC,id DESC LIMIT -1 OFFSET 199)) AND NOT EXISTS(SELECT 1 FROM json_each(CASE WHEN json_valid(script_batches.targets_json) THEN script_batches.targets_json ELSE '[]' END) t JOIN script_runs r ON r.id=json_extract(t.value,'$.run_id') WHERE r.status IN('queued','dispatched','running'))`, now.Add(-5*time.Minute).Unix(), now.Add(-30*24*time.Hour).Unix())
 	if e != nil {
 		return b, e
 	}
@@ -338,6 +338,6 @@ func (s *Store) ScriptBatches(ctx context.Context, actor string) ([]ScriptBatchS
 }
 
 func (s *Store) PruneScriptBatches(ctx context.Context, now time.Time) error {
-	_, e := s.db.ExecContext(ctx, `DELETE FROM script_batches WHERE created_at<? AND NOT EXISTS(SELECT 1 FROM json_each(script_batches.targets_json) t JOIN script_runs r ON r.id=json_extract(t.value,'$.run_id') WHERE r.status IN('queued','dispatched','running'))`, now.Add(-30*24*time.Hour).Unix())
+	_, e := s.db.ExecContext(ctx, `DELETE FROM script_batches WHERE created_at<? AND NOT EXISTS(SELECT 1 FROM json_each(CASE WHEN json_valid(script_batches.targets_json) THEN script_batches.targets_json ELSE '[]' END) t JOIN script_runs r ON r.id=json_extract(t.value,'$.run_id') WHERE r.status IN('queued','dispatched','running'))`, now.Add(-30*24*time.Hour).Unix())
 	return e
 }

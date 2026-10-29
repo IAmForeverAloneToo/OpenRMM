@@ -284,6 +284,7 @@ func registerOperationsAPI(mux *http.ServeMux, a *api) {
 			apiError(w, http.StatusTooManyRequests, "busy", "Another release is uploading. Try again shortly.")
 			return
 		}
+		transferDeadline(w, artifactTransferTime)
 		r.Body = http.MaxBytesReader(w, r.Body, agentupdate.MaxArtifact+65536)
 		reader, e := r.MultipartReader()
 		if e != nil {

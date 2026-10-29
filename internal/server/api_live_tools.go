@@ -340,6 +340,7 @@ func registerFilesAPI(mux *http.ServeMux, a *api) {
 	// Upload stages content on the server; nothing reaches the device until
 	// the stage is confirmed.
 	a.route(mux, "POST /api/v1/devices/{id}/files/upload", files, boundedBrowserFile(func(w http.ResponseWriter, r *http.Request, s storage.Session) {
+		transferDeadline(w, fileTransferTime)
 		r.Body = http.MaxBytesReader(w, r.Body, filetransfer.MaxFile+32768)
 		reader, e := r.MultipartReader()
 		if e != nil {
@@ -441,6 +442,7 @@ func registerFilesAPI(mux *http.ServeMux, a *api) {
 		w.Header().Set("Content-Type", "application/octet-stream")
 		w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": path.Base(job.Path)}))
 		w.Header().Set("X-Content-SHA256", job.Result.Hash)
+		transferDeadline(w, fileTransferTime)
 		_, _ = w.Write(b)
 	}))
 }

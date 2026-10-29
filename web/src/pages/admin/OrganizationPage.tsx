@@ -307,7 +307,13 @@ export function OrganizationPage() {
                     <button type="button" onClick={() => open({ kind: "policy", item: p })} className={cx(row, isSel("policy", p.id) && "bg-accent-soft")}>
                       <span className="w-56 truncate font-medium text-fg">{p.name}</span>
                       <span className="flex-1 text-[12.5px] text-muted">
-                        {plural(groups, "group")} · {plural(devices, "device")} directly
+                        {p.damaged ? (
+                          <span className="text-danger">Stored settings are damaged: its devices have every feature off. Open it, check its settings and save to repair.</span>
+                        ) : (
+                          <>
+                            {plural(groups, "group")} · {plural(devices, "device")} directly
+                          </>
+                        )}
                       </span>
                       <span className="font-mono text-[11.5px] text-faint">{p.id}</span>
                     </button>

@@ -94,7 +94,11 @@ func (s *Store) ClaimAlertMail(ctx context.Context, configID string, now time.Ti
 		valid := true
 		rule := ruleByKind(effective[a.DeviceID], a.Kind)
 		valid = rule.Enabled && rule.Email
-		if strings.HasPrefix(a.Kind, "check:") {
+		if a.Kind == agentUpdateAlert {
+			// Opened by a paused rollout, not by a rule or samples; mailed
+			// whenever alert email is set up.
+			valid = true
+		} else if strings.HasPrefix(a.Kind, "check:") {
 			c, err := scanHealth(tx.QueryRowContext(ctx, "SELECT "+healthColumns+" FROM health_checks WHERE id=?", strings.TrimPrefix(a.Kind, "check:")))
 			if err != nil {
 				return 0, n, err
@@ -123,7 +127,7 @@ func (s *Store) ClaimAlertMail(ctx context.Context, configID string, now time.Ti
 			}
 			continue
 		}
-		if c.event == "opened" {
+		if c.event == "opened" && a.Kind != agentUpdateAlert {
 			state, e := loadAlertState(ctx, tx, a.DeviceID, a.Kind)
 			if e != nil {
 				return 0, n, e
@@ -149,6 +153,9 @@ func (s *Store) ClaimAlertMail(ctx context.Context, configID string, now time.Ti
 		if strings.HasPrefix(a.Kind, "check:") {
 			n.Title = a.Label
 			n.Condition = fmt.Sprintf("Required-service check qualified for %d seconds of observed samples. Review the device health check for service and response details.", a.HoldSeconds)
+		} else if a.Kind == agentUpdateAlert {
+			n.Title = a.Label
+			n.Condition = "An agent update failed, rolled back or could not be confirmed. Automatic agent updates are paused until they are resumed on the Agent updates page."
 		} else if a.Kind == "offline" {
 			n.Condition = fmt.Sprintf("Offline alert qualified for %d seconds beyond the connection timeout.", a.HoldSeconds)
 		} else {

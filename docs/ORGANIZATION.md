@@ -103,6 +103,8 @@ A monitoring policy also decides which agent features are on. The policy editor'
 
 Everything is on by default. A new policy starts with every switch on, and only switched-off features are stored. The effective setting follows the same selection as alert rules: device policy, else group policy, else global defaults (which keep every feature on).
 
+If a policy's stored settings cannot be read (a damaged database record), the policy fails closed: its devices get the global alert rules, an empty isolation allow list and **every feature switched off**, so a lost "off" never turns a feature such as remote desktop back on. The **Organization** page marks the policy as damaged. Open it, check its settings and save it to repair it.
+
 ### How the agent applies switches
 
 - The server returns the device's switched-off features in every heartbeat reply. Each agent lists the features it understands in its heartbeat and receives only those switches; an older agent that sends no list receives only the switches it knows.

@@ -511,7 +511,7 @@ export type SoftwareReport = { as_of: number; devices: SoftwareReportRow[] };
 
 // Administration (owner-only).
 export type OrgGroup = { id: string; name: string; policy_id: string; members: number };
-export type OrgPolicy = { id: string; name: string; rules: AlertRule[]; features: Record<string, boolean>; isolation_allow?: string[] };
+export type OrgPolicy = { id: string; name: string; rules: AlertRule[]; features: Record<string, boolean>; isolation_allow?: string[]; damaged?: boolean };
 
 // Network isolation.
 export type IsolationRule = { purpose: "server" | "dns" | "dhcp" | "loopback" | "allow"; direction: "out" | "both"; protocol: "tcp" | "udp" | "any"; remote: string; port?: number };

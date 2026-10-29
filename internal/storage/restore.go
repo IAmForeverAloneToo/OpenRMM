@@ -159,12 +159,12 @@ func ReconcileRestore(ctx context.Context, path string, revoked map[string]int64
 		// until an administrator resumes it.
 		{"DELETE FROM alert_deliveries", nil},
 		{"DELETE FROM alert_samples", nil},
-		{"UPDATE alert_states SET state_json=json_set(state_json,'$.condition','unknown','$.since',0,'$.samples',0,'$.value',NULL)", nil},
+		{"UPDATE alert_states SET state_json=json_set(state_json,'$.condition','unknown','$.since',0,'$.samples',0,'$.value',NULL) WHERE json_valid(state_json)", nil},
 		{"UPDATE alert_runtime SET mail_paused=1,last_sweep=0,mail_config='',gap=0", nil},
 		{"UPDATE update_jobs SET status=CASE WHEN status='dispatched' THEN 'unknown' ELSE 'cancelled' END,finished_at=? WHERE status IN ('queued','dispatched')", []any{t}},
 		{"UPDATE health_checks SET response=0,revision=revision+1", nil},
 		{"DELETE FROM health_samples", nil},
-		{"UPDATE health_states SET state_json=json_set(state_json,'$.condition','unknown','$.since',0,'$.samples',0,'$.last_sample',0)", nil},
+		{"UPDATE health_states SET state_json=json_set(state_json,'$.condition','unknown','$.since',0,'$.samples',0,'$.last_sample',0) WHERE json_valid(state_json)", nil},
 		{"UPDATE service_actions SET status=CASE WHEN status='dispatched' THEN 'unknown' ELSE 'cancelled' END,finished_at=? WHERE status IN ('queued','dispatched')", []any{t}},
 		{"DELETE FROM event_log_queries", nil},
 		// Credentials: no session, invitation, recovery code, current

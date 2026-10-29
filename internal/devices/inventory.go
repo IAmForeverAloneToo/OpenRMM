@@ -34,6 +34,9 @@ func (s *Service) Feature(ctx context.Context, state *tls.ConnectionState, repor
 	if err != nil {
 		return protocol.HeartbeatReceipt{}, err
 	}
+	if !s.reportAllowed(d.ID) {
+		return protocol.HeartbeatReceipt{}, ErrReportsLimited
+	}
 	switch report.Capability.Name {
 	case agentupdate.Capability.Name:
 		report, err = agentupdate.Normalize(report)

@@ -221,7 +221,7 @@ func (s *Store) ChangeApplication(ctx context.Context, c ApplicationChange, acto
 		}
 	}
 	var collision int
-	if e = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM application_versions WHERE id=? OR json_extract(definition_json,'$.product_code')=?`, c.ID, c.Definition.ProductCode).Scan(&collision); e != nil {
+	if e = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM application_versions WHERE id=? OR CASE WHEN json_valid(definition_json) THEN json_extract(definition_json,'$.product_code') END=?`, c.ID, c.Definition.ProductCode).Scan(&collision); e != nil {
 		return v, "", e
 	}
 	if collision != 0 {

@@ -20,6 +20,9 @@ import (
 
 const RingsActor = "system:rings"
 
+// agentUpdateAlert is the alert kind a paused rollout opens per device.
+const agentUpdateAlert = "agent_update"
+
 var ErrAgentRings = errors.New("automatic update settings changed or are invalid")
 
 type AgentRingPolicy struct {
@@ -53,7 +56,10 @@ func ringPolicy(ctx context.Context, q interface {
 	var groups string
 	e := q.QueryRowContext(ctx, "SELECT enabled,pilot_groups,delay_hours,paused,pause_reason,release_id,pilot_done_at,revision FROM agent_ring_policy WHERE id=1").Scan(&p.Enabled, &groups, &p.DelayHours, &p.Paused, &p.PauseReason, &p.ReleaseID, &p.PilotDoneAt, &p.Revision)
 	if e == nil && json.Unmarshal([]byte(groups), &p.PilotGroups) != nil {
-		e = ErrAgentRings
+		// Damaged pilot groups: stay paused (no rollout without its pilots)
+		// but readable, so saving the settings again repairs them.
+		p.PilotGroups, p.Paused = []string{}, true
+		p.PauseReason = "the saved pilot groups could not be read; choose them again and resume"
 	}
 	if p.PilotGroups == nil {
 		p.PilotGroups = []string{}
@@ -170,20 +176,52 @@ func (s *Store) AdvanceAgentRings(ctx context.Context, now time.Time, offline ti
 		targets = append(targets, rest...)
 	}
 	queued := 0
+	var failed error
 	for i := 0; i < len(targets); i += 25 {
 		batch := targets[i:min(i+25, len(targets))]
-		sum := sha256.Sum256([]byte(fmt.Sprintf("rings:%s:%d:%v", latest.ID, now.Unix(), batch)))
-		change := AgentRolloutChange{ID: hex.EncodeToString(sum[:16]), ReleaseID: latest.ID, Devices: batch, Groups: []string{}}
-		review, e := s.QueueAgentRollout(ctx, change, RingsActor, "", now, offline)
-		if e == nil {
-			_, e = s.QueueAgentRollout(ctx, change, RingsActor, review.Digest, now, offline)
-		}
+		done := batch
+		e := s.queueRingBatch(ctx, latest.ID, batch, now, offline)
 		if e != nil {
-			return queued, e // retried on the next step
+			done = nil
+			if len(batch) > 1 {
+				// One device the rollout refuses must not hold back the rest
+				// of its batch, or the batches after it: try each alone.
+				done, e = s.queueRingDevices(ctx, latest.ID, batch, now, offline)
+			}
 		}
-		queued += len(batch)
+		queued += len(done)
+		if e != nil && failed == nil {
+			failed = e // the refused devices are retried on the next step
+		}
 	}
-	return queued, nil
+	return queued, failed
+}
+
+func (s *Store) queueRingBatch(ctx context.Context, release string, batch []string, now time.Time, offline time.Duration) error {
+	sum := sha256.Sum256([]byte(fmt.Sprintf("rings:%s:%d:%v", release, now.Unix(), batch)))
+	change := AgentRolloutChange{ID: hex.EncodeToString(sum[:16]), ReleaseID: release, Devices: batch, Groups: []string{}}
+	review, e := s.QueueAgentRollout(ctx, change, RingsActor, "", now, offline)
+	if e == nil {
+		_, e = s.QueueAgentRollout(ctx, change, RingsActor, review.Digest, now, offline)
+	}
+	return e
+}
+
+// queueRingDevices queues each device on its own and returns those queued
+// and the first refusal.
+func (s *Store) queueRingDevices(ctx context.Context, release string, batch []string, now time.Time, offline time.Duration) ([]string, error) {
+	var queued []string
+	var failed error
+	for _, d := range batch {
+		if e := s.queueRingBatch(ctx, release, []string{d}, now, offline); e != nil {
+			if failed == nil {
+				failed = e
+			}
+			continue
+		}
+		queued = append(queued, d)
+	}
+	return queued, failed
 }
 
 // pauseOnFailure stops the rollout when any update to the latest release failed
@@ -225,7 +263,7 @@ func (s *Store) pauseOnFailure(ctx context.Context, latest *AgentRelease, now ti
 	for _, f := range failures {
 		sum := sha256.Sum256([]byte("agent-update-alert:" + f.job))
 		id := hex.EncodeToString(sum[:16])
-		r, e := tx.ExecContext(ctx, `INSERT OR IGNORE INTO alerts(id,device_id,hostname,kind,severity,threshold,hold_seconds,status,opened_at,last_seen,label) VALUES(?,?,?,'agent_update','warning',0,0,'active',?,?,?)`, id, f.device, f.host, now.Unix(), now.Unix(), "Agent update to "+version+": "+f.status)
+		r, e := tx.ExecContext(ctx, `INSERT OR IGNORE INTO alerts(id,device_id,hostname,kind,severity,threshold,hold_seconds,status,opened_at,last_seen,label) VALUES(?,?,?,?,'warning',0,0,'active',?,?,?)`, id, f.device, f.host, agentUpdateAlert, now.Unix(), now.Unix(), "Agent update to "+version+": "+f.status)
 		if e != nil {
 			return false, e
 		}

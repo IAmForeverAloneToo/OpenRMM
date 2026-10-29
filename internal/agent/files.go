@@ -9,10 +9,22 @@ import (
 	"time"
 )
 
+// fileTransferTimeout lets a dispatch or result of up to 12 MiB cross a slow
+// link; the session timeout (5 s by default) only suits small requests.
+const fileTransferTimeout = 10 * time.Minute
+
 func (s *heartbeatSession) pollFile(ctx context.Context) (protocol.FileDispatch, error) {
 	var out protocol.FileDispatch
-	e := s.call(ctx, "/api/v1/agent/files/poll", struct{}{}, &out)
+	e := s.callWithTimeout(ctx, "/api/v1/agent/files/poll", struct{}{}, &out, fileTransferTimeout)
 	return out, e
+}
+
+func (s *heartbeatSession) sendFileResult(ctx context.Context, r protocol.FileResult) error {
+	var receipt protocol.HeartbeatReceipt
+	if e := s.callWithTimeout(ctx, "/api/v1/agent/files/result", r, &receipt, fileTransferTimeout); e != nil {
+		return e
+	}
+	return s.checkReceipt(receipt)
 }
 
 // Server commits dispatch before delivery; never replay a mutation. Only its

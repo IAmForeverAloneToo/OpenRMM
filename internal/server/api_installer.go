@@ -189,6 +189,7 @@ func registerInstallerAPI(mux *http.ServeMux, a *api) {
 		w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
 		w.Header().Set("Cache-Control", "no-store")
 		enrollment := protocol.EnrollmentFile{Version: 1, ServerURL: settings.ServerURL, DeviceURL: settings.DeviceURL, ServerCA: ca, Token: token}
+		transferDeadline(w, artifactTransferTime)
 		// Headers are sent; a failure now only truncates the download, which
 		// install.ps1 detects. The token expires or can be revoked.
 		_ = agentinstaller.Write(w, msi, release.Release.Manifest.Size, release.Release, enrollment, time.Now())

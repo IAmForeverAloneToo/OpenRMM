@@ -308,6 +308,9 @@ func DeviceHandler(service *devices.Service) http.Handler {
 				deviceAuthenticationError(w, err)
 			case errors.Is(err, features.ErrReport):
 				http.Error(w, "Invalid or unknown feature report.", 400)
+			case errors.Is(err, devices.ErrReportsLimited):
+				w.Header().Set("Retry-After", "30")
+				http.Error(w, "Too many feature reports; retry shortly.", 429)
 			default:
 				http.Error(w, "Feature reporting is temporarily unavailable.", 503)
 			}
@@ -375,6 +378,23 @@ func DeviceHandler(service *devices.Service) http.Handler {
 
 var fileSlots = make(chan struct{}, 2)
 
+// Agent update downloads stream from disk and have their own pool, sized
+// for a ring batch (25 devices): a busy reply must not fail an update.
+var artifactSlots = make(chan struct{}, 32)
+
+// Large transfers get more time than the listeners' 10-second timeouts,
+// so they also complete over slow links.
+const (
+	fileTransferTime     = 10 * time.Minute // file transfer bodies, up to 12 MiB
+	artifactTransferTime = 30 * time.Minute // agent releases and installers, up to 32 MiB
+)
+
+func transferDeadline(w http.ResponseWriter, d time.Duration) {
+	rc := http.NewResponseController(w)
+	_ = rc.SetReadDeadline(time.Now().Add(d))
+	_ = rc.SetWriteDeadline(time.Now().Add(d + 10*time.Second))
+}
+
 func boundedFile(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		select {
@@ -390,6 +410,7 @@ func boundedFile(next http.HandlerFunc) http.HandlerFunc {
 
 func registerFileDevice(mux *http.ServeMux, s *devices.Service) {
 	mux.HandleFunc("POST /api/v1/agent/files/poll", boundedFile(func(w http.ResponseWriter, r *http.Request) {
+		transferDeadline(w, fileTransferTime)
 		if _, e := s.Authenticate(r.Context(), r.TLS); e != nil {
 			deviceAuthenticationError(w, e)
 			return
@@ -411,6 +432,7 @@ func registerFileDevice(mux *http.ServeMux, s *devices.Service) {
 		_ = json.NewEncoder(w).Encode(v)
 	}))
 	mux.HandleFunc("POST /api/v1/agent/files/result", boundedFile(func(w http.ResponseWriter, r *http.Request) {
+		transferDeadline(w, fileTransferTime)
 		if _, e := s.Authenticate(r.Context(), r.TLS); e != nil {
 			deviceAuthenticationError(w, e)
 			return
@@ -599,11 +621,20 @@ func registerAgentUpdateDevice(mux *http.ServeMux, s *devices.Service) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(v)
 	})
-	mux.HandleFunc("GET /api/v1/agent/agent-upgrades/{job}/artifact", boundedFile(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /api/v1/agent/agent-upgrades/{job}/artifact", func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case artifactSlots <- struct{}{}:
+			defer func() { <-artifactSlots }()
+		default:
+			w.Header().Set("Retry-After", "15")
+			http.Error(w, "Downloads busy; retry shortly.", 429)
+			return
+		}
 		if r.URL.RawQuery != "" || !protocol.ValidID(r.PathValue("job")) {
 			http.Error(w, "Invalid artifact request.", 400)
 			return
 		}
+		transferDeadline(w, artifactTransferTime)
 		release, f, e := s.AgentArtifact(r.Context(), r.TLS, r.PathValue("job"))
 		if e != nil {
 			respondError(w, e)
@@ -615,7 +646,7 @@ func registerAgentUpdateDevice(mux *http.ServeMux, s *devices.Service) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		// ServeContent supports the agent's bounded streaming GET without loading the executable into memory.
 		http.ServeContent(w, r, release.ID+".exe", time.Time{}, f)
-	}))
+	})
 }
 
 func desktopError(w http.ResponseWriter, e error) {

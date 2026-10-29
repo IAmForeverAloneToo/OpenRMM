@@ -40,25 +40,55 @@ func scanPatchRun(row interface{ Scan(...any) error }) (PatchRun, error) {
 	}
 	return r, e
 }
-func patchRunsTx(ctx context.Context, tx *sql.Tx, active bool) ([]PatchRun, error) {
+
+// patchRunsTx returns the readable runs and, separately, those whose stored
+// definition cannot be read.
+func patchRunsTx(ctx context.Context, tx *sql.Tx, active bool) ([]PatchRun, []PatchRun, error) {
 	condition := ""
 	if active {
 		condition = " WHERE finished_at IS NULL"
 	}
 	rows, e := tx.QueryContext(ctx, "SELECT "+patchRunColumns+" FROM patch_runs"+condition+" ORDER BY scheduled_at DESC,id LIMIT 2000")
 	if e != nil {
-		return nil, e
+		return nil, nil, e
 	}
 	defer rows.Close()
-	out := []PatchRun{}
+	out, damaged := []PatchRun{}, []PatchRun{}
 	for rows.Next() {
 		r, e := scanPatchRun(rows)
+		if errors.Is(e, patching.ErrInvalid) && r.ID != "" {
+			damaged = append(damaged, r)
+			continue
+		}
 		if e != nil {
-			return nil, e
+			return nil, nil, e
 		}
 		out = append(out, r)
 	}
-	return out, rows.Err()
+	return out, damaged, rows.Err()
+}
+
+// endDamagedPatchRuns ends active runs that cannot be read, holding the
+// device for review if the run was changing it, so they are not read again.
+func endDamagedPatchRuns(ctx context.Context, tx *sql.Tx, damaged []PatchRun, now time.Time) error {
+	for _, r := range damaged {
+		if r.FinishedAt != nil {
+			continue
+		}
+		guard, e := patchGuardTx(ctx, tx, r.DeviceID)
+		if e != nil {
+			return e
+		}
+		if guard.OwnerRun == r.ID && guard.Hold == "mutation_running" {
+			if e = holdPatchTx(ctx, tx, r, "needs_review"); e != nil {
+				return e
+			}
+		}
+		if e = finishPatchTx(ctx, tx, r, "unknown", "damaged_record", now); e != nil {
+			return e
+		}
+	}
+	return nil
 }
 func (s *Store) PatchRuns(ctx context.Context) ([]PatchRun, error) {
 	tx, e := s.db.BeginTx(ctx, nil)
@@ -66,7 +96,7 @@ func (s *Store) PatchRuns(ctx context.Context) ([]PatchRun, error) {
 		return nil, e
 	}
 	defer tx.Rollback()
-	out, e := patchRunsTx(ctx, tx, false)
+	out, _, e := patchRunsTx(ctx, tx, false)
 	if e != nil {
 		return nil, e
 	}
@@ -89,8 +119,11 @@ func holdPatchTx(ctx context.Context, tx *sql.Tx, r PatchRun, reason string) err
 	return e
 }
 func cancelPatchRunsTx(ctx context.Context, tx *sql.Tx, policy string, now time.Time, reason string) error {
-	runs, e := patchRunsTx(ctx, tx, true)
+	runs, damaged, e := patchRunsTx(ctx, tx, true)
 	if e != nil {
+		return e
+	}
+	if e = endDamagedPatchRuns(ctx, tx, damaged, now); e != nil {
 		return e
 	}
 	for _, r := range runs {
@@ -136,8 +169,11 @@ func (s *Store) InitializePatchPolicies(ctx context.Context, now time.Time) erro
 	if e = cancelPatchRunsTx(ctx, tx, "", now, "server_restart"); e != nil {
 		return e
 	}
-	policies, e := patchPoliciesTx(ctx, tx)
+	policies, damaged, e := patchPoliciesTx(ctx, tx)
 	if e != nil {
+		return e
+	}
+	if e = pauseDamagedPatchPolicies(ctx, tx, damaged, now); e != nil {
 		return e
 	}
 	for _, p := range policies {
@@ -340,6 +376,19 @@ func stepPatchRunTx(ctx context.Context, tx *sql.Tx, r PatchRun, now time.Time, 
 		}
 		return finishPatchTx(ctx, tx, r, "unknown", "update_job_unavailable", now)
 	}
+	if errors.Is(e, ErrUpdateJob) {
+		// The update job cannot be read: end this run, not all patching.
+		guard, err := patchGuardTx(ctx, tx, r.DeviceID)
+		if err != nil {
+			return err
+		}
+		if guard.OwnerRun == r.ID && guard.Hold == "mutation_running" {
+			if err = holdPatchTx(ctx, tx, r, "needs_review"); err != nil {
+				return err
+			}
+		}
+		return finishPatchTx(ctx, tx, r, "unknown", "damaged_record", now)
+	}
 	if e != nil {
 		return e
 	}
@@ -393,8 +442,11 @@ func (s *Store) EvaluatePatchPolicies(ctx context.Context, now time.Time, offlin
 	if e = expireUpdates(ctx, tx, now); e != nil {
 		return e
 	}
-	policies, e := patchPoliciesTx(ctx, tx)
+	policies, damaged, e := patchPoliciesTx(ctx, tx)
 	if e != nil {
+		return e
+	}
+	if e = pauseDamagedPatchPolicies(ctx, tx, damaged, now); e != nil {
 		return e
 	}
 	if _, e = tx.ExecContext(ctx, "DELETE FROM patch_runs WHERE finished_at IS NOT NULL AND (scheduled_at<? OR id IN(SELECT id FROM patch_runs WHERE finished_at IS NOT NULL ORDER BY scheduled_at,id LIMIT(SELECT MAX(COUNT(*)-1900,0) FROM patch_runs)))", now.Add(-90*24*time.Hour).Unix()); e != nil {
@@ -426,7 +478,12 @@ func (s *Store) EvaluatePatchPolicies(ctx context.Context, now time.Time, offlin
 				return e
 			}
 			if count >= 2000 {
-				return patching.ErrInvalid
+				// Run history is full of unfinished runs: skip this window
+				// rather than stop patching everywhere.
+				if e = auditDevice(ctx, tx, now, "server", "patch_window_skipped", p.ID, "run_limit"); e != nil {
+					return e
+				}
+				break
 			}
 			if _, e = tx.ExecContext(ctx, "INSERT INTO patch_runs(id,policy_id,revision,device_id,scheduled_at,window_end,definition_json,status)VALUES(?,?,?,?,?,?,?,'scanning')", id, p.ID, p.Revision, device, slot, end, string(raw)); e != nil {
 				return e
@@ -457,8 +514,11 @@ func (s *Store) EvaluatePatchPolicies(ctx context.Context, now time.Time, offlin
 			}
 		}
 	}
-	runs, e := patchRunsTx(ctx, tx, true)
+	runs, damagedRuns, e := patchRunsTx(ctx, tx, true)
 	if e != nil {
+		return e
+	}
+	if e = endDamagedPatchRuns(ctx, tx, damagedRuns, now); e != nil {
 		return e
 	}
 	for _, r := range runs {

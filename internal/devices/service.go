@@ -40,6 +40,7 @@ type Service struct {
 	lifetime time.Duration
 	mu       sync.Mutex
 	attempts map[string]attempt
+	reports  map[string]reportBudget // feature reports per device (reportAllowed)
 	// Immutable after startup; zero uses the 120-second default.
 	OfflineAfter time.Duration
 	// Immutable after startup: the PEM file of the CA that
@@ -194,6 +195,55 @@ func (s *Service) allow(peer string) bool {
 	}
 	return true
 }
+
+// ErrReportsLimited: a device sends feature reports faster than any agent
+// does. One device must not be able to overflow the fleet's alert and health
+// sample queues, which would reset alert evaluation for every device.
+var ErrReportsLimited = errors.New("too many feature reports")
+
+// An agent sends about 12 reports a minute and one of each kind at start;
+// a device may burst to reportBurst, then one report a second.
+const (
+	reportBurst = 30
+	reportRate  = time.Second
+)
+
+type reportBudget struct {
+	tokens float64
+	at     time.Time
+}
+
+func (s *Service) reportAllowed(device string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := s.now()
+	if s.reports == nil {
+		s.reports = map[string]reportBudget{}
+	}
+	if len(s.reports) > 4096 {
+		for k, v := range s.reports {
+			if now.Sub(v.at) >= reportBurst*reportRate {
+				delete(s.reports, k)
+			}
+		}
+	}
+	b, ok := s.reports[device]
+	if !ok {
+		b = reportBudget{tokens: reportBurst, at: now}
+	}
+	if d := now.Sub(b.at); d > 0 {
+		b.tokens = min(reportBurst, b.tokens+float64(d)/float64(reportRate))
+	}
+	b.at = now
+	if b.tokens < 1 {
+		s.reports[device] = b
+		return false
+	}
+	b.tokens--
+	s.reports[device] = b
+	return true
+}
+
 func (s *Service) Enroll(ctx context.Context, input protocol.Enrollment, peer string) (protocol.Credential, error) {
 	if !s.allow(peer) {
 		return protocol.Credential{}, ErrLimited

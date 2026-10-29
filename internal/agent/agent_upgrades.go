@@ -24,11 +24,19 @@ func (s *heartbeatSession) pollAgentUpgrade(ctx context.Context) (protocol.Agent
 	e := s.call(ctx, "/api/v1/agent/agent-upgrades/poll", struct{}{}, &out)
 	return out, e
 }
+
+// releaseDownloadTimeout fits a release of up to 32 MiB on a slow link.
+const releaseDownloadTimeout = 30 * time.Minute
+
+// errDownloadBusy: the server has no download slot free; the agent waits
+// and asks again instead of failing the update (and pausing the rollout).
+var errDownloadBusy = errors.New("release downloads busy")
+
 func (s *heartbeatSession) downloadAgentRelease(ctx context.Context, q protocol.AgentUpgradeJob, path string) error {
 	s.transportMu.RLock()
 	transport, origin := s.transport, s.value.DeviceURL
 	s.transportMu.RUnlock()
-	client := &http.Client{Transport: transport, Timeout: 2 * time.Minute, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	client := &http.Client{Transport: transport, Timeout: releaseDownloadTimeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	request, e := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimSuffix(origin, "/")+"/api/v1/agent/agent-upgrades/"+q.ID+"/artifact", nil)
 	if e != nil {
 		return e
@@ -38,6 +46,9 @@ func (s *heartbeatSession) downloadAgentRelease(ctx context.Context, q protocol.
 		return e
 	}
 	defer response.Body.Close()
+	if response.StatusCode == http.StatusTooManyRequests {
+		return errDownloadBusy
+	}
 	if response.StatusCode != 200 || response.ContentLength != q.Release.Manifest.Size {
 		return agentupdate.ErrInvalid
 	}
@@ -144,9 +155,14 @@ func (s *heartbeatSession) runAgentUpgrades(ctx context.Context, state, hash str
 					continue
 				}
 				path := filepath.Join(state, releaseFile(q))
-				downloadCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-				e = s.downloadAgentRelease(downloadCtx, q, path)
-				cancel()
+				for {
+					downloadCtx, cancel := context.WithTimeout(ctx, releaseDownloadTimeout)
+					e = s.downloadAgentRelease(downloadCtx, q, path)
+					cancel()
+					if !errors.Is(e, errDownloadBusy) || time.Now().Unix() >= q.ExpiresAt || !waitContext(ctx, 15*time.Second) {
+						break
+					}
+				}
 				if e != nil {
 					failure.Outcome = "failed"
 					result = &failure

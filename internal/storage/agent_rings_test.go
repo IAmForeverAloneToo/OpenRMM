@@ -70,6 +70,9 @@ func TestAgentRingsPilotDelayFailurePauseAndResume(t *testing.T) {
 	if e != nil || !p.Enabled {
 		t.Fatal(e)
 	}
+	if e = s.InitializeAlerts(ctx, offline, "test-mail", now); e != nil {
+		t.Fatal(e)
+	}
 
 	// The pilot updates at once; the rest of the fleet waits.
 	if n, e := s.AdvanceAgentRings(ctx, now, offline); e != nil || n != 1 {
@@ -94,6 +97,14 @@ func TestAgentRingsPilotDelayFailurePauseAndResume(t *testing.T) {
 	_ = s.db.QueryRow("SELECT COUNT(*) FROM alerts WHERE kind='agent_update' AND status='active' AND device_id=?", pilot.ID).Scan(&alerts)
 	if alerts != 1 {
 		t.Fatal("no alert for the failed update", alerts)
+	}
+	// The alert is mailed: no alert rule or samples stand behind it.
+	if e = s.EvaluateAlerts(ctx, later); e != nil {
+		t.Fatal(e)
+	}
+	id, notice, e := s.ClaimAlertMail(ctx, "test-mail", later)
+	if e != nil || id == 0 || !strings.HasPrefix(notice.Title, "Agent update to") || !strings.Contains(notice.Condition, "paused") {
+		t.Fatal("agent update alert not mailed", id, notice, e)
 	}
 	if n, _ := s.AdvanceAgentRings(ctx, later.Add(time.Hour), offline); n != 0 {
 		t.Fatal("paused rollout queued updates")

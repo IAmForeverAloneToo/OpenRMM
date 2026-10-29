@@ -173,13 +173,15 @@ func (s *Store) InitializeAlerts(ctx context.Context, offline time.Duration, mai
 	if _, e = tx.ExecContext(ctx, "DELETE FROM health_samples"); e != nil {
 		return e
 	}
-	if _, e = tx.ExecContext(ctx, `UPDATE health_states SET state_json=json_set(state_json,'$.condition','unknown','$.since',0,'$.samples',0,'$.last_sample',0)`); e != nil {
+	// Damaged states (not valid JSON) are left for the evaluator to replace;
+	// they must not stop the server from starting.
+	if _, e = tx.ExecContext(ctx, `UPDATE health_states SET state_json=json_set(state_json,'$.condition','unknown','$.since',0,'$.samples',0,'$.last_sample',0) WHERE json_valid(state_json)`); e != nil {
 		return e
 	}
 	if _, e = tx.ExecContext(ctx, `UPDATE service_actions SET status='cancelled',finished_at=? WHERE status='queued' AND id IN (SELECT action_id FROM health_attempts)`, now.Unix()); e != nil {
 		return e
 	}
-	if _, e = tx.ExecContext(ctx, `UPDATE alert_states SET state_json=json_set(state_json,'$.condition','unknown','$.since',0,'$.samples',0,'$.value',NULL)`); e != nil {
+	if _, e = tx.ExecContext(ctx, `UPDATE alert_states SET state_json=json_set(state_json,'$.condition','unknown','$.since',0,'$.samples',0,'$.value',NULL) WHERE json_valid(state_json)`); e != nil {
 		return e
 	}
 	if _, e = tx.ExecContext(ctx, `UPDATE alert_deliveries SET status=CASE WHEN status='sending' THEN 'unknown' ELSE 'cancelled' END,finished_at=?,reason=CASE WHEN status='sending' THEN 'interrupted' ELSE 'configuration_changed' END WHERE status='sending' OR (status='queued' AND config_id<>?)`, now.Unix(), mailID); e != nil {
@@ -258,9 +260,21 @@ func loadAlertState(ctx context.Context, tx *sql.Tx, id, kind string) (alerting.
 		return s, e
 	}
 	if json.Unmarshal([]byte(raw), &s) != nil {
-		return s, ErrAlert
+		return damagedState(ctx, tx, id, kind)
 	}
 	return s, nil
+}
+
+// damagedState replaces a state that cannot be read: qualification starts
+// over (the next save writes a valid state), and an open alert stays linked
+// so it can still resolve. One damaged row must not stop evaluation.
+func damagedState(ctx context.Context, tx *sql.Tx, device, kind string) (alerting.State, error) {
+	s := alerting.State{Condition: "unknown"}
+	e := tx.QueryRowContext(ctx, "SELECT id FROM alerts WHERE device_id=? AND kind=? AND status='active' ORDER BY opened_at DESC LIMIT 1", device, kind).Scan(&s.Incident)
+	if errors.Is(e, sql.ErrNoRows) {
+		e = nil
+	}
+	return s, e
 }
 func enqueueAlertMail(ctx context.Context, tx *sql.Tx, id, event string, now time.Time) error {
 	_, e := tx.ExecContext(ctx, `INSERT OR IGNORE INTO alert_deliveries(alert_id,event,config_id,status,created_at,next_attempt) SELECT ?,?,mail_config,'queued',?,? FROM alert_runtime WHERE id=1 AND mail_config<>'' AND mail_paused=0`, id, event, now.Unix(), now.Unix())
@@ -339,7 +353,7 @@ func (s *Store) EvaluateAlerts(ctx context.Context, now time.Time) error {
 		return e
 	}
 	if gap || now.Unix() < last || now.Unix()-last > 45 {
-		if _, e = tx.ExecContext(ctx, `UPDATE alert_states SET state_json=json_set(state_json,'$.condition','unknown','$.since',0,'$.samples',0,'$.value',NULL)`); e != nil {
+		if _, e = tx.ExecContext(ctx, `UPDATE alert_states SET state_json=json_set(state_json,'$.condition','unknown','$.since',0,'$.samples',0,'$.value',NULL) WHERE json_valid(state_json)`); e != nil {
 			return e
 		}
 	}

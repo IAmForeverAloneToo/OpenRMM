@@ -96,15 +96,16 @@ func captureHealth(ctx context.Context, tx *sql.Tx, id string, report protocol.F
 
 func loadHealthState(ctx context.Context, tx *sql.Tx, id string) (alerting.State, string, error) {
 	var state alerting.State
-	var raw, attempt string
-	e := tx.QueryRowContext(ctx, "SELECT state_json,attempt_id FROM health_states WHERE check_id=?", id).Scan(&raw, &attempt)
+	var raw, attempt, device string
+	e := tx.QueryRowContext(ctx, "SELECT state_json,attempt_id,device_id FROM health_states WHERE check_id=?", id).Scan(&raw, &attempt, &device)
 	if errors.Is(e, sql.ErrNoRows) {
 		return state, "", nil
 	}
 	if e != nil {
 		return state, "", e
 	}
-	if e = json.Unmarshal([]byte(raw), &state); e != nil {
+	if json.Unmarshal([]byte(raw), &state) != nil {
+		state, e = damagedState(ctx, tx, device, "check:"+id)
 		return state, "", e
 	}
 	return state, attempt, nil
@@ -199,7 +200,7 @@ func currentServiceHealth(ctx context.Context, tx *sql.Tx, c HealthCheck, now ti
 
 func evaluateHealth(ctx context.Context, tx *sql.Tx, now time.Time, offline, last int64, gap bool) error {
 	if gap || now.Unix() < last || now.Unix()-last > 45 {
-		if _, e := tx.ExecContext(ctx, `UPDATE health_states SET state_json=json_set(state_json,'$.condition','unknown','$.since',0,'$.samples',0,'$.last_sample',0)`); e != nil {
+		if _, e := tx.ExecContext(ctx, `UPDATE health_states SET state_json=json_set(state_json,'$.condition','unknown','$.since',0,'$.samples',0,'$.last_sample',0) WHERE json_valid(state_json)`); e != nil {
 			return e
 		}
 		if _, e := tx.ExecContext(ctx, "DELETE FROM health_samples"); e != nil {

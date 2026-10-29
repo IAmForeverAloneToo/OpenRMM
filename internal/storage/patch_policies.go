@@ -69,21 +69,44 @@ func scanPatchPolicy(row interface{ Scan(...any) error }) (PatchPolicy, error) {
 	}
 	return p, e
 }
-func patchPoliciesTx(ctx context.Context, tx *sql.Tx) ([]PatchPolicy, error) {
+
+// patchPoliciesTx returns the readable policies and, separately, those whose
+// stored definition cannot be read: one damaged row must not stop patching.
+func patchPoliciesTx(ctx context.Context, tx *sql.Tx) ([]PatchPolicy, []PatchPolicy, error) {
 	rows, e := tx.QueryContext(ctx, "SELECT "+patchPolicyColumns+" FROM patch_policies ORDER BY created_at,id LIMIT 100")
 	if e != nil {
-		return nil, e
+		return nil, nil, e
 	}
 	defer rows.Close()
-	out := []PatchPolicy{}
+	out, damaged := []PatchPolicy{}, []PatchPolicy{}
 	for rows.Next() {
 		p, e := scanPatchPolicy(rows)
+		if errors.Is(e, patching.ErrInvalid) && p.ID != "" {
+			damaged = append(damaged, p)
+			continue
+		}
 		if e != nil {
-			return nil, e
+			return nil, nil, e
 		}
 		out = append(out, p)
 	}
-	return out, rows.Err()
+	return out, damaged, rows.Err()
+}
+
+// pauseDamagedPatchPolicies pauses (once) active policies that cannot be read.
+func pauseDamagedPatchPolicies(ctx context.Context, tx *sql.Tx, damaged []PatchPolicy, now time.Time) error {
+	for _, p := range damaged {
+		if p.State != "active" {
+			continue
+		}
+		if _, e := tx.ExecContext(ctx, "UPDATE patch_policies SET state='paused',revision=revision+1,updated_at=? WHERE id=?", now.Unix(), p.ID); e != nil {
+			return e
+		}
+		if e := auditDevice(ctx, tx, now, "server", "patch_policy_damaged", p.ID, "paused"); e != nil {
+			return e
+		}
+	}
+	return nil
 }
 func (s *Store) PatchPolicies(ctx context.Context) ([]PatchPolicy, error) {
 	tx, e := s.db.BeginTx(ctx, nil)
@@ -91,7 +114,7 @@ func (s *Store) PatchPolicies(ctx context.Context) ([]PatchPolicy, error) {
 		return nil, e
 	}
 	defer tx.Rollback()
-	p, e := patchPoliciesTx(ctx, tx)
+	p, _, e := patchPoliciesTx(ctx, tx)
 	if e != nil {
 		return nil, e
 	}
@@ -157,7 +180,7 @@ func patchConflicts(ctx context.Context, tx *sql.Tx, p PatchPolicy) error {
 	}
 	for _, id := range p.Definition.Devices {
 		var n int
-		if e := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM patch_policies p,json_each(p.definition_json,'$.devices') d WHERE p.id<>? AND p.state='active' AND d.value=?`, p.ID, id).Scan(&n); e != nil {
+		if e := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM patch_policies p,json_each(CASE WHEN json_valid(p.definition_json) THEN p.definition_json ELSE '{}' END,'$.devices') d WHERE p.id<>? AND p.state='active' AND d.value=?`, p.ID, id).Scan(&n); e != nil {
 			return e
 		}
 		if n != 0 {
