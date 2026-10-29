@@ -16,7 +16,8 @@ OpenRMM aims to be a complete, self-hosted RMM that also gives incident responde
 
 ## Next
 
-- **First tagged release (0.1.0).** The release pipeline, upgrade notes and release procedures are in place; the release follows once installs, updates and restores are tested on dedicated machines.
+- **Hardening.** Known limits that matter for larger fleets and long-running servers: agent polling load, proxy support for agents, fixed caps on stored items, and evaluation that tolerates damaged records.
+- **Testing on dedicated machines.** Fresh installs from the README, Let's Encrypt with a public domain, and a dashboard rollback from a deliberately broken release.
 - **Network isolation enforcement.** Isolation is built and runs as a dry run that reports the rules it would apply. Enforcement will be switched on once it is verified on dedicated test machines.
 
 ## Later

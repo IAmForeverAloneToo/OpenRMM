@@ -80,6 +80,10 @@ Only the latest release receives fixes, including security fixes. Pre-releases a
 
 ## Version notes
 
+### 0.1.1
+
+- **The updater updates itself.** After each server update, the updater sidecar replaces itself with the server's version ([SERVER-UPDATES.md](SERVER-UPDATES.md#the-updater-updates-itself)). The 0.1.0 updater cannot do this yet: after updating to 0.1.1 from the dashboard, run `sudo bash install.sh` (without `--image`) once. The **Server updates** page reminds you until it is done.
+
 ### 0.1.0
 
 The first public release.

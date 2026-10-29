@@ -22,7 +22,7 @@ OpenRMM gives one administrator, or a small team of technicians, a single dashbo
 It combines classic RMM functions with the forensic tools a responder needs during an incident: cases with a tamper-evident chain of custody, evidence collection, a live response console, triage packages, fleet-wide hunts and network isolation.
 
 > [!IMPORTANT]
-> OpenRMM is **pre-release software**. Expect breaking changes until the first tagged release, and read [SECURITY.md](SECURITY.md) before exposing a server to the internet.
+> OpenRMM is **young software** (0.x). Releases update in place from the dashboard, but behaviour can still change between versions: read the [version notes](docs/UPGRADING.md#version-notes) before updating, and [SECURITY.md](SECURITY.md) before exposing a server to the internet.
 
 ## Features
 
@@ -84,9 +84,6 @@ The script installs the latest published release (pinned to its exact version); 
 2. In the dashboard, go to **Devices → Add device** and download an installer for one device or for a deployment to many.
 3. On each Windows machine, run `install.cmd` (or `install.cmd /quiet` from Intune, Group Policy or a remote shell). The device appears in **Devices** within a minute.
 
-> [!NOTE]
-> Releases are published from version tags by CI (server image on GHCR, signed agent MSI). Until the first release is out, build the image from source and pass it with `--image`; see [DEVELOPMENT.md](docs/DEVELOPMENT.md).
-
 Running the install command again repairs or reconfigures the installation without touching data. The full guide is in [INSTALL.md](docs/INSTALL.md).
 
 ## Documentation
@@ -100,8 +97,8 @@ Start at the **[documentation index](docs/README.md)**. Frequently used pages:
 
 ## Project status
 
-OpenRMM is under active development towards its first public release. The server and agent described above are working. The roadmap tracks what is still open, notably:
-- the first tagged release, after testing on dedicated machines;
+OpenRMM is released and under active development; see the [releases](https://github.com/IAmForeverAloneToo/OpenRMM/releases). The roadmap tracks what is still open, notably:
+- hardening of the server and the agent for larger fleets;
 - enforcing network isolation, which currently runs as a dry run;
 - agents for platforms other than Windows.
 

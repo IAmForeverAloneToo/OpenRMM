@@ -41,8 +41,6 @@ Only the latest release receives security fixes. While OpenRMM is at 0.x, fixes 
 | Older releases | :x: |
 | Pre-releases | :x: |
 
-Before the first release, the latest commit on `main` receives fixes.
-
 ## Scope
 
 The following are in scope:

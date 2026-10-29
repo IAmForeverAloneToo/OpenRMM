@@ -27,7 +27,7 @@ The script:
 - prints a one-time link for creating the first administrator in the browser.
 
 > [!NOTE]
-> Without `--image`, the script installs the latest release published on GitHub, pinned to its exact image: the registry digest is taken from the release's signed server release file (`ghcr.io/iamforeveralonetoo/openrmm-server:<version>@sha256:<digest>`), so a tag moved in the registry cannot change what is installed. Until the first release is published, build the image from source (see [DEVELOPMENT.md](DEVELOPMENT.md)) and pass its exact tag to `--image`.
+> Without `--image`, the script installs the latest release published on GitHub, pinned to its exact image: the registry digest is taken from the release's signed server release file (`ghcr.io/iamforeveralonetoo/openrmm-server:<version>@sha256:<digest>`), so a tag moved in the registry cannot change what is installed. To run your own build instead, build the image from source (see [DEVELOPMENT.md](DEVELOPMENT.md)) and pass its exact tag to `--image`.
 
 ## Requirements
 
