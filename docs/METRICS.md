@@ -49,7 +49,7 @@ How to read the numbers:
 | 5-minute buckets | up to 48 hours | 24-hour views |
 | Hourly buckets | up to 30 days | 7-day and 30-day views |
 
-- Each resolution is capped at **100,000 buckets across all devices**; the oldest buckets are removed first (ties broken in a stable device and metric order). Larger fleets can therefore keep less than the nominal duration. Buckets with only unavailable observations count towards the cap.
+- Each resolution is bounded so every active device keeps its full retention: the bound is the number of active devices times the buckets one device needs (1,728 five-minute and 2,160 hourly buckets for CPU, memory and disk), plus 10%, and at least **100,000 buckets**. Above it, the oldest buckets are removed first (ties broken in a stable device and metric order). Buckets with only unavailable observations count towards the bound. Old buckets are removed once a minute by the server's housekeeping.
 - Period starts are rounded down to UTC bucket boundaries, so the first bucket can extend slightly beyond the selected period; the current bucket is partial. Actual first and last observation times are returned.
 - A device history query returns at most 2,200 buckets. Fleet reports cover at most 1,000 devices.
 - Pruning runs when new buckets are created and in the server's once-a-minute housekeeping.

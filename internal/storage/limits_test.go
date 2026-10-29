@@ -84,6 +84,38 @@ func TestFinishedSchedulesAndArchivedPoliciesArePruned(t *testing.T) {
 	}
 }
 
+// The metric bound grows with the fleet, so every device keeps its full
+// retention: 100 devices keep more than the 100,000-bucket floor.
+func TestMetricBoundScalesWithFleet(t *testing.T) {
+	s, d, at := actionFixture(t)
+	ctx := context.Background()
+	for _, q := range []string{
+		`WITH RECURSIVE n(v) AS(VALUES(1) UNION ALL SELECT v+1 FROM n WHERE v<99)
+		INSERT INTO devices(id,hostname,os,architecture,enrolled_at,certificate_pem,fingerprint) SELECT printf('%032x',v+1000),'pc','windows','amd64',1,'public','fp'||v FROM n`,
+		`WITH RECURSIVE n(v) AS(VALUES(0) UNION ALL SELECT v+1 FROM n WHERE v<149999)
+		INSERT INTO metric_buckets(device_id,kind,step,bucket,first_at,last_at) SELECT '` + d.ID + `','cpu',300,` + fmt.Sprint(at.Unix()) + `+v,v,v FROM n`,
+	} {
+		if _, e := s.db.Exec(q); e != nil {
+			t.Fatal(e)
+		}
+	}
+	if e := s.PruneMetrics(ctx, at); e != nil {
+		t.Fatal(e)
+	}
+	if n := rowCount(t, s, "SELECT COUNT(*) FROM metric_buckets WHERE step=300"); n != 150000 {
+		t.Fatal("buckets of a 100-device fleet pruned", n)
+	}
+	if _, e := s.db.Exec("UPDATE devices SET revoked_at=1 WHERE id<>?", d.ID); e != nil {
+		t.Fatal(e)
+	}
+	if e := s.PruneMetrics(ctx, at); e != nil {
+		t.Fatal(e)
+	}
+	if n := rowCount(t, s, "SELECT COUNT(*) FROM metric_buckets WHERE step=300"); n != MetricBucketLimit {
+		t.Fatal("bound not back to the floor", n)
+	}
+}
+
 // People's events are kept a year, automatic ones 30 days, live response
 // steps a year, and the total is bounded, oldest automatic events first.
 func TestAuditRetention(t *testing.T) {

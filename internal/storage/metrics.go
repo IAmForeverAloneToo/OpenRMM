@@ -13,7 +13,23 @@ import (
 	"time"
 )
 
-const MetricBucketLimit = 100000 // per resolution, across all devices
+// MetricBucketLimit is the least number of buckets kept per resolution
+// across all devices; the bound grows with the fleet (metricLimit).
+const MetricBucketLimit = 100000
+
+// metricPerDevice is the buckets per device for each resolution: cpu, memory and disk
+// over the retention (2 days of 5-minute buckets, 30 days of hourly ones).
+var metricPerDevice = map[int64]int64{300: 3 * 2 * 288, 3600: 3 * 30 * 24}
+
+// metricLimit bounds a resolution so every active device keeps its full
+// retention, with a margin.
+func metricLimit(ctx context.Context, tx *sql.Tx, step int64) (int64, error) {
+	var devices int64
+	if e := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM devices WHERE revoked_at IS NULL").Scan(&devices); e != nil {
+		return 0, e
+	}
+	return max(MetricBucketLimit, devices*metricPerDevice[step]*11/10), nil
+}
 
 var ErrMetrics = errors.New("invalid metric history request")
 
@@ -111,12 +127,10 @@ func captureMetric(ctx context.Context, tx *sql.Tx, id, kind, status string, raw
 		valid, unknown = 1, 0
 		sum = value.(float64)
 	}
+	// Old buckets are pruned by the housekeeping (PruneMetrics), not on
+	// this write path, which runs for every report.
 	for _, step := range []int64{300, 3600} {
 		bucket := at / step * step
-		var exists int
-		if e = tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM metric_buckets WHERE device_id=? AND kind=? AND step=? AND bucket=?", id, kind, step, bucket).Scan(&exists); e != nil {
-			return e
-		}
 		if _, e = tx.ExecContext(ctx, `INSERT INTO metric_buckets(device_id,kind,step,bucket,valid_count,unknown_count,gap_count,sum_value,min_value,max_value,first_at,last_at)
 		VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(device_id,kind,step,bucket) DO UPDATE SET
 		valid_count=valid_count+excluded.valid_count,unknown_count=unknown_count+excluded.unknown_count,gap_count=gap_count+excluded.gap_count,
@@ -125,11 +139,6 @@ func captureMetric(ctx context.Context, tx *sql.Tx, id, kind, status string, raw
 		max_value=CASE WHEN excluded.max_value IS NULL THEN max_value WHEN max_value IS NULL THEN excluded.max_value ELSE MAX(max_value,excluded.max_value) END,
 		last_at=excluded.last_at`, id, kind, step, bucket, valid, unknown, gap, sum, value, value, at, at); e != nil {
 			return e
-		}
-		if exists == 0 {
-			if e = pruneMetricStep(ctx, tx, step, now); e != nil {
-				return e
-			}
 		}
 	}
 	return nil
@@ -143,8 +152,12 @@ func pruneMetricStep(ctx context.Context, tx *sql.Tx, step int64, now time.Time)
 	if _, e := tx.ExecContext(ctx, "DELETE FROM metric_buckets WHERE step=? AND bucket<?", step, (now.Unix()-age)/step*step); e != nil {
 		return e
 	}
-	_, e := tx.ExecContext(ctx, `DELETE FROM metric_buckets WHERE (device_id,kind,step,bucket) IN
-	(SELECT device_id,kind,step,bucket FROM metric_buckets WHERE step=? ORDER BY bucket,device_id,kind LIMIT (SELECT MAX(COUNT(*)-?,0) FROM metric_buckets WHERE step=?))`, step, MetricBucketLimit, step)
+	limit, e := metricLimit(ctx, tx, step)
+	if e != nil {
+		return e
+	}
+	_, e = tx.ExecContext(ctx, `DELETE FROM metric_buckets WHERE (device_id,kind,step,bucket) IN
+	(SELECT device_id,kind,step,bucket FROM metric_buckets WHERE step=? ORDER BY bucket,device_id,kind LIMIT (SELECT MAX(COUNT(*)-?,0) FROM metric_buckets WHERE step=?))`, step, limit, step)
 	return e
 }
 
