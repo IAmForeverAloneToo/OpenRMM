@@ -120,7 +120,7 @@ For production installs, see [INSTALL.md](INSTALL.md) for certificates.
 - Passwords are hashed with salted Argon2id. Recovery codes and session tokens are stored only as hashes.
 - The authenticator secret is encrypted with AES-256-GCM. The 32-byte key is `/secrets/admin-key.bin`, in the `secrets` volume, separate from the database. A server started directly defaults to `.local/secrets/admin-key.bin`.
 - If an administrator exists and the key is missing or wrong, the server does not start; it never creates a replacement key silently. A local reset also needs the key.
-- The audit log keeps the newest 1,000 events (live-response entries are kept for a year). It never contains submitted passwords, authentication codes or session tokens, and it is not tamper-proof against the server operator.
+- The audit log keeps actions by people (sign-ins, failed sign-ins, administrator and technician actions) for a year and automatic events (agent dispatches and results, schedulers, server tasks) for 30 days; live-response entries are kept for a year. At most 500,000 events are kept, removing the oldest automatic events first. It never contains submitted passwords, authentication codes or session tokens, and it is not tamper-proof against the server operator.
 
 ## Backup
 

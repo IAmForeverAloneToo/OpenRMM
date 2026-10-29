@@ -53,11 +53,36 @@ func audit(ctx context.Context, tx *sql.Tx, now time.Time, actor, action, outcom
 	if _, err := tx.ExecContext(ctx, "INSERT INTO audit_events (occurred_at, actor, action, outcome) VALUES (?, ?, ?, ?)", now.UTC().Format(time.RFC3339Nano), actor, action, outcome); err != nil {
 		return errors.New("cannot record audit event")
 	}
-	// Live response steps without a case (live_*) are their only record and
-	// are kept for a year instead (see SweepEvidence).
-	_, err := tx.ExecContext(ctx, "DELETE FROM audit_events WHERE id <= (SELECT COALESCE(MAX(id), 0) - 1000 FROM audit_events) AND action NOT LIKE 'live\\_%' ESCAPE '\\'")
-	if err != nil {
-		return errors.New("cannot bound audit history")
+	return nil
+}
+
+// Audit retention (PruneAudit): events of people (sign-ins, administrator
+// and technician actions) are kept a year, automatic ones (devices,
+// schedulers, server tasks) 30 days, and at most maxAuditEvents in all,
+// removing the oldest automatic events first. Live response steps without a
+// case (live_*) are their only record and are kept a year (SweepEvidence).
+const (
+	peopleAuditLife    = 365 * 24 * time.Hour
+	automaticAuditLife = 30 * 24 * time.Hour
+	maxAuditEvents     = 500000
+	automaticAudit     = "(actor IN ('server','scheduler') OR actor LIKE 'device:%' OR actor LIKE 'system:%')"
+	liveAuditAction    = `action LIKE 'live\_%' ESCAPE '\'`
+)
+
+func (s *Store) PruneAudit(ctx context.Context, now time.Time) error {
+	at := func(d time.Duration) string { return now.Add(-d).UTC().Format(time.RFC3339Nano) }
+	for _, q := range []struct {
+		query string
+		args  []any
+	}{
+		{"DELETE FROM audit_events WHERE occurred_at<? AND " + automaticAudit + " AND NOT " + liveAuditAction, []any{at(automaticAuditLife)}},
+		{"DELETE FROM audit_events WHERE occurred_at<? AND NOT " + liveAuditAction, []any{at(peopleAuditLife)}},
+		{"DELETE FROM audit_events WHERE id IN (SELECT id FROM audit_events WHERE " + automaticAudit + " AND NOT " + liveAuditAction + " ORDER BY id LIMIT (SELECT MAX(COUNT(*)-?,0) FROM audit_events))", []any{maxAuditEvents}},
+		{"DELETE FROM audit_events WHERE id IN (SELECT id FROM audit_events WHERE NOT " + liveAuditAction + " ORDER BY id LIMIT (SELECT MAX(COUNT(*)-?,0) FROM audit_events))", []any{maxAuditEvents}},
+	} {
+		if _, e := s.db.ExecContext(ctx, q.query, q.args...); e != nil {
+			return e
+		}
 	}
 	return nil
 }

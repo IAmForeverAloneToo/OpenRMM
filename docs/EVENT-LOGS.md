@@ -126,7 +126,7 @@ Event log queries are the agent feature **Event logs** (`event_logs`), on by def
 
 - Queries need a signed-in session with MFA, same-origin requests, the session's `X-CSRF-Token` header and a client-generated query ID.
 - The owner can query every device. Technicians need the **Event logs** permission and the device in their scope; XPath filters and `.evtx` export also need **Incident response**.
-- Audit records contain the account, query and device IDs, channel, server time and outcome. Event messages and XML are never copied into audit records or application logs. The audit log keeps the newest 1,000 records.
+- Audit records contain the account, query and device IDs, channel, server time and outcome. Event messages and XML are never copied into audit records or application logs. Audit records follow the audit log retention ([ADMINISTRATOR.md](ADMINISTRATOR.md)).
 - The server assigns receipt and queue times; event timestamps are data reported by the device.
 
 ## Upgrading

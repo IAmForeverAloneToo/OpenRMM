@@ -57,7 +57,7 @@ OpenRMM includes forensic live response for responders: cases with a tamper-evid
 - Each entry is stored as its exact JSON text with: version, case ID, sequence (1, 2, …), UTC time with nanoseconds, actor, device ID (empty for case-level actions), action, details (text values, keys sorted), evidence (SHA-256, size, name), outcome and the previous entry's hash.
 - **Hash:** lower-case hex SHA-256 of the previous entry's hash, a newline and the entry text. The first entry's previous hash is 64 zeros. The newest hash is the case's **head**.
 - Entries are append-only: database triggers refuse updates and deletes. The server re-verifies the whole chain whenever a case is opened and shows a warning if it does not verify.
-- The custody log is separate from the bounded audit log, which keeps only the newest 1,000 events.
+- The custody log is separate from the audit log and its retention ([ADMINISTRATOR.md](ADMINISTRATOR.md)).
 - Record the head hash outside OpenRMM (ticket, e-mail) at any time; it lets you detect a later rewrite of the chain.
 
 ### Exporting and verifying
@@ -315,7 +315,7 @@ Commands are queued into the case exactly like the case page's actions and colle
 ### Without a case
 
 - Jobs belong to a built-in record (`00000000000000000000000000000000`) that is never listed or reachable as a case.
-- Each step is an audit event (`live_` plus the custody action name, for example `live_action_requested`) instead of a custody entry. These events are kept for a year, outside the audit log's rolling 1,000-event limit.
+- Each step is an audit event (`live_` plus the custody action name, for example `live_action_requested`) instead of a custody entry. These events are kept for a year, outside the audit log's other retention rules.
 - Results are verified like evidence but kept in `scratch/<job>` of the evidence directory, not in the content-addressed store. They are deleted after 24 hours (job status `expired`, outcome `purged`) and count against the evidence quota until then. The job rows (actor, device, action spec, times, hashes) stay in the database.
 - The shell itself is not recorded.
 

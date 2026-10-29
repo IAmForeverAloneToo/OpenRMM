@@ -212,6 +212,9 @@ func Run(ctx context.Context, c config.Server, logger *slog.Logger) error {
 			if e := store.PruneEventQueries(housekeepingCtx, time.Now()); e != nil && housekeepingCtx.Err() == nil {
 				logger.Warn("event query retention cleanup unavailable")
 			}
+			if e := store.PruneAudit(housekeepingCtx, time.Now()); e != nil && housekeepingCtx.Err() == nil {
+				logger.Warn("audit retention cleanup unavailable")
+			}
 			select {
 			case <-housekeepingCtx.Done():
 				return

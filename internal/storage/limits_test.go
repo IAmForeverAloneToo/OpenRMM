@@ -84,6 +84,44 @@ func TestFinishedSchedulesAndArchivedPoliciesArePruned(t *testing.T) {
 	}
 }
 
+// People's events are kept a year, automatic ones 30 days, live response
+// steps a year, and the total is bounded, oldest automatic events first.
+func TestAuditRetention(t *testing.T) {
+	s, _, now := actionFixture(t)
+	ctx := context.Background()
+	tx, e := s.db.BeginTx(ctx, nil)
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, v := range []struct {
+		actor, action string
+		age           time.Duration
+	}{
+		{"admin", "people_recent", 300 * 24 * time.Hour},
+		{"admin", "people_old", 400 * 24 * time.Hour},
+		{"anonymous", "people_recent", 300 * 24 * time.Hour},
+		{"server", "automatic_recent", 20 * 24 * time.Hour},
+		{"device:" + strings.Repeat("a", 32), "automatic_old", 40 * 24 * time.Hour},
+		{"system:rings", "automatic_old", 40 * 24 * time.Hour},
+		{"admin", "live_action_requested", 200 * 24 * time.Hour},
+	} {
+		if e = audit(ctx, tx, now.Add(-v.age), v.actor, v.action, "success"); e != nil {
+			t.Fatal(e)
+		}
+	}
+	if e = tx.Commit(); e != nil {
+		t.Fatal(e)
+	}
+	if e = s.PruneAudit(ctx, now); e != nil {
+		t.Fatal(e)
+	}
+	for action, want := range map[string]int{"people_recent": 2, "people_old": 0, "automatic_recent": 1, "automatic_old": 0, "live_action_requested": 1} {
+		if n := rowCount(t, s, "SELECT COUNT(*) FROM audit_events WHERE action=?", action); n != want {
+			t.Fatal(action, n)
+		}
+	}
+}
+
 // Only live checks count toward the limits; checks of a device revoked for
 // 30 days are removed.
 func TestHealthCheckLimitsCountLiveChecks(t *testing.T) {

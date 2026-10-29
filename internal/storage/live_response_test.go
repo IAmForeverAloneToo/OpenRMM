@@ -176,7 +176,7 @@ func TestLiveResponseLimits(t *testing.T) {
 		return n
 	}
 	live := count("live_%")
-	if count("test_event") > 1000 || live < 4 {
+	if count("test_event") != 1100 || live < 4 {
 		t.Fatal("audit trim", count("test_event"), live)
 	}
 	if e = s.SweepEvidence(ctx, now); e != nil {

@@ -221,7 +221,7 @@ The restore makes sure that nothing from the older snapshot is replayed against 
 | Alerts | Pending samples and email deliveries are deleted, conditions become Unknown and alert email is paused. Existing incidents and acknowledgements remain. Resume email with **Resume email** in **Alert settings** after review. |
 | Agent updates | Queued jobs are cancelled and dispatched jobs become Unknown. Update reports are invalidated until devices report again. A restore cannot reset a device's replay protection. |
 | Case evidence | Unfinished collections end as failed (see [Case evidence](#case-evidence)). |
-| Audit | A `restore_reconciled` entry is added. As always, the audit log keeps the newest 1,000 entries, plus live-response entries for a year. |
+| Audit | A `restore_reconciled` entry is added. The audit log keeps its usual retention ([ADMINISTRATOR.md](ADMINISTRATOR.md)). |
 | Isolation | Isolation or release steps that had not finished end as failed. Check the actual state of isolated devices. |
 
 Before accepting traffic, verify the actual state of endpoints and submit any new work explicitly.
