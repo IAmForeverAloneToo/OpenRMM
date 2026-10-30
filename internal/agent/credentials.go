@@ -3,6 +3,7 @@ package agent
 import (
 	"bytes"
 	"context"
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/tls"
 	"crypto/x509"
@@ -17,17 +18,26 @@ import (
 
 	"github.com/IAmForeverAloneToo/OpenRMM/internal/config"
 	"github.com/IAmForeverAloneToo/OpenRMM/internal/deviceidentity"
+	"github.com/IAmForeverAloneToo/OpenRMM/internal/devicekey"
 	"github.com/IAmForeverAloneToo/OpenRMM/internal/privatefs"
 	"github.com/IAmForeverAloneToo/OpenRMM/internal/protocol"
 )
 
+// credentials is credentials.json in the SYSTEM-only state folder. Version 1
+// kept the private key as plain PEM; version 2 refers to a protected key
+// (in the TPM, or encrypted with DPAPI; see internal/devicekey).
 type credentials struct {
 	Version    int                 `json:"version"`
 	DeviceURL  string              `json:"device_url"`
 	ServerCA   string              `json:"server_ca"`
-	PrivateKey string              `json:"private_key"`
+	PrivateKey string              `json:"private_key,omitempty"`
+	Key        *devicekey.Ref      `json:"key,omitempty"`
 	Credential protocol.Credential `json:"credential"`
 }
+
+// pendingKeyFile names a key that is not certified yet: one being enrolled,
+// or the next key during a renewal. Retries reuse it.
+const pendingKeyFile = "pending-key.json"
 
 func readLimited(path string, limit int64) ([]byte, error) {
 	file, err := os.Open(path)
@@ -124,7 +134,7 @@ func requestWithClient(ctx context.Context, client *http.Client, origin, method,
 	}
 	return nil
 }
-func validateCredential(value protocol.Credential, key *ecdsa.PrivateKey, expectedID string) (tls.Certificate, error) {
+func validateCredential(value protocol.Credential, key crypto.Signer, expectedID string) (tls.Certificate, error) {
 	if !protocol.ValidID(value.DeviceID) || expectedID != "" && value.DeviceID != expectedID {
 		return tls.Certificate{}, errors.New("server returned an unexpected device identity")
 	}
@@ -145,15 +155,11 @@ func validateCredential(value protocol.Credential, key *ecdsa.PrivateKey, expect
 	if _, err := cert.Verify(x509.VerifyOptions{Roots: roots, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}}); err != nil {
 		return tls.Certificate{}, errors.New("device certificate is expired or has an invalid issuer")
 	}
-	keyPEM, err := deviceidentity.KeyPEM(key)
-	if err != nil {
-		return tls.Certificate{}, err
-	}
-	pair, err := tls.X509KeyPair([]byte(value.Certificate), keyPEM)
-	if err != nil {
+	public, ok := key.Public().(*ecdsa.PublicKey)
+	if !ok || !public.Equal(cert.PublicKey) {
 		return tls.Certificate{}, errors.New("issued device certificate does not match the local private key")
 	}
-	return pair, nil
+	return tls.Certificate{Certificate: [][]byte{cert.Raw}, PrivateKey: key, Leaf: cert}, nil
 }
 func saveInitial(path string, value []byte) error {
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
@@ -194,7 +200,7 @@ func (value credentials) save(directory string, replace bool) error {
 	}
 	return nil
 }
-func loadCredentials(directory string) (credentials, *ecdsa.PrivateKey, tls.Certificate, error) {
+func loadCredentials(directory string) (credentials, devicekey.Key, tls.Certificate, error) {
 	encoded, err := readLimited(filepath.Join(directory, "credentials.json"), 32768)
 	if err != nil {
 		return credentials{}, nil, tls.Certificate{}, err
@@ -202,16 +208,22 @@ func loadCredentials(directory string) (credentials, *ecdsa.PrivateKey, tls.Cert
 	var value credentials
 	decoder := json.NewDecoder(bytes.NewReader(encoded))
 	decoder.DisallowUnknownFields()
-	if decoder.Decode(&value) != nil || !errors.Is(decoder.Decode(new(any)), io.EOF) || value.Version != 1 {
+	if decoder.Decode(&value) != nil || !errors.Is(decoder.Decode(new(any)), io.EOF) || !(value.Version == 1 && value.PrivateKey != "" && value.Key == nil || value.Version == 2 && value.PrivateKey == "" && value.Key != nil) {
 		return credentials{}, nil, tls.Certificate{}, errors.New("invalid saved agent credentials")
 	}
 	// Reuse origin validation even when URLs come from persisted local state.
 	if _, err := config.LoadAgent([]string{"-device-server", value.DeviceURL, "-server", value.DeviceURL}, func(string) string { return "" }); err != nil {
 		return credentials{}, nil, tls.Certificate{}, errors.New("invalid saved device server origin")
 	}
-	key, err := deviceidentity.ParseKey([]byte(value.PrivateKey))
-	if err != nil {
-		return credentials{}, nil, tls.Certificate{}, errors.New("invalid saved private key")
+	var key devicekey.Key
+	if value.Version == 1 {
+		plain, e := deviceidentity.ParseKey([]byte(value.PrivateKey))
+		if e != nil {
+			return credentials{}, nil, tls.Certificate{}, errors.New("invalid saved private key")
+		}
+		key = devicekey.Unprotected(plain)
+	} else if key, err = devicekey.Open(*value.Key); err != nil {
+		return credentials{}, nil, tls.Certificate{}, err
 	}
 	pair, err := validateCredential(value.Credential, key, value.Credential.DeviceID)
 	if err != nil {
@@ -260,21 +272,17 @@ func enrollWith(ctx context.Context, c config.Agent, token string, ca []byte, ho
 		if _, err := os.Stat(filepath.Join(c.State, "credentials.json")); err == nil {
 			return "", errors.New("this device is already enrolled")
 		}
-		// A key from an interrupted attempt was never certified; start again.
+		// Agents before version 2 credentials kept an interrupted attempt's
+		// key in plain form; it was never certified.
 		_ = os.Remove(filepath.Join(c.State, "pending-key.pem"))
 		if err := privatefs.ProtectDirectory(c.State); err != nil {
 			return "", errors.New("cannot protect the agent state directory")
 		}
 	}
-	key, err := deviceidentity.NewKey()
+	// The installed service keeps its key in the TPM where it can. Retries
+	// reuse the key of an interrupted attempt.
+	key, err := pendingKey(c.State, c.Service, nil)
 	if err != nil {
-		return "", errors.New("cannot generate device key")
-	}
-	keyPEM, err := deviceidentity.KeyPEM(key)
-	if err != nil {
-		return "", err
-	}
-	if err := saveInitial(filepath.Join(c.State, "pending-key.pem"), keyPEM); err != nil {
 		return "", err
 	}
 	csr, err := deviceidentity.CSR(key)
@@ -288,12 +296,42 @@ func enrollWith(ctx context.Context, c config.Agent, token string, ca []byte, ho
 	if _, err := validateCredential(credential, key, ""); err != nil {
 		return "", err
 	}
-	value := credentials{Version: 1, DeviceURL: c.DeviceURL, ServerCA: string(ca), PrivateKey: string(keyPEM), Credential: credential}
+	ref := key.Ref()
+	value := credentials{Version: 2, DeviceURL: c.DeviceURL, ServerCA: string(ca), Key: &ref, Credential: credential}
 	if err := value.save(c.State, false); err != nil {
 		return "", err
 	}
-	_ = os.Remove(filepath.Join(c.State, "pending-key.pem"))
+	_ = os.Remove(filepath.Join(c.State, pendingKeyFile))
 	return credential.DeviceID, nil
+}
+
+// pendingKey returns the key named in pending-key.json, or creates one and
+// names it there first, so an interrupted request is retried with the same
+// key. A pending key that is already the current one is replaced.
+func pendingKey(state string, tpm bool, current *devicekey.Ref) (devicekey.Key, error) {
+	path := filepath.Join(state, pendingKeyFile)
+	if b, err := readLimited(path, 8192); err == nil {
+		var ref devicekey.Ref
+		if json.Unmarshal(b, &ref) == nil && (current == nil || !devicekey.Same(ref, *current)) {
+			if key, err := devicekey.Open(ref); err == nil {
+				return key, nil
+			}
+		}
+		_ = os.Remove(path)
+	}
+	key, err := devicekey.New(tpm)
+	if err != nil {
+		return nil, err
+	}
+	b, err := json.Marshal(key.Ref())
+	if err == nil {
+		err = saveInitial(path, b)
+	}
+	if err != nil {
+		_ = key.Delete()
+		return nil, errors.New("cannot record the new device key")
+	}
+	return key, nil
 }
 
 // Connect checks the saved identity once; Run schedules heartbeats.
@@ -324,23 +362,76 @@ func Renew(ctx context.Context, c config.Agent) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	csr, err := deviceidentity.CSR(key)
+	request := func(k devicekey.Key) (protocol.Credential, error) {
+		var result protocol.Credential
+		csr, err := deviceidentity.CSR(k)
+		if err == nil {
+			err = requestJSON(ctx, c, &tls.Config{MinVersion: tls.VersionTLS13, RootCAs: roots, Certificates: []tls.Certificate{pair}}, value.DeviceURL, "POST", "/api/v1/agent/renew", protocol.Renewal{CSR: csr}, &result)
+		}
+		if err == nil && result.DeviceCA != value.Credential.DeviceCA {
+			err = errors.New("renewal attempted to replace the trusted device issuer")
+		}
+		return result, err
+	}
+	// Each renewal moves to a new key (version 2 credentials only, so an
+	// agent rolled back to a release without them still reads the file).
+	next := key
+	if value.Version == 2 {
+		if next, err = pendingKey(c.State, c.Service, value.Key); err != nil {
+			return "", err
+		}
+	}
+	result, err := request(next)
+	if err != nil && next != key && (errors.Is(err, ErrDeviceRejected) || errors.Is(err, ErrRequestRejected)) {
+		// Servers before 0.1.4 renew only the key already in use.
+		next = key
+		result, err = request(key)
+	}
 	if err != nil {
 		return "", err
 	}
-	var result protocol.Credential
-	if err := requestJSON(ctx, c, &tls.Config{MinVersion: tls.VersionTLS13, RootCAs: roots, Certificates: []tls.Certificate{pair}}, value.DeviceURL, "POST", "/api/v1/agent/renew", protocol.Renewal{CSR: csr}, &result); err != nil {
-		return "", err
-	}
-	if result.DeviceCA != value.Credential.DeviceCA {
-		return "", errors.New("renewal attempted to replace the trusted device issuer")
-	}
-	if _, err := validateCredential(result, key, value.Credential.DeviceID); err != nil {
-		return "", err
+	// A certificate for the current key (an older server, or one that is not
+	// due yet) keeps the current key; the pending one is used next time.
+	adopted := next
+	if _, err := validateCredential(result, next, value.Credential.DeviceID); err != nil {
+		if _, err := validateCredential(result, key, value.Credential.DeviceID); err != nil {
+			return "", err
+		}
+		adopted = key
 	}
 	value.Credential = result
+	if adopted != key {
+		ref := adopted.Ref()
+		value.Key = &ref
+	}
 	if err := value.save(c.State, true); err != nil {
 		return "", err
 	}
+	if adopted != key {
+		_ = os.Remove(filepath.Join(c.State, pendingKeyFile))
+		// A TPM key left behind if this fails holds no certificate.
+		_ = key.Delete()
+	}
 	return result.DeviceID, nil
+}
+
+// protectCredentials moves version 1 credentials (a plain key) to version 2:
+// the same key, encrypted with DPAPI. The next renewal moves to a new key,
+// in the TPM for the installed service.
+func protectCredentials(state string) (bool, error) {
+	value, _, _, err := loadCredentials(state)
+	if err != nil || value.Version != 1 || runtime.GOOS != "windows" {
+		return false, err
+	}
+	plain, err := deviceidentity.ParseKey([]byte(value.PrivateKey))
+	if err != nil {
+		return false, err
+	}
+	key, err := devicekey.Protect(plain)
+	if err != nil {
+		return false, err
+	}
+	ref := key.Ref()
+	value.Version, value.PrivateKey, value.Key = 2, "", &ref
+	return true, value.save(state, true)
 }

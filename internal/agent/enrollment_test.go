@@ -79,8 +79,11 @@ func TestEnrollmentSavedIdentityRenewalAndTLSIsolation(t *testing.T) {
 	if strings.Contains(string(encoded), token) {
 		t.Fatal("enrollment token retained in agent credentials")
 	}
-	if _, err := os.Stat(filepath.Join(c.State, "pending-key.pem")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(c.State, pendingKeyFile)); !os.IsNotExist(err) {
 		t.Fatal("pending key not cleaned after successful persistence")
+	}
+	if strings.Contains(string(encoded), "PRIVATE KEY") {
+		t.Fatal("private key stored in plain form")
 	}
 	if actual, err := Renew(ctx, c); err != nil || actual != id {
 		t.Fatalf("safe early renewal check failed: %v", err)

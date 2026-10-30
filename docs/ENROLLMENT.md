@@ -112,7 +112,7 @@ When the installed service starts without an identity and finds `%ProgramData%\O
 
 1. restricts the data folder to SYSTEM and Administrators again;
 2. checks the file (version 1, a 43-character token, two HTTPS origins, a valid CA or none);
-3. enrolls into its state folder, discarding a `pending-key.pem` left by an interrupted attempt, and saves its credentials with the addresses and CA from the file;
+3. enrolls into its state folder, reusing the key of an interrupted attempt (named in `pending-key.json`), and saves its credentials with the addresses and CA from the file;
 4. deletes the file and starts normally.
 
 Failures are retried every minute, or every 15 minutes when the server rejects the token (for example used up, expired or revoked). The file is read again on every attempt, so replacing it takes effect at the next retry. A service that already has an identity never enrolls again; it only removes a leftover file. Without an identity and without the file, the service has no credentials and stops with an error.
@@ -152,7 +152,9 @@ Beyond the token limits, downloads are refused until a deployment is revoked or 
 
 - The agent creates an ECDSA P-256 key locally and sends a signed certificate request. The server checks the signature and uses only the public key; requested subjects, names and privileges are ignored. The server assigns a random device ID and issues a client-authentication-only certificate.
 - The agent's state folder is protected before any key is written. For the installed service, the data folder is accessible only to SYSTEM and Administrators.
-- `credentials.json` in the state folder holds the private key, the issued certificate, the device CA, the server trust (empty for system trust) and the device address. The token is not kept. Copying this file clones the device identity, so protect it.
+- The installed service creates its key in the machine's TPM (through the Windows Platform Crypto Provider) where it can: the key never leaves the TPM and cannot be copied. Without a usable TPM, and for console agents, the key is a software key encrypted with Windows DPAPI for the account the agent runs as, so a copied file is useless on another machine.
+- `credentials.json` in the state folder holds a reference to the key (the TPM key's name, or the DPAPI-encrypted key), the issued certificate, the device CA, the server trust (empty for system trust) and the device address. The token is not kept.
+- Agents enrolled before version 0.1.4 kept the key as plain text in this file. Ten minutes after an updated agent starts (long after an update could still be rolled back) it encrypts the existing key with DPAPI; its next renewal moves it to a new key, in the TPM where available.
 - The server stores public certificates and fingerprints in its database. Its device CA signing material is `/secrets/device-ca/authority.pem` (mode 0600, owned by the server user). The CA fingerprint is bound to the database; missing or mismatched CA material prevents startup. This CA is separate from the HTTPS certificate authority and from the administrator encryption key.
 
 ## Certificate renewal
@@ -160,11 +162,11 @@ Beyond the token limits, downloads are refused until a deployment is revoked or 
 | Item | Value |
 | --- | --- |
 | Device certificate lifetime | 30 days, capped by the device CA's expiry |
-| Renewal window | Within 7 days of expiry, with the same key |
-| Overlap after renewal | The previous certificate stays valid for 5 minutes (still subject to revocation) |
+| Renewal window | Within 7 days of expiry, with a new key |
+| Overlap after renewal | The previous certificate stays valid for 2 hours (still subject to revocation) |
 | Device CA lifetime | 5 years; CA rotation is not implemented |
 
-The agent renews automatically as part of its heartbeat loop. It validates the new certificate's issuer, identity and key before it replaces its credentials. A retry after a lost response within the overlap window returns the already issued replacement. After expiry, the device needs re-enrollment.
+The agent renews automatically as part of its heartbeat loop. Each renewal moves to a new key: the agent creates it and names it in `pending-key.json` before asking, so a retry reuses it, and removes the old key (from the TPM, if it was there) only after the new credentials are saved. It validates the new certificate's issuer, identity and key before it replaces its credentials. A retry after a lost response within the overlap window (agents retry hourly) returns the already issued replacement. Servers before 0.1.4 renew only the key in use; the agent then keeps its key until the next renewal. After expiry, the device needs re-enrollment.
 
 Replacing the CA of the server's HTTPS certificate (for example a new development CA) invalidates the server trust that agents saved; those devices need re-enrollment. Never bypass verification or edit credentials to accept an unknown issuer.
 

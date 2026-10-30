@@ -3,6 +3,7 @@ package deviceidentity
 
 import (
 	"bytes"
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -58,7 +59,7 @@ func serial() (*big.Int, error) {
 	}
 	return value.Add(value, big.NewInt(1)), nil
 }
-func CSR(key *ecdsa.PrivateKey) (string, error) {
+func CSR(key crypto.Signer) (string, error) {
 	der, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{}, key)
 	if err != nil {
 		return "", errors.New("cannot create device certificate request")

@@ -124,20 +124,31 @@ func TestCertificateRenewalOverlapExpiryAndRevocation(t *testing.T) {
 	if err != nil || early.Certificate != original.Certificate {
 		t.Fatal("early renewal changed the certificate")
 	}
-	wrong := request(t, token)
-	if _, err := service.Renew(ctx, connection, protocol.Renewal{CSR: wrong.CSR}); !errors.Is(err, storage.ErrAuthentication) {
-		t.Fatal("renewal accepted another device key")
+	// Agents move to a new key at each renewal.
+	rotated := request(t, token)
+	if early, err := service.Renew(ctx, connection, protocol.Renewal{CSR: rotated.CSR}); err != nil || early.Certificate != original.Certificate {
+		t.Fatal("early renewal with a new key changed the certificate")
 	}
 	*now = now.Add(24 * 24 * time.Hour)
-	renewed, err := service.Renew(ctx, connection, protocol.Renewal{CSR: input.CSR})
+	renewed, err := service.Renew(ctx, connection, protocol.Renewal{CSR: rotated.CSR})
 	if err != nil || renewed.Certificate == original.Certificate || renewed.DeviceID != original.DeviceID {
 		t.Fatalf("renewal failed: %v", err)
 	}
-	retry, err := service.Renew(ctx, connection, protocol.Renewal{CSR: input.CSR})
+	cert, _ := deviceidentity.ParseCertificate(renewed.Certificate)
+	csr, _ := deviceidentity.ParseCSR(rotated.CSR)
+	if cert == nil || string(cert.RawSubjectPublicKeyInfo) != string(csr.RawSubjectPublicKeyInfo) {
+		t.Fatal("renewed certificate is not for the new key")
+	}
+	retry, err := service.Renew(ctx, connection, protocol.Renewal{CSR: rotated.CSR})
 	if err != nil || retry.Certificate != renewed.Certificate {
 		t.Fatal("lost-response retry was not idempotent")
 	}
-	*now = now.Add(5 * time.Minute)
+	// An agent that lost the reply retries an hour later.
+	*now = now.Add(time.Hour)
+	if again, err := service.Renew(ctx, connection, protocol.Renewal{CSR: rotated.CSR}); err != nil || again.Certificate != renewed.Certificate {
+		t.Fatal("lost-response retry within the overlap failed")
+	}
+	*now = now.Add(time.Hour)
 	if _, err := service.Authenticate(ctx, connection); !errors.Is(err, storage.ErrAuthentication) {
 		t.Fatal("superseded certificate survived overlap")
 	}

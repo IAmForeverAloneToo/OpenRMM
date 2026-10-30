@@ -85,13 +85,22 @@ type heartbeatSession struct {
 	desktop desktopRelay
 	// proxyNote is the proxy last logged (proxy.go).
 	proxyNote string
+	// started and protected time the move of a plain device key into
+	// protected storage (protectAfter).
+	started   time.Time
+	protected bool
 }
+
+// protectAfter delays moving version 1 credentials to version 2 until an
+// agent update has long passed its health check (90 seconds), so the update
+// can no longer be rolled back to an agent that cannot read them.
+const protectAfter = 10 * time.Minute
 
 func newHeartbeatSession(c config.Agent, metadata protocol.Heartbeat) (*heartbeatSession, error) {
 	if !metadata.Valid() {
 		return nil, errors.New("heartbeat collection currently requires valid Windows x64 metadata")
 	}
-	s := &heartbeatSession{config: c, metadata: metadata, now: time.Now, logger: slog.Default()}
+	s := &heartbeatSession{config: c, metadata: metadata, now: time.Now, logger: slog.Default(), started: time.Now()}
 	if err := s.reload(); err != nil {
 		return nil, err
 	}
@@ -163,6 +172,14 @@ func (s *heartbeatSession) pulse(ctx context.Context) error {
 		}
 	}
 	err := s.heartbeat(ctx)
+	if err == nil && !s.protected && now.Sub(s.started) >= protectAfter {
+		s.protected = true
+		if moved, e := protectCredentials(s.config.State); e != nil {
+			s.logger.Warn("cannot protect the device key; it stays as it is until the next start", "reason", e.Error())
+		} else if moved {
+			s.logger.Info("device key encrypted with DPAPI; the next certificate renewal moves to a new key")
+		}
+	}
 	if err == nil && s.config.Service {
 		healthCtx, cancel := context.WithTimeout(ctx, time.Second)
 		_ = agentupdate.NewClient().Healthy(healthCtx, Version)

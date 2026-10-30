@@ -316,8 +316,11 @@ func (s *Service) Renew(ctx context.Context, state *tls.ConnectionState, input p
 	if err != nil {
 		return protocol.Credential{}, err
 	}
+	// The request may name a new key: agents move to a new key at each
+	// renewal. The signed request proves possession of it; the connection's
+	// certificate authenticates the device.
 	csr, err := deviceidentity.ParseCSR(input.CSR)
-	if err != nil || !bytes.Equal(csr.RawSubjectPublicKeyInfo, state.PeerCertificates[0].RawSubjectPublicKeyInfo) {
+	if err != nil {
 		return protocol.Credential{}, storage.ErrAuthentication
 	}
 	now := s.now()

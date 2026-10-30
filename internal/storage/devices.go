@@ -107,6 +107,11 @@ func (s *Store) ActiveDevice(ctx context.Context, id, fingerprint string, now ti
 	}
 	return d, nil
 }
+
+// renewalOverlap is how long a renewed device's previous certificate is
+// still accepted.
+const renewalOverlap = 2 * time.Hour
+
 func (s *Store) RenewDevice(ctx context.Context, id, oldFingerprint, newFingerprint, cert string, now time.Time) (string, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -122,13 +127,16 @@ func (s *Store) RenewDevice(ctx context.Context, id, oldFingerprint, newFingerpr
 	if err != nil {
 		return "", errors.New("cannot inspect renewal state")
 	}
+	// The previous certificate stays valid for renewalOverlap, so an agent
+	// whose reply was lost gets the stored certificate at its next attempt
+	// (agents retry a failed renewal hourly).
 	if oldFingerprint == previous && until > now.Unix() {
 		return persisted, nil
 	} // Lost-response retry within bounded overlap.
 	if current != oldFingerprint {
 		return "", ErrAuthentication
 	}
-	if _, err := tx.ExecContext(ctx, "UPDATE devices SET previous_fingerprint=fingerprint,previous_until=?,fingerprint=?,certificate_pem=? WHERE id=?", now.Add(5*time.Minute).Unix(), newFingerprint, cert, id); err != nil {
+	if _, err := tx.ExecContext(ctx, "UPDATE devices SET previous_fingerprint=fingerprint,previous_until=?,fingerprint=?,certificate_pem=? WHERE id=?", now.Add(renewalOverlap).Unix(), newFingerprint, cert, id); err != nil {
 		return "", errors.New("cannot store renewed certificate")
 	}
 	if err := auditDevice(ctx, tx, now, "device:"+id, "device_certificate_renewed", id, "success"); err != nil {

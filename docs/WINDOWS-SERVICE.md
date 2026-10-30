@@ -105,7 +105,7 @@ Get-Content "$env:ProgramData\OpenRMM Agent\logs\agent.log" -Tail 30
 
 Review the protected log and folder permissions. Do not disable TLS verification or grant broad directory access to work around a failure.
 
-**Console debugging.** Stop the service first, then run the installed executable from an administrator terminal with `-run -state "$env:ProgramData\OpenRMM Agent\state"`. Stop that console before starting the service again.
+**Console debugging.** Stop the service first, then run the installed executable as SYSTEM with `-run -state "$env:ProgramData\OpenRMM Agent\state"` (the state folder and the device key belong to SYSTEM; an administrator account cannot use them). Stop that console before starting the service again.
 
 **After a Windows restart.** The service starts automatically (delayed start) and retries until the server is reachable. The local development server does not start with Windows; start it with `.\scripts\local.ps1 -Action up`, and the device returns to **Online** without enrolling again.
 

@@ -248,6 +248,7 @@ Agent state on each device is separate from server backups.
 
 - `%ProgramData%\OpenRMM Agent` holds the device credentials, local journals, the update journal with its replay counter, and the rollback package. Back it up with a protected Windows backup process, and stop the agent service for a consistent copy.
 - Never restore a lower update replay counter on purpose. Restoring an old disk image can do this too, so protect device backups.
+- The device key is in the TPM or encrypted for this Windows installation (DPAPI). Restoring the folder onto another machine or a reinstalled Windows, or an image older than the last certificate renewal (the agent moves to a new key at each renewal and deletes the old TPM key), leaves an identity the agent cannot use: reinstall with an installer from **Add device** and revoke the old device entry.
 - Windows Update and other local journals are kept across agent updates. On startup the agent marks interrupted jobs Unknown and never replays them; restoring old journals is not a rollback of Windows updates.
 - Agent installs, updates and uninstalls keep this folder and the local feature locks under `HKLM\SOFTWARE\Policies\OpenRMM\Agent`. Feature switches set per monitoring policy are restored with the server database.
 

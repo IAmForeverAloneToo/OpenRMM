@@ -75,10 +75,10 @@ Job workers (services, processes, event logs, files, scripts, Windows Update, ag
 
 ## Automatic certificate renewal
 
-- Before each heartbeat the agent checks its certificate's expiry. Within seven days of expiry it calls the authenticated renewal endpoint, validates and saves the replacement, and rebuilds its transport with it. The identity and private key stay the same.
+- Before each heartbeat the agent checks its certificate's expiry. Within seven days of expiry it calls the authenticated renewal endpoint with a new key, validates and saves the replacement, and rebuilds its transport with it. The identity stays the same ([ENROLLMENT.md](ENROLLMENT.md#certificate-renewal)).
 - A failed renewal is logged and retried hourly; it never prevents the heartbeat from being sent.
 - If the issuing CA's own expiry prevents extending the certificate beyond the renewal window, successful checks are spaced at least six hours apart.
-- After a renewal the server accepts the previous certificate for five more minutes, in case the response was lost. If an outage or local disk failure prevents obtaining or saving the replacement for longer than that, an administrator-authorized recovery may be needed; see [ENROLLMENT.md](ENROLLMENT.md).
+- After a renewal the server accepts the previous certificate for two more hours, in case the response was lost; the agent's hourly retry then receives the stored replacement. If an outage or local disk failure prevents obtaining or saving the replacement for longer than that, an administrator-authorized recovery may be needed; see [ENROLLMENT.md](ENROLLMENT.md).
 
 The server's clock decides certificate validity. If the device clock is outside the certificate's validity window, the agent logs a warning (at most hourly) and keeps sending heartbeats. A certificate that has actually expired is rejected by the server and needs the recovery procedure in [ENROLLMENT.md](ENROLLMENT.md).
 
