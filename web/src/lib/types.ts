@@ -759,7 +759,7 @@ export type EvidenceCollection = {
   created_at: number;
   finished_at: number | null;
   kind: "file" | "transcript";
-  source: "file" | "hive" | "action" | "evtx" | "triage";
+  source: "file" | "hive" | "action" | "evtx" | "triage" | "ntfs";
   // Event XPath of an event log export ("" or absent: the whole channel).
   query?: string;
   action?: string;

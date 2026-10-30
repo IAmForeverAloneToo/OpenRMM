@@ -186,6 +186,9 @@ func registerLiveResponseAPI(mux *http.ServeMux, a *api, h *terminal.Hub) {
 		}
 		if c.Source == "triage" {
 			id, e = a.store.QueueTriage(r.Context(), caseID, device, r.PathValue("session"), triage, s.Actor(), now)
+		} else if c.Source == "ntfs" {
+			volumes, all, _ := protocol.ParseNTFSQuery(c.Query)
+			id, e = a.store.QueueNTFS(r.Context(), caseID, device, r.PathValue("session"), volumes, all, s.Actor(), now)
 		} else if c.Source == "evtx" {
 			id, e = a.store.QueueEventExport(r.Context(), caseID, device, r.PathValue("session"), c.Path, c.Query, s.Actor(), now)
 		} else {
@@ -200,6 +203,9 @@ func registerLiveResponseAPI(mux *http.ServeMux, a *api, h *terminal.Hub) {
 			if c.Source == "triage" {
 				label = "Triage package " + triage.Name
 			}
+			if c.Source == "ntfs" {
+				label = "NTFS artifacts"
+			}
 			if action != nil {
 				label = action.Label()
 			}
@@ -211,6 +217,8 @@ func registerLiveResponseAPI(mux *http.ServeMux, a *api, h *terminal.Hub) {
 			apiError(w, http.StatusConflict, "agent", "The device's agent cannot run this action yet; update it to the current release.")
 		case errors.Is(e, storage.ErrTriageUnsupported):
 			apiError(w, http.StatusConflict, "agent", "The device's agent cannot collect triage packages yet; update it to the current release.")
+		case errors.Is(e, storage.ErrNTFSUnsupported):
+			apiError(w, http.StatusConflict, "agent", "The device's agent cannot collect NTFS artifacts yet; update it to the current release.")
 		case errors.Is(e, storage.ErrEventExport):
 			apiError(w, http.StatusConflict, "agent", "The device's agent cannot export event logs yet; update it to the current release.")
 		case errors.Is(e, storage.ErrEvidence):

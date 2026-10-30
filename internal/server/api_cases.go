@@ -104,6 +104,9 @@ func registerCasesAPI(mux *http.ServeMux, a *api) {
 			Filter *protocol.EventFilter `json:"filter"`
 			// Profile names a triage profile for source "triage".
 			Profile string `json:"profile"`
+			// Volumes are drive letters (C:) for source "ntfs"; none means
+			// the system drive, "all" every fixed NTFS drive.
+			Volumes []string `json:"volumes"`
 		}
 		if !decodeJSON(w, r, &in, 16*1024) {
 			return
@@ -133,11 +136,26 @@ func registerCasesAPI(mux *http.ServeMux, a *api) {
 				return
 			}
 			id, e = a.store.QueueTriage(r.Context(), r.PathValue("case"), in.DeviceID, "", p, s.Actor(), time.Now())
+		} else if in.Source == "ntfs" {
+			all := len(in.Volumes) == 1 && in.Volumes[0] == protocol.NTFSAll
+			volumes, _, ok := protocol.ParseNTFSQuery(protocol.NTFSQuery(false, in.Volumes))
+			if !ok && !all || len(in.Volumes) > 26 {
+				apiError(w, http.StatusBadRequest, "invalid_request", "Choose drive letters such as C:, or all fixed drives.")
+				return
+			}
+			if all {
+				volumes = nil
+			}
+			id, e = a.store.QueueNTFS(r.Context(), r.PathValue("case"), in.DeviceID, "", volumes, all, s.Actor(), time.Now())
 		} else {
 			id, e = a.store.QueueEvidenceSource(r.Context(), r.PathValue("case"), in.DeviceID, in.Source, in.Path, s.Actor(), time.Now())
 		}
 		if errors.Is(e, storage.ErrTriageUnsupported) {
 			apiError(w, http.StatusConflict, "agent", "The device's agent cannot collect triage packages yet; update it to the current release.")
+			return
+		}
+		if errors.Is(e, storage.ErrNTFSUnsupported) {
+			apiError(w, http.StatusConflict, "agent", "The device's agent cannot collect NTFS artifacts yet; update it to the current release.")
 			return
 		}
 		if errors.Is(e, storage.ErrEventExport) {

@@ -64,6 +64,8 @@ const Help = `Built-in commands (anything else is typed into the PowerShell cons
   evtx <channel> [<xpath>]          export an event log as .evtx, whole or matching
                                     an XPath such as "*[System[EventID=4624]]"
   triage [<profile>]                collect a triage package (default: Full triage)
+  ntfs [<drive> ... | all]          collect $MFT, $LogFile and the USN journal raw, with
+                                    parsed timelines (default: the system drive)
   put <tool> <path> [-overwrite]    write a tool from the tool library to the device
   run <script> [Name=Value ...]     run a library script as SYSTEM
   hunt [-files] <indicator ...>     search this device for indicators: hashes, names,
@@ -193,6 +195,17 @@ func Parse(line string) (Command, error) {
 		if len(args) == 1 {
 			c.Path = args[0]
 		}
+	case "ntfs":
+		c.Source, c.Path = "ntfs", "NTFS artifacts"
+		if len(args) == 1 && strings.EqualFold(args[0], protocol.NTFSAll) {
+			c.Query = protocol.NTFSAll
+			break
+		}
+		volumes, _, ok := protocol.ParseNTFSQuery(protocol.NTFSQuery(false, args))
+		if !ok || len(args) > 26 {
+			return c, usage("Usage: ntfs [<drive> ...|all], for example ntfs, ntfs D: or ntfs all")
+		}
+		c.Query = protocol.NTFSQuery(false, volumes)
 	case "evtx":
 		if len(args) < 1 || len(args) > 2 || !eventlogs.ValidChannel(args[0]) {
 			return c, usage(`Usage: evtx <channel> [<xpath>], for example evtx Security "*[System[EventID=4624]]"`)

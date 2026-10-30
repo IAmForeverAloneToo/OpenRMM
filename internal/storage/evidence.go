@@ -109,6 +109,8 @@ func (j EvidenceJob) Name() string {
 		return "eventlog-" + strings.NewReplacer("/", "-", " ", "-", "%", "-").Replace(j.Path) + ".evtx"
 	case j.Source == "triage":
 		return "triage-" + safeName(j.Path) + "-" + j.ID[:min(8, len(j.ID))] + ".zip"
+	case j.Source == "ntfs":
+		return "ntfs-" + j.ID[:min(8, len(j.ID))] + ".zip"
 	}
 	// An alternate data stream (file.txt:Zone.Identifier) becomes
 	// file.txt_Zone.Identifier.
@@ -320,6 +322,9 @@ func (s *Store) queueJob(ctx context.Context, caseID, deviceID, source, path, qu
 	if source == "triage" {
 		details["source"], details["items"] = "triage package", query
 	}
+	if source == "ntfs" {
+		details["source"], details["volumes"] = "NTFS artifacts", ntfsVolumesText(query)
+	}
 	if action != "" {
 		details, name = map[string]string{"job": id, "action": path, "spec": action}, "action_requested"
 	}
@@ -417,7 +422,7 @@ func (s *Store) DispatchEvidence(ctx context.Context, device, fp string, now tim
 		// The whole log is exported before the upload starts.
 		window = actionStartWindow
 	}
-	if j.Source == "triage" {
+	if j.Source == "triage" || j.Source == "ntfs" {
 		// The whole package is read before the upload starts.
 		window = triageStartWindow
 	}
@@ -444,7 +449,7 @@ func (s *Store) DispatchEvidence(ctx context.Context, device, fp string, now tim
 		return out, e
 	}
 	q.ID, q.DeviceID, q.Path, q.ChunkSize, q.Resumed = j.ID, device, j.Path, j.ChunkSize, j.Status != "queued"
-	if j.Source == "hive" || j.Source == "evtx" || j.Source == "triage" {
+	if j.Source == "hive" || j.Source == "evtx" || j.Source == "triage" || j.Source == "ntfs" {
 		q.Source, q.Query = j.Source, j.Query
 	}
 	if j.Action != "" {
@@ -567,7 +572,7 @@ func sameSource(a, b string) bool {
 		return false
 	}
 	// A saved hive or exported log is a new file each time: never resumed.
-	return x.Method == y.Method && x.Snapshot == y.Snapshot && (x.Method != "registry_save" && x.Method != "export" && x.Method != "triage" || a == "")
+	return x.Method == y.Method && x.Snapshot == y.Snapshot && (x.Method != "registry_save" && x.Method != "export" && x.Method != "triage" && x.Method != "ntfs" || a == "")
 }
 
 func utf8Text(s string) bool {
@@ -830,6 +835,9 @@ func (s *Store) VerifyEvidence(ctx context.Context, now func() time.Time) (bool,
 	if j.Source == "triage" {
 		details["source"] = "triage package"
 	}
+	if j.Source == "ntfs" {
+		details["source"] = "NTFS artifacts"
+	}
 	if j.Source == "evtx" {
 		details["source"] = "event log"
 		var query string
@@ -951,7 +959,7 @@ const maxStreamCollections = 16
 // shadow copy are not queued (each would need its own copy); they are
 // collected by path when needed. Streams left out are named in details.
 func streamPlan(ctx context.Context, tx *sql.Tx, j EvidenceJob, m protocol.EvidenceMeta, details map[string]string) ([]protocol.EvidenceStream, error) {
-	if j.Source == "hive" || j.Source == "evtx" || j.Source == "triage" || j.ParentID != "" || strings.Contains(j.Path[2:], ":") || m.Method == "shadow_copy" || j.CaseID == LiveCase {
+	if j.Source == "hive" || j.Source == "evtx" || j.Source == "triage" || j.Source == "ntfs" || j.ParentID != "" || strings.Contains(j.Path[2:], ":") || m.Method == "shadow_copy" || j.CaseID == LiveCase {
 		return nil, nil
 	}
 	var active int

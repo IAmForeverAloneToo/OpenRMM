@@ -168,3 +168,35 @@ func (s *Store) QueueTriage(ctx context.Context, caseID, deviceID, session strin
 	}
 	return s.queueJob(ctx, caseID, deviceID, "triage", p.Name, protocol.TriageQuery(p.Items), "", session, actor, now)
 }
+
+// ErrNTFSUnsupported: the device's agent does not collect NTFS artifacts.
+var ErrNTFSUnsupported = errors.New("the device's agent cannot collect NTFS artifacts; update it")
+
+// QueueNTFS asks a device for an NTFS artifact package of the system drive
+// (no volumes), the named drives or all fixed NTFS drives, into a case or
+// (with a live response session) LiveCase.
+func (s *Store) QueueNTFS(ctx context.Context, caseID, deviceID, session string, volumes []string, all bool, actor string, now time.Time) (string, error) {
+	query := protocol.NTFSQuery(all, volumes)
+	if _, _, ok := protocol.ParseNTFSQuery(query); !ok || session != "" && !protocol.ValidID(session) || session == "" && caseID == LiveCase {
+		return "", ErrEvidence
+	}
+	var active int
+	if e := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM devices WHERE id=? AND revoked_at IS NULL`, deviceID).Scan(&active); e != nil || active != 1 {
+		return "", ErrEvidence
+	}
+	if !s.HasAbility(ctx, deviceID, protocol.AbilityNTFS) {
+		return "", ErrNTFSUnsupported
+	}
+	return s.queueJob(ctx, caseID, deviceID, "ntfs", "NTFS "+ntfsVolumesText(query), query, "", session, actor, now)
+}
+
+// ntfsVolumesText describes an NTFS query for people.
+func ntfsVolumesText(query string) string {
+	switch query {
+	case "":
+		return "system drive"
+	case protocol.NTFSAll:
+		return "all fixed drives"
+	}
+	return strings.ReplaceAll(query, ",", ", ")
+}

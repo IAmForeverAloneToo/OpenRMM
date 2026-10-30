@@ -92,7 +92,7 @@ func (s *heartbeatSession) runEvidence(ctx context.Context, deny []string, logge
 				longMu.Unlock()
 				continue
 			}
-			if evidenceJobValid(*d.Job) && s.boundHere(d.Job.DeviceID) && (d.Job.Source == "triage" || d.Job.Action != nil && d.Job.Action.Kind == "hunt") {
+			if evidenceJobValid(*d.Job) && s.boundHere(d.Job.DeviceID) && (d.Job.Source == "triage" || d.Job.Source == "ntfs" || d.Job.Action != nil && d.Job.Action.Kind == "hunt") {
 				longMu.Lock()
 				if !inLong[d.Job.ID] {
 					select {
@@ -179,8 +179,13 @@ func triageQuery(q string) bool {
 	return ok
 }
 
+func ntfsQuery(q string) bool {
+	_, _, ok := protocol.ParseNTFSQuery(q)
+	return ok
+}
+
 func evidenceJobValid(q protocol.EvidenceJob) bool {
-	return protocol.ValidID(q.ID) && q.ChunkSize > 0 && q.ChunkSize <= 64<<20 && q.MaxSize > 0 && len(q.Path) <= 4096 && q.Path != "" && (q.Source == "" && q.Action == nil || q.Source == "hive" && q.Action == nil && protocol.ValidHive(q.Path) || q.Source == "evtx" && q.Action == nil && eventlogs.ValidChannel(q.Path) && eventlogs.ValidExportQuery(q.Query) || q.Source == "triage" && q.Action == nil && len(q.Path) <= 100 && triageQuery(q.Query) || q.Source == "action" && q.Action != nil && q.Action.Valid())
+	return protocol.ValidID(q.ID) && q.ChunkSize > 0 && q.ChunkSize <= 64<<20 && q.MaxSize > 0 && len(q.Path) <= 4096 && q.Path != "" && (q.Source == "" && q.Action == nil || q.Source == "hive" && q.Action == nil && protocol.ValidHive(q.Path) || q.Source == "evtx" && q.Action == nil && eventlogs.ValidChannel(q.Path) && eventlogs.ValidExportQuery(q.Query) || q.Source == "triage" && q.Action == nil && len(q.Path) <= 100 && triageQuery(q.Query) || q.Source == "ntfs" && q.Action == nil && len(q.Path) <= 100 && ntfsQuery(q.Query) || q.Source == "action" && q.Action != nil && q.Action.Valid())
 }
 
 // evidenceOptions keeps the shadow copy ledger and saved hives in the
@@ -226,6 +231,9 @@ func (s *heartbeatSession) collectEvidence(ctx context.Context, q protocol.Evide
 	case "triage":
 		items, _ := protocol.ParseTriageQuery(q.Query)
 		ev, outcome = filetransfer.OpenTriage(ctx, q.Path, items, q.MaxSize, s.evidenceOptions(deny))
+	case "ntfs":
+		volumes, all, _ := protocol.ParseNTFSQuery(q.Query)
+		ev, outcome = filetransfer.OpenNTFS(ctx, volumes, all, q.MaxSize, s.evidenceOptions(deny))
 	case "action":
 		ev, outcome = s.actionEvidence(ctx, q, resumed, deny)
 	default:
@@ -240,7 +248,7 @@ func (s *heartbeatSession) collectEvidence(ctx context.Context, q protocol.Evide
 		return protocol.EvidenceFinish{Outcome: "too_large"}, true
 	}
 	modified, created := fileTimes(ev.Info)
-	if ev.Meta.Method == "registry_save" || ev.Meta.Method == "export" || ev.Meta.Method == "triage" {
+	if ev.Meta.Method == "registry_save" || ev.Meta.Method == "export" || ev.Meta.Method == "triage" || ev.Meta.Method == "ntfs" {
 		// The saved copy's times say nothing about the hive or log.
 		modified, created = 0, 0
 	}

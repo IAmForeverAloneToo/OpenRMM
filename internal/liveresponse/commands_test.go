@@ -49,6 +49,12 @@ func TestParse(t *testing.T) {
 		{"triage", true, func(c Command) bool { return c.Source == "triage" && c.Path == "full" }},
 		{`triage "Quick triage"`, true, func(c Command) bool { return c.Path == "Quick triage" }},
 		{"triage a b", false, nil},
+		{"ntfs", true, func(c Command) bool { return c.Source == "ntfs" && c.Query == "" }},
+		{"ntfs d: c:", true, func(c Command) bool { return c.Query == "C:,D:" }},
+		{"ntfs ALL", true, func(c Command) bool { return c.Query == "all" }},
+		{"ntfs C: C:", false, nil},
+		{`ntfs C:\Windows`, false, nil},
+		{"ntfs all D:", false, nil},
 		{`evtx C:\Windows\System32\winevt\Logs\Security.evtx`, false, nil},
 		{`put Autoruns64.exe "C:\IR Tools\Autoruns64.exe" -overwrite`, true, func(c Command) bool {
 			return c.Tool == "Autoruns64.exe" && c.Destination == `C:\IR Tools\Autoruns64.exe` && c.Overwrite

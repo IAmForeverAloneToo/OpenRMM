@@ -20,7 +20,7 @@ func TestStoragePersistsAndMigrationsAreIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if before.SchemaVersion != 52 || len(before.InstanceID) != 32 {
+	if before.SchemaVersion != 53 || len(before.InstanceID) != 32 {
 		t.Fatalf("unexpected state: %+v", before)
 	}
 	created, err := time.Parse(time.RFC3339Nano, before.CreatedAt)
@@ -46,16 +46,16 @@ func TestStoragePersistsAndMigrationsAreIdempotent(t *testing.T) {
 		t.Fatalf("persistent state changed across reopen: before=%+v after=%+v", before, after)
 	}
 	var count int
-	if err := second.db.QueryRow("SELECT COUNT(*) FROM schema_migrations").Scan(&count); err != nil || count != 52 {
+	if err := second.db.QueryRow("SELECT COUNT(*) FROM schema_migrations").Scan(&count); err != nil || count != 53 {
 		t.Fatalf("migration applied more than once: %d, %v", count, err)
 	}
 }
 
 func TestStorageRejectsIncompatibleMigrationHistory(t *testing.T) {
 	for _, test := range []struct{ name, query, message string }{
-		{"newer", "INSERT INTO schema_migrations VALUES (53, '053_future.sql', 'future', '2026-10-16T00:00:00Z')", "newer"},
+		{"newer", "INSERT INTO schema_migrations VALUES (54, '054_future.sql', 'future', '2026-10-16T00:00:00Z')", "newer"},
 		{"modified", "UPDATE schema_migrations SET checksum = 'changed' WHERE version = 1", "does not match"},
-		{"gap", "UPDATE schema_migrations SET version = 53 WHERE version = 1", "newer"},
+		{"gap", "UPDATE schema_migrations SET version = 54 WHERE version = 1", "newer"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "data", "server.db")

@@ -158,6 +158,7 @@ const quick: { label: string; line: string; tip: string }[] = [
   { label: "tasks", line: "tasks", tip: "Scheduled tasks" },
   { label: "persistence", line: "persistence", tip: "Autostart entries with programs, hashes and signatures" },
   { label: "triage", line: "triage", tip: "Collect a Full triage package (ZIP from a shadow copy)" },
+  { label: "ntfs", line: "ntfs", tip: "Raw $MFT, $LogFile and USN journal of the system drive, with parsed timelines" },
   { label: "help", line: "help", tip: "All built-in commands" },
 ];
 
@@ -304,6 +305,10 @@ export function LiveConsole({ session, caseId, active }: { session: string; case
                       {j.source === "hive" ? (
                         <span className="text-fg">
                           Hive <Mono>{j.path}</Mono>
+                        </span>
+                      ) : j.source === "ntfs" ? (
+                        <span className="text-fg">
+                          NTFS artifacts <Mono>{j.query || "system drive"}</Mono>
                         </span>
                       ) : j.source === "triage" ? (
                         <span className="text-fg">

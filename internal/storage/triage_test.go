@@ -68,3 +68,38 @@ func TestTriageProfilesAndJobs(t *testing.T) {
 		t.Fatal("name of a withdrawn profile not reusable", e)
 	}
 }
+
+// NTFS artifact packages are queued for agents that report the ability and
+// reach the agent with their volumes.
+func TestNTFSJobs(t *testing.T) {
+	ctx := context.Background()
+	s, caseID, device, now := evidenceFixture(t)
+	if _, e := s.QueueNTFS(ctx, caseID, device, "", nil, false, "owner", now); !errors.Is(e, ErrNTFSUnsupported) {
+		t.Fatal("NTFS for an agent without the ability", e)
+	}
+	if e := s.RecordHeartbeat(ctx, device, "fp", protocol.Heartbeat{Hostname: "pc", OS: "windows", Architecture: "amd64", AgentVersion: "test", Abilities: []string{protocol.AbilityNTFS}}, now); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := s.QueueNTFS(ctx, LiveCase, device, "", nil, false, "owner", now); !errors.Is(e, ErrEvidence) {
+		t.Fatal("case-less package without a session", e)
+	}
+	if _, e := s.QueueNTFS(ctx, caseID, device, "", []string{"C:", "C:"}, false, "owner", now); !errors.Is(e, ErrEvidence) {
+		t.Fatal("repeated volume accepted", e)
+	}
+	id, e := s.QueueNTFS(ctx, caseID, device, "", []string{"C:", "D:"}, false, "owner", now)
+	if e != nil {
+		t.Fatal(e)
+	}
+	d, e := s.DispatchEvidence(ctx, device, "fp", now)
+	if e != nil || d.Job == nil || d.Job.ID != id || d.Job.Source != "ntfs" || d.Job.Query != "C:,D:" || d.Job.ExpiresAt != now.Add(triageStartWindow).Unix() {
+		t.Fatalf("dispatch %+v %v", d.Job, e)
+	}
+	jobs, _ := s.EvidenceJobs(ctx, caseID)
+	if jobs[0].Name() != "ntfs-"+id[:8]+".zip" {
+		t.Fatal("name", jobs[0].Name())
+	}
+	detail, _ := s.CaseDetail(ctx, caseID)
+	if last := detail.Entries[len(detail.Entries)-1]; last.Details["source"] != "NTFS artifacts" || last.Details["volumes"] != "C:, D:" {
+		t.Fatalf("custody %+v", last)
+	}
+}

@@ -8,6 +8,7 @@ import type { DevicesResponse, EvidenceCollection, ResponseAction } from "../../
 import { ActionViewer } from "./ActionViewer";
 import { DropAndScript } from "./DropAndScript";
 import { useTriageProfiles } from "./TriageProfiles";
+import { ntfsVolumes } from "../../lib/ntfs";
 import { Badge, Button, EmptyState, ErrorNotice, Field, Input, Mono, Panel, Select, Tip, type Tone } from "../../components/ui";
 
 // Collect files from devices as case evidence, verified chunk by
@@ -31,6 +32,7 @@ const methods: Record<string, string> = {
   registry_save: "Registry save",
   export: "Exported",
   triage: "Triage package",
+  ntfs: "NTFS raw read",
 };
 export const reasons: Record<string, string> = {
   denied: "The file is not allowed (outside fixed drives, a link, OpenRMM's own folders or an unknown hive) or cannot be read.",
@@ -49,7 +51,7 @@ export const reasons: Record<string, string> = {
   not_permitted: "The requester no longer has access to the device.",
   server_restore: "The server was restored from a backup.",
   purged: "Results of a live response session without a case are kept for 24 hours.",
-  no_space: "The device does not have enough free disk space to build the triage package.",
+  no_space: "The device does not have enough free disk space to build the package.",
   withdrawn: "The tool was withdrawn from the library before the device fetched it.",
   unknown: "The device may have run the action, but its result was lost (for example the agent restarted). Check the device before repeating it.",
 };
@@ -75,21 +77,24 @@ export function Collections({ caseId, open }: { caseId: string; open: boolean })
     void qc.invalidateQueries({ queryKey: ["case", caseId] });
   };
   // A file (optionally :stream) or a registry hive.
-  const [source, setSource] = useState<"file" | "hive" | "evtx" | "triage">("file");
+  const [source, setSource] = useState<"file" | "hive" | "evtx" | "triage" | "ntfs">("file");
   const [profile, setProfile] = useState("full");
   const profiles = useTriageProfiles(open);
   // A withdrawn profile falls back to the built-in one.
   useEffect(() => {
     if (profiles.data && !profiles.data.profiles.some((p) => p.id === profile)) setProfile("full");
   }, [profiles.data, profile]);
+  // NTFS: drive letters (C D: or all); empty is the system drive.
+  const [drives, setDrives] = useState("");
+  const volumes = ntfsVolumes(drives);
   const [channel, setChannel] = useState("Security");
   const [hive, setHive] = useState("SYSTEM");
   const [user, setUser] = useState("");
   const userHive = hive === "NTUSER" || hive === "USRCLASS";
-  const target = source === "file" ? path.trim() : source === "evtx" ? channel.trim() : source === "triage" ? "" : userHive ? `${hive}:${user.trim()}` : hive;
-  const ready = source === "file" ? !!path.trim() : source === "evtx" ? !!channel.trim() : source === "triage" ? !!profile : !userHive || !!user.trim();
+  const target = source === "file" ? path.trim() : source === "evtx" ? channel.trim() : source === "triage" || source === "ntfs" ? "" : userHive ? `${hive}:${user.trim()}` : hive;
+  const ready = source === "file" ? !!path.trim() : source === "evtx" ? !!channel.trim() : source === "triage" ? !!profile : source === "ntfs" ? volumes !== null : !userHive || !!user.trim();
   const collect = useMutation({
-    mutationFn: () => post(`/api/v1/cases/${caseId}/collect`, { device_id: device, source, path: target, ...(source === "triage" ? { profile } : {}) }),
+    mutationFn: () => post(`/api/v1/cases/${caseId}/collect`, { device_id: device, source, path: target, ...(source === "triage" ? { profile } : {}), ...(source === "ntfs" ? { volumes } : {}) }),
     onSuccess: () => (setPath(""), setUser(""), refresh()),
   });
   const cancel = useMutation({ mutationFn: (job: string) => post(`/api/v1/cases/${caseId}/collections/${job}/cancel`), onSettled: refresh });
@@ -134,14 +139,19 @@ export function Collections({ caseId, open }: { caseId: string; open: boolean })
               </Select>
             </Field>
             <Field label="Collect">
-              <Select className="w-full" value={source} onChange={(e) => setSource(e.target.value as "file" | "hive" | "evtx" | "triage")} aria-label="Source">
+              <Select className="w-full" value={source} onChange={(e) => setSource(e.target.value as "file" | "hive" | "evtx" | "triage" | "ntfs")} aria-label="Source">
                 <option value="file">File</option>
                 <option value="hive">Registry hive</option>
                 <option value="evtx">Event log (.evtx)</option>
                 <option value="triage">Triage package</option>
+                <option value="ntfs">NTFS artifacts</option>
               </Select>
             </Field>
-            {source === "triage" ? (
+            {source === "ntfs" ? (
+              <Field label="Drives ($MFT, $LogFile, USN journal and timelines)">
+                <Input value={drives} onChange={(e) => setDrives(e.target.value)} placeholder="System drive (or C: D:, or all)" maxLength={100} spellCheck={false} aria-label="Drives" />
+              </Field>
+            ) : source === "triage" ? (
               <Field label="Profile">
                 <Select className="w-full" value={profile} onChange={(e) => setProfile(e.target.value)} aria-label="Triage profile">
                   {(profiles.data?.profiles ?? [{ id: "full", name: "Full triage" }]).map((p) => (
@@ -254,6 +264,10 @@ export function Collections({ caseId, open }: { caseId: string; open: boolean })
                           <SquareTerminal className="size-3.5 shrink-0 text-muted" /> Terminal transcript
                         </span>
                       </Tip>
+                    ) : c.source === "ntfs" ? (
+                      <span className="min-w-0 text-fg">
+                        NTFS artifacts <span className="text-muted">{!c.query ? "system drive" : c.query === "all" ? "all fixed drives" : c.query.replaceAll(",", " ")}</span>
+                      </span>
                     ) : c.source === "triage" ? (
                       <span className="min-w-0 text-fg">
                         Triage package <span className="font-medium">{c.path}</span>
