@@ -1,7 +1,7 @@
 // Run with Node's built-in test runner (npm test); no test library is used.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { alertTitle, bytes, clock, describeInterval, duration, operationKind, osLabel, percent, plural, relativeTime, short, triggerText, utcTime, windowLabel } from "./format.ts";
+import { alertTitle, bytes, clock, describeInterval, duration, observedText, operationKind, osLabel, percent, plural, relativeTime, short, triggerText, utcTime, windowLabel } from "./format.ts";
 
 test("relativeTime buckets and edges", () => {
   const now = 1_800_000_000_000;
@@ -77,6 +77,11 @@ test("describeInterval", () => {
   assert.equal(describeInterval(3600), "Hourly");
   assert.equal(describeInterval(7200), "Every 2 hours");
   assert.equal(describeInterval(900), "Every 15 minutes");
+});
+
+test("observedText marks free disk space", () => {
+  assert.equal(observedText("disk_space", 8.04), "8% free");
+  assert.equal(observedText("memory", 91.26, 1), "91.3%");
 });
 
 test("triggerText per family", () => {

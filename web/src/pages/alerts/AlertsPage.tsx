@@ -4,7 +4,7 @@ import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { Bell, CheckCheck, ChevronLeft, ChevronRight, Settings, X } from "lucide-react";
 import { get, post } from "../../lib/api";
 import { LIVE_INTERVAL, useNow } from "../../lib/hooks";
-import { absoluteTime, alertTitle, relativeTime, triggerText } from "../../lib/format";
+import { absoluteTime, alertTitle, observedText, relativeTime, triggerText } from "../../lib/format";
 import type { AlertDetail, AlertRow, AlertsResponse } from "../../lib/types";
 import { useAccount } from "../../lib/session";
 import { PageHeader } from "../../app/AppShell";
@@ -82,7 +82,7 @@ function AlertDetailPanel({ id, onClose, owner }: { id: string; onClose: () => v
               <Badge tone={obs.tone} dot>
                 {obs.label}
               </Badge>
-              {d.observation.value !== null ? <span className="text-fg tabular-nums">{d.observation.value.toFixed(1)}%</span> : null}
+              {d.observation.value !== null ? <span className="text-fg tabular-nums">{observedText(a.kind, d.observation.value, 1)}</span> : null}
               {d.observation.observed_at ? <span className="text-[12px] text-muted">reading {relativeTime(d.observation.observed_at, now)}</span> : null}
             </div>
             {d.evaluator_stale ? <p className="text-[12px] text-warn">The alert engine hasn't run recently, so current readings are unknown.</p> : null}
@@ -187,7 +187,7 @@ export function AlertsPage() {
             {a.status === "active" ? (
               <span className={a.observation.condition === "bad" ? "text-danger" : a.observation.condition === "good" ? "text-ok" : "text-faint"}>
                 · {conditionText[a.observation.condition]?.label}
-                {a.observation.value !== null ? ` ${a.observation.value.toFixed(0)}%` : ""}
+                {a.observation.value !== null ? ` ${observedText(a.kind, a.observation.value)}` : ""}
               </span>
             ) : (
               <span>· {a.status}</span>

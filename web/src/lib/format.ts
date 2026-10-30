@@ -119,6 +119,11 @@ function minutes(seconds: number) {
   return seconds % 3600 === 0 ? `${seconds / 3600} h` : `${Math.round(seconds / 60)} min`;
 }
 
+/** An alert reading: disk alerts measure free space, the others use. */
+export function observedText(kind: string, value: number, digits = 0): string {
+  return `${value.toFixed(digits)}%${kind === "disk_space" ? " free" : ""}`;
+}
+
 /** Plain-language description of what triggered an incident. */
 export function triggerText(a: { kind: string; threshold: number; hold_seconds: number }, family: string): string {
   switch (family) {
