@@ -297,7 +297,7 @@ func Run(ctx context.Context, c config.Server, logger *slog.Logger) error {
 	updatesDone := make(chan struct{})
 	go func() { defer close(updatesDone); runServerUpdates(updatesCtx, store, updates, logger) }()
 	defer func() { stopUpdates(); <-updatesDone }()
-	dashboard := handler(store, administrator, deviceService, updates, mail)
+	dashboard := forwardedClient(c.TrustedProxies, handler(store, administrator, deviceService, updates, mail))
 	if certificates != nil {
 		// A public name with a trusted certificate: browsers should never try
 		// plain HTTP for it.

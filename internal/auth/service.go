@@ -30,9 +30,13 @@ type Service struct {
 	csrfKey   []byte
 	dummyHash string
 	now       func() time.Time
+	knownKey  []byte
 	gate      chan struct{}
-	mu        sync.Mutex
-	attempts  map[string]attempt
+	// known is a second sign-in slot for browsers that signed in to the
+	// account before, so a flood from many addresses cannot keep them out.
+	known    chan struct{}
+	mu       sync.Mutex
+	attempts map[string]attempt
 }
 type attempt struct {
 	count int
@@ -50,7 +54,13 @@ type SignedIn struct {
 	Token    string
 	CSRF     string
 	Username string
+	// Known marks the browser as one that signed in to this account
+	// (see KnownFor); it is renewed at every sign-in.
+	Known string
 }
+
+// KnownLifetime is how long a browser stays known after its last sign-in.
+const KnownLifetime = 90 * 24 * time.Hour
 
 func New(ctx context.Context, store *storage.Store, keyPath string) (*Service, error) {
 	admin, err := store.Administrator(ctx)
@@ -74,11 +84,15 @@ func New(ctx context.Context, store *storage.Store, keyPath string) (*Service, e
 	if err != nil {
 		return nil, errors.New("cannot derive login CSRF key")
 	}
+	knownKey, err := hkdf.Key(sha256.New, key, nil, "openrmm:known-browser:v1", 32)
+	if err != nil {
+		return nil, errors.New("cannot derive known browser key")
+	}
 	dummy, err := hashPassword("OpenRMM timing-only dummy password")
 	if err != nil {
 		return nil, err
 	}
-	service := &Service{store: store, aead: aead, csrfKey: csrfKey, dummyHash: dummy, now: time.Now, gate: make(chan struct{}, 1), attempts: make(map[string]attempt)}
+	service := &Service{store: store, aead: aead, csrfKey: csrfKey, knownKey: knownKey, dummyHash: dummy, now: time.Now, gate: make(chan struct{}, 1), known: make(chan struct{}, 1), attempts: make(map[string]attempt)}
 	if hasAdministrator {
 		if _, err := service.decrypt(admin.TOTPCipher); err != nil {
 			return nil, err
@@ -214,6 +228,11 @@ func (s *Service) Confirm(ctx context.Context, code string) error {
 // Guessing gains little without one, since every sign-in needs the password
 // and a fresh authenticator code, and a failure does not say which was
 // wrong; the single sign-in slot (gate) bounds the work an attacker causes.
+// A successful sign-in does not count. A known browser (one that signed in
+// to the account before) is limited per account from its address only and
+// has its own slot, so neither a flood from its network nor one from many
+// addresses keeps it out; that limit still bounds guessing with a copied
+// marker.
 func limitKeys(peer, name string) ([]string, []int) {
 	return []string{"peer:" + peer, "account:" + name + "@" + peer}, []int{10, 5}
 }
@@ -234,6 +253,12 @@ func (s *Service) limited(peer, name string) bool {
 }
 
 func (s *Service) allow(peer, name string) bool {
+	keys, limits := limitKeys(peer, name)
+	return s.take(keys, limits)
+}
+
+// take counts an attempt against each key unless one is over its limit.
+func (s *Service) take(keys []string, limits []int) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := s.now()
@@ -242,7 +267,6 @@ func (s *Service) allow(peer, name string) bool {
 			delete(s.attempts, key)
 		}
 	}
-	keys, limits := limitKeys(peer, name)
 	for index, key := range keys {
 		if s.attempts[key].count >= limits[index] {
 			return false
@@ -265,14 +289,25 @@ func (s *Service) allow(peer, name string) bool {
 	return true
 }
 
-// enter takes the single sign-in slot, waiting briefly while another
-// password check runs, so a flood of attempts slows sign-in down instead of
-// refusing it.
-func (s *Service) enter(ctx context.Context) bool {
+// refund takes back an attempt that succeeded.
+func (s *Service) refund(keys []string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, key := range keys {
+		if value, ok := s.attempts[key]; ok && value.count > 0 {
+			value.count--
+			s.attempts[key] = value
+		}
+	}
+}
+
+// enter takes a sign-in slot, waiting briefly while another password check
+// runs, so a flood of attempts slows sign-in down instead of refusing it.
+func (s *Service) enter(ctx context.Context, slot chan struct{}) bool {
 	t := time.NewTimer(3 * time.Second)
 	defer t.Stop()
 	select {
-	case s.gate <- struct{}{}:
+	case slot <- struct{}{}:
 		return true
 	case <-t.C:
 		return false
@@ -281,18 +316,55 @@ func (s *Service) enter(ctx context.Context) bool {
 	}
 }
 
+// knownToken marks a browser as one that signed in to the account. It is
+// not a credential: it only changes how sign-in attempts are limited.
+func (s *Service) knownToken(name string) string {
+	value := binary.BigEndian.AppendUint64(nil, uint64(s.now().Add(KnownLifetime).Unix()))
+	value = append(value, name...)
+	mac := hmac.New(sha256.New, s.knownKey)
+	_, _ = mac.Write(value)
+	return base64.RawURLEncoding.EncodeToString(mac.Sum(value))
+}
+
+// KnownFor reports whether a marker from knownToken is valid for an account.
+func (s *Service) KnownFor(token, name string) bool {
+	value, err := base64.RawURLEncoding.DecodeString(token)
+	if err != nil || len(token) > 200 || len(value) < 8+sha256.Size+1 {
+		return false
+	}
+	body, sum := value[:len(value)-sha256.Size], value[len(value)-sha256.Size:]
+	mac := hmac.New(sha256.New, s.knownKey)
+	_, _ = mac.Write(body)
+	if !hmac.Equal(mac.Sum(nil), sum) {
+		return false
+	}
+	expires := int64(binary.BigEndian.Uint64(body[:8]))
+	return string(body[8:]) == name && s.now().Unix() < expires
+}
+
 func (s *Service) Login(ctx context.Context, name, password, factor, peer string) (SignedIn, error) {
+	return s.LoginKnown(ctx, name, password, factor, peer, "")
+}
+
+// LoginKnown signs in like Login; marker is the browser's marker from an
+// earlier sign-in, if any.
+func (s *Service) LoginKnown(ctx context.Context, name, password, factor, peer, marker string) (SignedIn, error) {
 	canonical, validName := username(name)
 	if !validName {
 		canonical = "invalid"
 	}
-	if !s.allow(peer, canonical) {
+	keys, limits := limitKeys(peer, canonical)
+	slot := s.gate
+	if validName && s.KnownFor(marker, canonical) {
+		keys, limits, slot = keys[1:], limits[1:], s.known
+	}
+	if !s.take(keys, limits) {
 		return SignedIn{}, ErrLimited
 	}
-	if !s.enter(ctx) {
+	if !s.enter(ctx, slot) {
 		return SignedIn{}, ErrLimited
 	}
-	defer func() { <-s.gate }()
+	defer func() { <-slot }()
 	admin, err := s.store.Administrator(ctx)
 	if err != nil && !errors.Is(err, storage.ErrNoAdministrator) {
 		return SignedIn{}, err
@@ -361,7 +433,8 @@ func (s *Service) Login(ctx context.Context, name, password, factor, peer string
 		}
 		return SignedIn{}, err
 	}
-	return SignedIn{Token: token, CSRF: csrf, Username: admin.Username}, nil
+	s.refund(keys)
+	return SignedIn{Token: token, CSRF: csrf, Username: admin.Username, Known: s.knownToken(admin.Username)}, nil
 }
 
 func (s *Service) Session(ctx context.Context, token string) (storage.Session, error) {

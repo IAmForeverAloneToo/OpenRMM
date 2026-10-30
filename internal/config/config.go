@@ -60,6 +60,9 @@ type Server struct {
 	// one) and operator release keys trusted next to the project key.
 	UpdaterDir  string
 	ReleaseKeys []string
+	// TrustedProxies are reverse proxies in front of the dashboard whose
+	// X-Forwarded-For header names the client.
+	TrustedProxies []netip.Prefix
 }
 
 type Agent struct {
@@ -181,8 +184,26 @@ func LoadServer(args []string, env Env) (Server, error) {
 	f.StringVar(&c.PublicDeviceURL, "public-device-url", value(env, "OPENRMM_SERVER_PUBLIC_DEVICE_URL", ""), "agent address, stored in the installer settings when they are empty")
 	f.StringVar(&c.UpdaterDir, "updater-dir", value(env, "OPENRMM_SERVER_UPDATER_DIR", ""), "folder shared with the update sidecar; empty disables updates from the dashboard")
 	releaseKeys := f.String("release-keys", value(env, "OPENRMM_SERVER_RELEASE_KEYS", ""), "comma-separated extra public keys (hex) trusted for server releases")
+	trustedProxies := f.String("trusted-proxies", value(env, "OPENRMM_SERVER_TRUSTED_PROXIES", ""), "comma-separated addresses or CIDR ranges of reverse proxies whose X-Forwarded-For header is trusted for the client address; empty trusts none")
 	if err := parse(f, args); err != nil {
 		return Server{}, err
+	}
+	for _, p := range strings.Split(*trustedProxies, ",") {
+		if p = strings.TrimSpace(p); p == "" {
+			continue
+		}
+		prefix, err := netip.ParsePrefix(p)
+		if err != nil {
+			a, e := netip.ParseAddr(p)
+			if e != nil || a.Zone() != "" {
+				return Server{}, errors.New("trusted-proxies must be IP addresses or CIDR ranges separated by commas")
+			}
+			prefix = netip.PrefixFrom(a.Unmap(), a.Unmap().BitLen())
+		}
+		if len(c.TrustedProxies) >= 20 {
+			return Server{}, errors.New("trusted-proxies allows at most 20 entries")
+		}
+		c.TrustedProxies = append(c.TrustedProxies, prefix.Masked())
 	}
 	for _, k := range strings.Split(*releaseKeys, ",") {
 		if k = strings.TrimSpace(k); k == "" {

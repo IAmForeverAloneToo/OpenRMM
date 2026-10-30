@@ -97,6 +97,7 @@ To add more people, invite [technicians](TECHNICIANS.md). To recover the adminis
 | `--project NAME` | `openrmm` | Docker Compose project name. |
 | `--acme-directory URL` | Let's Encrypt | Another ACME directory, for testing. |
 | `--release-key HEX` | | An extra Ed25519 public key (64 hex characters) trusted for server releases, for operators who sign their own builds. |
+| `--trusted-proxies LIST` | | Reverse proxies in front of the dashboard (IP addresses or CIDR ranges, comma-separated). Requests from them are counted against the sign-in limits by the client address in their `X-Forwarded-For` header instead of the proxy's own. Name only proxies you run: a listed address can claim any client address. `none` removes the list. |
 | `-h`, `--help` | | Show the help. |
 
 Give either `--domain` or `--address`, not both. Use `--dir` and `--project` together to run a second server on the same host.

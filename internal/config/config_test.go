@@ -480,3 +480,18 @@ func TestServerHostsConfiguration(t *testing.T) {
 		}
 	}
 }
+
+func TestTrustedProxies(t *testing.T) {
+	c, err := LoadServer([]string{"-trusted-proxies", " 10.0.0.0/8, 192.0.2.7,::ffff:198.51.100.1, fd00::1/64"}, emptyEnv)
+	if err != nil || len(c.TrustedProxies) != 4 || c.TrustedProxies[1].String() != "192.0.2.7/32" || c.TrustedProxies[2].String() != "198.51.100.1/32" || c.TrustedProxies[3].String() != "fd00::/64" {
+		t.Fatal(c.TrustedProxies, err)
+	}
+	if c, err := LoadServer(nil, emptyEnv); err != nil || c.TrustedProxies != nil {
+		t.Fatal("proxies trusted by default")
+	}
+	for _, v := range []string{"proxy.lan", "10.0.0.0/33", "fe80::1%eth0", strings.Repeat("10.0.0.1,", 21)} {
+		if _, err := LoadServer([]string{"-trusted-proxies", v}, emptyEnv); err == nil {
+			t.Fatal("accepted", v)
+		}
+	}
+}

@@ -48,6 +48,8 @@ Install options:
   --project NAME         Docker Compose project name (default openrmm)
   --acme-directory URL   ACME directory instead of Let's Encrypt (testing)
   --release-key HEX      Extra public key trusted for server releases (your own builds)
+  --trusted-proxies LIST Reverse proxies in front of the dashboard (comma-separated IP addresses
+                         or CIDR ranges) whose X-Forwarded-For header names the client; none removes them
   -h, --help             Show this help
 Options not given on a later run keep their previous values.
 Backup and restore options:
@@ -75,7 +77,7 @@ while [ $# -gt 0 ]; do
 	-h | --help) usage; exit 0 ;;
 	--dir) [ $# -ge 2 ] || die "--dir needs a value"; dir=$2; shift 2 ;;
 	--project) [ $# -ge 2 ] || die "--project needs a value"; project=$2; shift 2 ;;
-	--image | --domain | --email | --address | --dashboard-port | --agent-port | --acme-directory | --release-key)
+	--image | --domain | --email | --address | --dashboard-port | --agent-port | --acme-directory | --release-key | --trusted-proxies)
 		[ "$action" = install ] || die "$1 is an install option (see --help)"
 		[ $# -ge 2 ] || die "$1 needs a value"
 		key=${1#--}
@@ -95,12 +97,12 @@ done
 
 # Earlier choices: install.conf holds plain KEY=value lines written by this
 # script; only known keys are read, nothing is executed.
-image='' domain='' email='' address='' dashboard_port='' agent_port='' acme_directory='' release_key=''
+image='' domain='' email='' address='' dashboard_port='' agent_port='' acme_directory='' release_key='' trusted_proxies=''
 conf=$dir/install.conf
 if [ -f "$conf" ]; then
 	while IFS='=' read -r key value; do
 		case "$key" in
-		image | domain | email | address | dashboard_port | agent_port | acme_directory | release_key) printf -v "$key" '%s' "$value" ;;
+		image | domain | email | address | dashboard_port | agent_port | acme_directory | release_key | trusted_proxies) printf -v "$key" '%s' "$value" ;;
 		esac
 	done <"$conf"
 fi
@@ -118,6 +120,9 @@ domain=${domain,,}
 domain=${domain%.}
 address=${address,,}
 address=${address// /}
+trusted_proxies=${trusted_proxies,,}
+trusted_proxies=${trusted_proxies// /}
+[ "$trusted_proxies" != none ] || trusted_proxies='
 dashboard_port=${dashboard_port:-443}
 agent_port=${agent_port:-8444}
 
@@ -329,6 +334,7 @@ server_url=https://$public
 device_url=https://$public:$agent_port
 
 [ -z "$release_key" ] || [[ $release_key =~ ^[0-9a-f]{64}$ ]] || die "--release-key must be a 64-character hex public key"
+[ -z "$trusted_proxies" ] || [[ $trusted_proxies =~ ^[0-9a-f.:/]+(,[0-9a-f.:/]+)*$ ]] || die "--trusted-proxies must be IP addresses or CIDR ranges separated by commas"
 
 # The updater reaches Docker through its socket; without one (for example
 # rootless Docker) the server is installed without updates from the dashboard.
@@ -359,6 +365,7 @@ dashboard_port=$dashboard_port
 agent_port=$agent_port
 acme_directory=$acme_directory
 release_key=$release_key
+trusted_proxies=$trusted_proxies
 EOF
 
 {
@@ -377,6 +384,7 @@ OPENRMM_LOG_LEVEL=info
 EOF
 	[ -z "$socket_gid" ] || say "OPENRMM_SERVER_UPDATER_DIR=/updater"
 	[ -z "$release_key" ] || say "OPENRMM_SERVER_RELEASE_KEYS=$release_key"
+	[ -z "$trusted_proxies" ] || say "OPENRMM_SERVER_TRUSTED_PROXIES=$trusted_proxies"
 	if [ -n "$domain" ]; then
 		say "OPENRMM_SERVER_ACME_DOMAIN=$domain"
 		[ -z "$email" ] || say "OPENRMM_SERVER_ACME_EMAIL=$email"

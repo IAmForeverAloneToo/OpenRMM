@@ -17,6 +17,9 @@ import (
 
 const sessionCookie = "__Host-openrmm-session"
 
+// knownCookie marks a browser that signed in before, for sign-in limits.
+const knownCookie = "__Host-openrmm-known"
+
 // api serves the administrator JSON API used by the browser application.
 type api struct {
 	auth    *auth.Service
@@ -212,7 +215,11 @@ func registerAPI(mux *http.ServeMux, a *api) {
 		if !decodeJSON(w, r, &in, 4096) {
 			return
 		}
-		signedIn, err := a.auth.Login(r.Context(), in.Username, in.Password, in.Code, peerKey(r))
+		known := ""
+		if c, e := r.Cookie(knownCookie); e == nil {
+			known = c.Value
+		}
+		signedIn, err := a.auth.LoginKnown(r.Context(), in.Username, in.Password, in.Code, peerKey(r), known)
 		switch {
 		case errors.Is(err, auth.ErrCredentials):
 			apiError(w, http.StatusUnauthorized, "invalid_credentials", "Sign-in failed. Check your username, password and a fresh authenticator code.")
@@ -231,6 +238,8 @@ func registerAPI(mux *http.ServeMux, a *api) {
 			return
 		}
 		http.SetCookie(w, cookie(sessionCookie, signedIn.Token, int((8*time.Hour).Seconds())))
+		// Kept after sign-out: it marks the browser, not the session.
+		http.SetCookie(w, cookie(knownCookie, signedIn.Known, int(auth.KnownLifetime.Seconds())))
 		writeJSON(w, http.StatusOK, describeSession(s))
 	})
 	a.route(mux, "DELETE /api/v1/session", anyAccount, func(w http.ResponseWriter, r *http.Request, s storage.Session) {

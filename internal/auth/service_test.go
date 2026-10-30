@@ -165,6 +165,45 @@ func TestExpiryCSRFAndLoginThrottling(t *testing.T) {
 	}
 }
 
+func TestSuccessfulSignInsAndKnownBrowsers(t *testing.T) {
+	service, _, _, now := testService(t)
+	result := provision(t, service, *now)
+	ctx := context.Background()
+	// Successful sign-ins do not use up the per-account limit of 5.
+	var signedIn SignedIn
+	for index := 0; index < 7; index++ {
+		var err error
+		if signedIn, err = service.Login(ctx, "admin", testPassword, result.RecoveryCodes[index], "127.0.0.1"); err != nil {
+			t.Fatal("successful sign-in counted against the limit", index, err)
+		}
+	}
+	known := signedIn.Known
+	if !service.KnownFor(known, "admin") || service.KnownFor(known, "other") || service.KnownFor(known+"A", "admin") || service.KnownFor("", "admin") {
+		t.Fatal("known browser marker checks are wrong")
+	}
+	// A flood from the browser's network uses up the address limit; the
+	// known browser still signs in, an unknown one does not.
+	for index := 0; index < 10; index++ {
+		if _, err := service.Login(ctx, fmt.Sprintf("user%d", index), "incorrect", "000000", "203.0.113.5"); !errors.Is(err, ErrCredentials) {
+			t.Fatal(err)
+		}
+	}
+	if _, err := service.Login(ctx, "admin", testPassword, result.RecoveryCodes[7], "203.0.113.5"); !errors.Is(err, ErrLimited) {
+		t.Fatal("address limit did not apply", err)
+	}
+	// A password check by someone else holds the shared slot; the known
+	// browser has its own.
+	service.gate <- struct{}{}
+	if _, err := service.LoginKnown(ctx, "admin", testPassword, result.RecoveryCodes[7], "203.0.113.5", known); err != nil {
+		t.Fatal("known browser was kept out", err)
+	}
+	<-service.gate
+	*now = now.Add(KnownLifetime)
+	if service.KnownFor(known, "admin") {
+		t.Fatal("expired marker accepted")
+	}
+}
+
 func TestMissingOrWrongKeyAndEncryptedSecret(t *testing.T) {
 	service, store, keyPath, now := testService(t)
 	result := provision(t, service, *now)
