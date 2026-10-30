@@ -77,6 +77,16 @@ try {
         [Net.ServicePointManager]::CheckCertificateRevocationList=$true
         $request=[Net.HttpWebRequest]::Create([Uri]$package.url)
         $request.AllowAutoRedirect=$false;$request.Credentials=$null;$request.UseDefaultCredentials=$false;$request.Proxy=$null
+        if ($env:OPENRMM_PROXY) {
+            # The agent's proxy for this download; a password goes as proxy credentials.
+            $proxyUri=[Uri]$env:OPENRMM_PROXY
+            $webProxy=New-Object Net.WebProxy(($proxyUri.Scheme+'://'+$proxyUri.Authority))
+            if ($proxyUri.UserInfo) {
+                $user,$secret=$proxyUri.UserInfo.Split(':',2)
+                $webProxy.Credentials=New-Object Net.NetworkCredential([Uri]::UnescapeDataString($user),[Uri]::UnescapeDataString([string]$secret))
+            }
+            $request.Proxy=$webProxy
+        }
         $request.Timeout=30000;$request.ReadWriteTimeout=15000
         $response=$request.GetResponse()
         try {

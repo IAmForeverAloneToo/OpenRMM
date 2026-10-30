@@ -151,6 +151,9 @@ func nativeRun(ctx context.Context, q protocol.ScriptJob) protocol.ScriptResult 
 	sys, _ := windows.GetSystemDirectory()
 	// PATHEXT lets scripts call programs by name (whoami, ipconfig).
 	c.Env = []string{"SystemRoot=" + root, "WINDIR=" + root, "TEMP=" + dir, "TMP=" + dir, "PATH=" + sys + ";" + filepath.Dir(powerShell()), "PATHEXT=.COM;.EXE;.BAT;.CMD", "ComSpec=" + filepath.Join(sys, "cmd.exe")}
+	if proxy := os.Getenv(scriptProxy); proxy != "" {
+		c.Env = append(c.Env, "OPENRMM_PROXY="+proxy)
+	}
 	out, errout := &outputBuffer{}, &outputBuffer{}
 	c.Stdout = out
 	c.Stderr = errout
@@ -173,6 +176,17 @@ func nativeRun(ctx context.Context, q protocol.ScriptJob) protocol.ScriptResult 
 // RunContained executes only this application's fixed worker, then allows the
 // approved definition through stdin after process-tree lifetime limits apply.
 func RunContained(ctx context.Context, state string, q protocol.ScriptJob) protocol.ScriptResult {
+	return RunContainedProxy(ctx, state, q, "")
+}
+
+// scriptProxy carries the agent's proxy for one script (an application
+// installer download) from the agent to its worker, which passes it to the
+// script as OPENRMM_PROXY. Other scripts never see it.
+const scriptProxy = "OPENRMM_SCRIPT_PROXY"
+
+// RunContainedProxy runs like RunContained and gives the script a proxy
+// URL (possibly with a password); empty means none.
+func RunContainedProxy(ctx context.Context, state string, q protocol.ScriptJob, proxy string) protocol.ScriptResult {
 	if !JobValid(q) {
 		return Failure(q.ID, "denied")
 	}
@@ -209,6 +223,7 @@ func RunContained(ctx context.Context, state string, q protocol.ScriptJob) proto
 	child, cancel := context.WithCancel(ctx)
 	defer cancel()
 	c := exec.CommandContext(child, exe, "--script-worker")
+	c.Env = append(os.Environ(), scriptProxy+"="+proxy)
 	c.Dir = work
 	c.SysProcAttr = &windowsSysProcAttr
 	c.WaitDelay = time.Second

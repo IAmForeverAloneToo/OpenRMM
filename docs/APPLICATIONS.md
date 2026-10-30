@@ -67,7 +67,7 @@ The workflow reads ProductCode registrations from both machine-wide registry vie
 
 ### Install and update
 
-- The installer is downloaded at execution time over OS-verified HTTPS, without ambient credentials, proxy or redirects, up to 256 MiB. The agent's [proxy](WINDOWS-SERVICE.md#proxy) is not used for it.
+- The installer is downloaded at execution time over OS-verified HTTPS, without ambient credentials or redirects, up to 256 MiB, through the agent's [proxy](WINDOWS-SERVICE.md#proxy) when one applies to the installer's address. Deployments of application versions saved before 0.1.5 download directly.
 - The SHA-256 and the MSI's own ProductCode and ProductVersion are checked before execution using a [read-only MSI database](https://learn.microsoft.com/en-us/windows/win32/msi/installer-opendatabase).
 - The staged installer runs privately with fixed quiet, per-machine and restart-suppression arguments.
 - Registrations are checked again afterwards. A successful installer exit code alone never counts as a verified installation. If the previous product remains after an update, the result is Unknown.

@@ -11,8 +11,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/IAmForeverAloneToo/OpenRMM/internal/applications"
 	"github.com/IAmForeverAloneToo/OpenRMM/internal/config"
 	"github.com/IAmForeverAloneToo/OpenRMM/internal/dpapi"
+	"github.com/IAmForeverAloneToo/OpenRMM/internal/protocol"
 )
 
 // The agent reaches its server through a proxy when one is set, first match:
@@ -306,4 +308,21 @@ func replaceFile(path string, value []byte) error {
 		return errors.New("cannot write private file")
 	}
 	return os.Rename(name, path)
+}
+
+// scriptProxyFor returns the proxy, with any password, for the download of
+// an application installer script; other scripts get none.
+func scriptProxyFor(state string, q protocol.ScriptJob) string {
+	raw, ok := applications.PackageURL(q.Version.Definition.Body)
+	if !ok {
+		return ""
+	}
+	target, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	if u, _ := proxies.forURL(state, target); u != nil {
+		return u.String()
+	}
+	return ""
 }

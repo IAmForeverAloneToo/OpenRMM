@@ -98,6 +98,15 @@ func TestNativePowerShellDataOutputAndContainment(t *testing.T) {
 	if r.Outcome != "failed" || r.ExitCode == nil || *r.ExitCode != 7 || !strings.Contains(r.Stderr, "expected error") {
 		t.Fatal("exit/stderr", r)
 	}
+	// Only a run given a proxy sees it.
+	q.Version.Definition.Body = "[Console]::Write([string]$env:OPENRMM_PROXY)"
+	q.Version.Hash = Digest(q.Version)
+	if r = RunContainedProxy(context.Background(), t.TempDir(), q, "http://user:pw@proxy:3128"); r.Stdout != "http://user:pw@proxy:3128" {
+		t.Fatal("proxy not passed", r)
+	}
+	if r = RunContained(context.Background(), t.TempDir(), q); r.Outcome != "succeeded" || r.Stdout != "" {
+		t.Fatal("proxy seen without one", r)
+	}
 	// Programs are found by name (PATHEXT is set).
 	q.Version.Definition.Body = "whoami"
 	q.Version.Hash = Digest(q.Version)

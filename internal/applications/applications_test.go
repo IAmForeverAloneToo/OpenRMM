@@ -91,3 +91,18 @@ func TestDeploymentReportPostconditions(t *testing.T) {
 		t.Fatal("honest unknown rejected")
 	}
 }
+
+func TestPackageURL(t *testing.T) {
+	d := testDefinition()
+	for _, verify := range []bool{false, true} {
+		if u, ok := PackageURL(Runner(d, verify).Body); !ok || u != d.URL {
+			t.Fatal("package URL not found", u, ok)
+		}
+	}
+	body := Runner(d, false).Body
+	for _, other := range []string{"Write-Output hello", body + "\n# changed", strings.Replace(body, "FromBase64String('", "FromBase64String('!!", 1)} {
+		if _, ok := PackageURL(other); ok {
+			t.Fatal("not a generated runner, or damaged, but accepted")
+		}
+	}
+}

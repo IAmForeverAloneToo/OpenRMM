@@ -452,7 +452,7 @@ func runOnce(ctx context.Context, local config.Agent, disabled []string, logger 
 		go func() {
 			defer workers.Done()
 			runScripts(ctx, c.State, session.pollScript, session.scriptProgress, func(ctx context.Context, q protocol.ScriptJob) protocol.ScriptResult {
-				return scripting.RunContained(ctx, c.State, q)
+				return scripting.RunContainedProxy(ctx, c.State, q, scriptProxyFor(c.State, q))
 			}, wake.waiter(protocol.WorkScripts), logger)
 		}()
 	}

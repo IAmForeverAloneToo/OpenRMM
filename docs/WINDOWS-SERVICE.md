@@ -122,7 +122,7 @@ The agent connects directly unless a proxy is set. It uses the first of:
 - The connection to the server stays end-to-end TLS inside the proxy tunnel (`CONNECT`); the proxy cannot read or change it, and mutual TLS works through it.
 - Changes to the policy value or the WinHTTP proxy apply within five minutes. The agent log names the proxy in use when the agent starts or renews its certificate (never the password), and policy or installer values it ignores because they are invalid.
 - Enrollment, heartbeats, all agent work and agent updates use the proxy. While a device is network-isolated, the proxy's address is what stays reachable.
-- Application deployments download their installers directly, not through the proxy ([applications](APPLICATIONS.md)).
+- Application deployments download their installers through the same proxy, chosen for the installer's address (so the WinHTTP bypass list applies). The agent hands it, with any password, only to that installer script, never to other scripts ([applications](APPLICATIONS.md)).
 ## Feature switches
 
 Every agent feature is on by default. There are two ways to turn one off.

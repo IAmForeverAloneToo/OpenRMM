@@ -12,7 +12,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/IAmForeverAloneToo/OpenRMM/internal/applications"
 	"github.com/IAmForeverAloneToo/OpenRMM/internal/config"
+	"github.com/IAmForeverAloneToo/OpenRMM/internal/protocol"
 )
 
 func TestParseProxy(t *testing.T) {
@@ -145,5 +147,24 @@ func TestRequestsUseProxy(t *testing.T) {
 	_ = requestJSON(t.Context(), c, nil, "https://rmm.example.com:8444", "GET", "/api/v1/agent/identity", nil, &out)
 	if connect != "CONNECT rmm.example.com:8444" || auth != "Basic dXNlcjpzZWNyZXQ=" {
 		t.Fatalf("request did not use the proxy: %q %q", connect, auth)
+	}
+}
+
+// Application installer scripts get the agent's proxy for their download;
+// other scripts get none.
+func TestScriptProxyOnlyForInstallers(t *testing.T) {
+	withProxySources(t, "http://user:secret@proxy.lan:3128", systemProxy{})
+	d := applications.Definition{Name: "Example", Version: "1.2.3", ProductCode: "{12A45678-1234-1234-1234-123456789ABC}", URL: "https://packages.example.invalid/Example.msi", SHA256: strings.Repeat("a", 64)}
+	installer := protocol.ScriptJob{Version: protocol.ScriptVersion{Definition: applications.Runner(d, false)}}
+	if got := scriptProxyFor(t.TempDir(), installer); got != "http://user:secret@proxy.lan:3128" {
+		t.Fatal("installer script did not get the proxy", got)
+	}
+	other := protocol.ScriptJob{Version: protocol.ScriptVersion{Definition: protocol.ScriptDefinition{Body: "Write-Output hello"}}}
+	if got := scriptProxyFor(t.TempDir(), other); got != "" {
+		t.Fatal("ordinary script got the proxy")
+	}
+	withProxySources(t, "direct", systemProxy{})
+	if got := scriptProxyFor(t.TempDir(), installer); got != "" {
+		t.Fatal("direct policy still passed a proxy")
 	}
 }
