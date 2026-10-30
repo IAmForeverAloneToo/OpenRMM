@@ -21,8 +21,14 @@ func technicianFixture(t *testing.T, s *Store, now time.Time, access TechnicianA
 			t.Fatal(e)
 		}
 	}
-	if e := s.ConfirmAdministrator(ctx, 1, 1, now); e != nil {
+	var confirmed bool
+	if e := s.db.QueryRow("SELECT mfa_confirmed FROM administrators WHERE id=1").Scan(&confirmed); e != nil {
 		t.Fatal(e)
+	}
+	if !confirmed {
+		if e := s.ConfirmAdministrator(ctx, 1, 1, now); e != nil {
+			t.Fatal(e)
+		}
 	}
 	c := TechnicianChange{Action: "create", ID: strings.Repeat("b", 32), Username: "helper", Enabled: true, Access: access}
 	digest, e := s.ChangeTechnician(ctx, c, "admin", "", "", now)

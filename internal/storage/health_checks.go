@@ -113,12 +113,8 @@ func (s *Store) ChangeHealthCheck(ctx context.Context, c HealthChange, actor, di
 		return "", e
 	}
 	defer tx.Rollback()
-	var owner string
-	if e = tx.QueryRowContext(ctx, "SELECT username FROM administrators WHERE id=1").Scan(&owner); e != nil {
+	if e = ownerTx(ctx, tx, actor); e != nil {
 		return "", e
-	}
-	if actor != owner {
-		return "", ErrForbidden
 	}
 	var hostname string
 	if e = tx.QueryRowContext(ctx, "SELECT hostname FROM devices WHERE id=? AND revoked_at IS NULL AND os='windows'", v.DeviceID).Scan(&hostname); e != nil {

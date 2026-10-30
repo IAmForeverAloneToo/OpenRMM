@@ -47,16 +47,6 @@ func scriptBatchID(batch, device string) string {
 	sum := sha256.Sum256([]byte("openrmm:script-batch:" + batch + ":" + device))
 	return hex.EncodeToString(sum[:16])
 }
-func scriptBatchOwner(ctx context.Context, tx *sql.Tx, actor string) error {
-	var owner string
-	if e := tx.QueryRowContext(ctx, "SELECT username FROM administrators WHERE id=1").Scan(&owner); e != nil {
-		return e
-	}
-	if owner != actor {
-		return ErrForbidden
-	}
-	return nil
-}
 func batchChangeValid(c ScriptBatchChange) bool {
 	if !protocol.ValidID(c.ID) || !protocol.ValidID(c.VersionID) || !validOrganizationName(c.Name) || len(c.Devices) > 25 || len(c.Groups) > 25 || len(c.Devices)+len(c.Groups) == 0 {
 		return false
@@ -154,7 +144,7 @@ func (s *Store) SubmitScriptBatch(ctx context.Context, c ScriptBatchChange, acto
 		return b, e
 	}
 	defer tx.Rollback()
-	if e = scriptBatchOwner(ctx, tx, actor); e != nil {
+	if e = ownerTx(ctx, tx, actor); e != nil {
 		return b, e
 	}
 	// Check exact duplicates before current membership/readiness. An existing
@@ -289,7 +279,7 @@ func (s *Store) ScriptBatch(ctx context.Context, id, actor string, now time.Time
 		return ScriptBatch{}, e
 	}
 	defer tx.Rollback()
-	if e = scriptBatchOwner(ctx, tx, actor); e != nil {
+	if e = ownerTx(ctx, tx, actor); e != nil {
 		return ScriptBatch{}, e
 	}
 	if e = expireScriptRuns(ctx, tx, now); e != nil {
@@ -318,7 +308,7 @@ func (s *Store) ScriptBatches(ctx context.Context, actor string) ([]ScriptBatchS
 		return nil, e
 	}
 	defer tx.Rollback()
-	if e = scriptBatchOwner(ctx, tx, actor); e != nil {
+	if e = ownerTx(ctx, tx, actor); e != nil {
 		return nil, e
 	}
 	rows, e := tx.QueryContext(ctx, `SELECT b.id,b.name,b.actor,b.version_id,json_array_length(b.targets_json),b.created_at,b.restored FROM script_batches b ORDER BY b.created_at DESC,b.id DESC LIMIT 100`)

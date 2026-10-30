@@ -158,7 +158,7 @@ func rolloutReview(ctx context.Context, tx *sql.Tx, c AgentRolloutChange, actor 
 	// Automatic ring rollouts run as RingsActor, which no account can sign in as
 	// (usernames cannot contain ':'); everything else needs the owner.
 	if actor != RingsActor {
-		if e := applicationOwner(ctx, tx, actor); e != nil {
+		if e := ownerTx(ctx, tx, actor); e != nil {
 			return r, e
 		}
 	}
@@ -403,7 +403,7 @@ func (s *Store) CancelAgentUpgrade(ctx context.Context, id, actor string, now ti
 		return e
 	}
 	defer tx.Rollback()
-	if e = applicationOwner(ctx, tx, actor); e != nil {
+	if e = ownerTx(ctx, tx, actor); e != nil {
 		return e
 	}
 	var status, device string

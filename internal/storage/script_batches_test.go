@@ -21,6 +21,9 @@ func batchFixture(t *testing.T) (*Store, []Device, ScriptVersion, time.Time) {
 	if e := s.SetAdministrator(ctx, Administrator{Username: "admin", PasswordHash: "hash", TOTPCipher: []byte("cipher")}, nil, false, now); e != nil {
 		t.Fatal(e)
 	}
+	if e := s.ConfirmAdministrator(ctx, 1, 1, now); e != nil {
+		t.Fatal(e)
+	}
 	other := d
 	other.ID = strings.Repeat("3", 32)
 	other.Hostname = "Second <device>"

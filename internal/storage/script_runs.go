@@ -236,17 +236,25 @@ func (s *Store) CancelScriptRun(ctx context.Context, id, run, actor string, now 
 		return e
 	}
 	defer tx.Rollback()
-	if e = expireScriptRuns(ctx, tx, now); e != nil {
+	if e = cancelScriptRunTx(ctx, tx, id, run, actor, now); e != nil {
+		return e
+	}
+	return tx.Commit()
+}
+
+// cancelScriptRunTx cancels a queued run or asks a running one to stop.
+func cancelScriptRunTx(ctx context.Context, tx *sql.Tx, id, run, actor string, now time.Time) error {
+	if e := expireScriptRuns(ctx, tx, now); e != nil {
 		return e
 	}
 	var status string
 	var cancel bool
-	e = tx.QueryRowContext(ctx, "SELECT status,cancel_requested FROM script_runs WHERE id=? AND device_id=?", run, id).Scan(&status, &cancel)
+	e := tx.QueryRowContext(ctx, "SELECT status,cancel_requested FROM script_runs WHERE id=? AND device_id=?", run, id).Scan(&status, &cancel)
 	if e != nil {
 		return ErrScript
 	}
 	if cancel {
-		return tx.Commit()
+		return nil
 	}
 	if status != "queued" && status != "dispatched" && status != "running" {
 		return ErrScript
@@ -260,10 +268,7 @@ func (s *Store) CancelScriptRun(ctx context.Context, id, run, actor string, now 
 	if e != nil {
 		return e
 	}
-	if e = auditDevice(ctx, tx, now, actor, "script_run_cancel_requested", id+":"+run, "requested"); e != nil {
-		return e
-	}
-	return tx.Commit()
+	return auditDevice(ctx, tx, now, actor, "script_run_cancel_requested", id+":"+run, "requested")
 }
 func (s *Store) ScriptRun(ctx context.Context, id, run string, now time.Time) (ScriptRun, error) {
 	tx, e := s.db.BeginTx(ctx, nil)

@@ -76,7 +76,7 @@ func (s *Store) ChangeAgentRingPolicy(ctx context.Context, c AgentRingChange, ac
 		return AgentRingPolicy{}, e
 	}
 	defer tx.Rollback()
-	if e = applicationOwner(ctx, tx, actor); e != nil {
+	if e = ownerTx(ctx, tx, actor); e != nil {
 		return AgentRingPolicy{}, e
 	}
 	p, e := ringPolicy(ctx, tx)

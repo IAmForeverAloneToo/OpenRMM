@@ -32,6 +32,9 @@ func healthFixture(t *testing.T, response bool) (*Store, Device, HealthCheck, ti
 	if e := s.SetAdministrator(ctx, Administrator{Username: "admin", PasswordHash: "hash", TOTPCipher: []byte("cipher")}, nil, false, now); e != nil {
 		t.Fatal(e)
 	}
+	if e := s.ConfirmAdministrator(ctx, 1, 1, now); e != nil {
+		t.Fatal(e)
+	}
 	c := HealthCheck{ID: strings.Repeat("a", 32), DeviceID: d.ID, Name: "Example must run", Kind: "service_running", Service: "Example", Enabled: true, HoldSeconds: 60, RecoverySeconds: 60, Severity: "critical", Email: true, Response: response, CooldownSeconds: 3600}
 	healthSave(t, s, HealthChange{Check: c}, now)
 	c.Revision = 1

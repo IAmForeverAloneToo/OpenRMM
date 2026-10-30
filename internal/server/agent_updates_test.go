@@ -205,6 +205,9 @@ func TestAgentUpdateMTLSArtifactBoundToOneDispatchedDevice(t *testing.T) {
 	if e = store.SetAdministrator(ctx, storage.Administrator{Username: "admin", PasswordHash: "test", TOTPCipher: []byte("test")}, nil, false, now); e != nil {
 		t.Fatal(e)
 	}
+	if e = store.ConfirmAdministrator(ctx, 1, 1, now); e != nil {
+		t.Fatal(e)
+	}
 	ds, e := devices.New(ctx, store, filepath.Join(root, "secrets", "authority.pem"))
 	if e != nil {
 		t.Fatal(e)

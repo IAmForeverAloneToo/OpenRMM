@@ -37,6 +37,9 @@ func applicationFixture(t *testing.T) (*Store, Device, ApplicationVersion, time.
 	if e := s.SetAdministrator(context.Background(), Administrator{Username: "admin", PasswordHash: "hash", TOTPCipher: []byte("cipher")}, nil, false, now); e != nil {
 		t.Fatal(e)
 	}
+	if e := s.ConfirmAdministrator(context.Background(), 1, 1, now); e != nil {
+		t.Fatal(e)
+	}
 	v := applicationSave(t, s, strings.Repeat("a", 32), strings.Repeat("b", 32), "1.0.0", 1, now)
 	return s, d, v, now
 }

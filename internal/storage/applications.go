@@ -79,15 +79,17 @@ func applicationID(domain, id string) string {
 	s := sha256.Sum256([]byte("openrmm:application:" + domain + ":" + id))
 	return hex.EncodeToString(s[:16])
 }
-func applicationOwner(ctx context.Context, tx *sql.Tx, actor string) error {
+
+// ownerTx requires the actor to be the primary administrator with confirmed
+// MFA. Owner routes check this per session already; storage checks again
+// inside the transaction that acts.
+func ownerTx(ctx context.Context, tx *sql.Tx, actor string) error {
 	var owner string
-	if e := tx.QueryRowContext(ctx, "SELECT username FROM administrators WHERE id=1").Scan(&owner); e != nil {
-		return e
-	}
-	if owner != actor {
+	e := tx.QueryRowContext(ctx, "SELECT username FROM administrators WHERE id=1 AND mfa_confirmed=1").Scan(&owner)
+	if errors.Is(e, sql.ErrNoRows) || e == nil && owner != actor {
 		return ErrForbidden
 	}
-	return nil
+	return e
 }
 func applicationVersionTx(ctx context.Context, tx *sql.Tx, id string) (ApplicationVersion, error) {
 	var v ApplicationVersion
@@ -182,7 +184,7 @@ func (s *Store) ChangeApplication(ctx context.Context, c ApplicationChange, acto
 		return v, "", e
 	}
 	defer tx.Rollback()
-	if e = applicationOwner(ctx, tx, actor); e != nil {
+	if e = ownerTx(ctx, tx, actor); e != nil {
 		return v, "", e
 	}
 	var revision int64
@@ -288,7 +290,7 @@ func deploymentReviewTx(ctx context.Context, tx *sql.Tx, c DeploymentChange, act
 	if !protocol.ValidID(c.ID) || !protocol.ValidID(c.VersionID) || !applications.Operation(c.Operation) || len(c.Devices) > applications.MaxTargets || len(c.Groups) > 25 || len(c.Devices)+len(c.Groups) == 0 {
 		return r, ErrApplication
 	}
-	if e := applicationOwner(ctx, tx, actor); e != nil {
+	if e := ownerTx(ctx, tx, actor); e != nil {
 		return r, e
 	}
 	v, e := applicationVersionTx(ctx, tx, c.VersionID)
@@ -536,20 +538,21 @@ func (s *Store) CancelApplicationDeployment(ctx context.Context, id, actor strin
 	if !protocol.ValidID(id) {
 		return ErrApplication
 	}
+	// The owner check, the lookup and the cancel are one transaction.
 	tx, e := s.db.BeginTx(ctx, nil)
 	if e != nil {
 		return e
 	}
-	if e = applicationOwner(ctx, tx, actor); e != nil {
-		tx.Rollback()
+	defer tx.Rollback()
+	if e = ownerTx(ctx, tx, actor); e != nil {
 		return e
 	}
-	if e = tx.Commit(); e != nil {
-		return e
-	}
-	e = s.db.QueryRowContext(ctx, "SELECT device_id,run_id FROM application_deployments WHERE id=?", id).Scan(&device, &run)
+	e = tx.QueryRowContext(ctx, "SELECT device_id,run_id FROM application_deployments WHERE id=?", id).Scan(&device, &run)
 	if e != nil || run == nil {
 		return ErrApplication
 	}
-	return s.CancelScriptRun(ctx, device, *run, actor, now)
+	if e = cancelScriptRunTx(ctx, tx, device, *run, actor, now); e != nil {
+		return e
+	}
+	return tx.Commit()
 }

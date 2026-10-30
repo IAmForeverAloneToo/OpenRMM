@@ -138,7 +138,7 @@ func (s *Store) addAgentRelease(ctx context.Context, r protocol.SignedAgentRelea
 	}
 	defer tx.Rollback()
 	if !bundled {
-		if e = applicationOwner(ctx, tx, actor); e != nil {
+		if e = ownerTx(ctx, tx, actor); e != nil {
 			return e
 		}
 	}
@@ -236,7 +236,7 @@ func (s *Store) WithdrawAgentRelease(ctx context.Context, id, actor string, now 
 		return e
 	}
 	defer tx.Rollback()
-	if e = applicationOwner(ctx, tx, actor); e != nil {
+	if e = ownerTx(ctx, tx, actor); e != nil {
 		return e
 	}
 	var n int

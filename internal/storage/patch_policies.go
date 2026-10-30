@@ -48,14 +48,11 @@ type PatchGuard struct {
 }
 
 func patchOwner(ctx context.Context, tx *sql.Tx, actor string) error {
-	var owner string
-	if e := tx.QueryRowContext(ctx, "SELECT username FROM administrators WHERE id=1 AND mfa_confirmed=1").Scan(&owner); e != nil {
+	if e := ownerTx(ctx, tx, actor); errors.Is(e, ErrForbidden) {
+		return patching.ErrInvalid
+	} else {
 		return e
 	}
-	if owner != actor {
-		return patching.ErrInvalid
-	}
-	return nil
 }
 
 const patchPolicyColumns = "id,revision,state,definition_json,next_at,actor,created_at,updated_at"
