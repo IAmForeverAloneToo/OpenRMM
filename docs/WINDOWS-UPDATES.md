@@ -109,7 +109,7 @@ Turning the feature off keeps its journal and does not cancel work Windows has a
 | Install | 125 minutes | 2 hours |
 | Restart request | 3 minutes | 1 minute |
 
-Queued jobs expire after 60 seconds.
+Queued jobs expire after 60 seconds. When the device asks for work, a job it can no longer run is cancelled at once and the reason is recorded in the audit log (`update_cancelled`): the device no longer allows the action (`not_supported`), the job's window has passed (`outside_window`), or its patch policy or run no longer allows it (`patch_run_not_allowed`). A job whose device has not reported fresh update status yet waits until it expires.
 
 The agent keeps two journals in its protected state folder:
 

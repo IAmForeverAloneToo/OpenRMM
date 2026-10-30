@@ -205,14 +205,35 @@ func (s *Store) DispatchUpdateJob(ctx context.Context, id, fp string, now time.T
 	if e != nil {
 		return d, e
 	}
+	// A job that can no longer run is cancelled at once, with the reason in
+	// the audit log, instead of staying queued until it expires.
+	cancel := func(reason string) (protocol.UpdateDispatch, error) {
+		if _, e := tx.ExecContext(ctx, "UPDATE update_jobs SET status='cancelled',finished_at=? WHERE id=?", now.Unix(), q.ID); e != nil {
+			return d, e
+		}
+		if e := auditDevice(ctx, tx, now, "server", "update_cancelled", id+":"+q.ID+":"+q.Action, reason); e != nil {
+			return d, e
+		}
+		return d, tx.Commit()
+	}
 	// Scheduled jobs recheck the exact policy revision/window at dispatch.
-	if e = patchDispatchTx(ctx, tx, q, now); e != nil {
+	if e = patchDispatchTx(ctx, tx, q, now); errors.Is(e, ErrUpdateJob) {
+		return cancel("patch_run_not_allowed")
+	} else if e != nil {
 		return d, e
 	}
+	if !windowsupdate.WindowAllows(q.UpdateJob, now) {
+		return cancel("outside_window")
+	}
 	// Recheck availability/permission at dispatch, as well as at queue time.
+	// A stale update status may be refreshed within the job's minute, so the
+	// job then waits; a device that cannot do the action cancels it.
 	support, e := updateEligible(ctx, tx, id, now, 2*time.Minute)
-	if e != nil || (q.WindowStart != 0 && !support.Windowed) || !windowsupdate.WindowAllows(q.UpdateJob, now) || (q.Action == "install" && !support.CanInstall) || (q.Action == "restart" && !support.CanRestart) {
-		return d, ErrUpdateJob
+	if e != nil {
+		return d, tx.Commit()
+	}
+	if (q.WindowStart != 0 && !support.Windowed) || (q.Action == "install" && !support.CanInstall) || (q.Action == "restart" && !support.CanRestart) {
+		return cancel("not_supported")
 	}
 	duration := 20 * time.Minute
 	if q.Action == "install" {

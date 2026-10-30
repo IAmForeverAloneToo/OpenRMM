@@ -211,3 +211,41 @@ func TestUpdateHistoryCapacityPreservesRecentIntents(t *testing.T) {
 		}
 	}
 }
+
+// A queued job the device can no longer run is cancelled at dispatch with
+// the reason audited; one that only waits for fresh update status stays
+// queued and the device gets no job yet.
+func TestUpdateJobCancelledWhenNoLongerPossible(t *testing.T) {
+	s, d, now, q := updateFixture(t)
+	ctx := context.Background()
+	q.Action = "restart"
+	if e := s.QueueUpdateJob(ctx, q, now, time.Minute); e != nil {
+		t.Fatal(e)
+	}
+	// The device's update status is temporarily unavailable: the job waits.
+	if e := s.RecordUpdateSupport(ctx, d.ID, d.Fingerprint, protocol.FeatureReport{Capability: windowsupdate.Capability, Status: "failed"}, now); e != nil {
+		t.Fatal(e)
+	}
+	if r, e := s.DispatchUpdateJob(ctx, d.ID, d.Fingerprint, now); e != nil || r.Job != nil {
+		t.Fatal("unavailable status dispatched or failed", r.Job, e)
+	}
+	var status string
+	if e := s.db.QueryRow("SELECT status FROM update_jobs WHERE id=?", q.ID).Scan(&status); e != nil || status != "queued" {
+		t.Fatal("waiting job not queued", status, e)
+	}
+	// The device's report changes: restarts are no longer allowed.
+	raw, _ := json.Marshal(protocol.UpdateSupport{Broker: "available", CanInstall: true})
+	if e := s.RecordUpdateSupport(ctx, d.ID, d.Fingerprint, protocol.FeatureReport{Capability: windowsupdate.Capability, Status: "ok", Data: raw}, now); e != nil {
+		t.Fatal(e)
+	}
+	if r, e := s.DispatchUpdateJob(ctx, d.ID, d.Fingerprint, now); e != nil || r.Job != nil {
+		t.Fatal("impossible job dispatched or failed", r.Job, e)
+	}
+	var detail string
+	if e := s.db.QueryRow("SELECT status FROM update_jobs WHERE id=?", q.ID).Scan(&status); e != nil || status != "cancelled" {
+		t.Fatal("job not cancelled", status, e)
+	}
+	if e := s.db.QueryRow("SELECT outcome FROM audit_events WHERE action='update_cancelled'").Scan(&detail); e != nil || detail != "not_supported" {
+		t.Fatal("cancellation not audited", detail, e)
+	}
+}
