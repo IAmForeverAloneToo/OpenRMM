@@ -80,6 +80,15 @@ Only the latest release receives fixes, including security fixes. Pre-releases a
 
 ## Version notes
 
+### 0.1.4
+
+Agent proxies, protected device keys and sign-in limits; nothing to do when updating.
+
+- **Agents can use a proxy** to reach the server: the policy value `Proxy`, `install.cmd /proxy`, or the machine's WinHTTP proxy ([WINDOWS-SERVICE.md](WINDOWS-SERVICE.md#proxy)).
+- **Device keys are protected and replaced at every renewal.** New agents keep their key in the TPM where available, otherwise encrypted with DPAPI. Agents enrolled earlier encrypt their existing key ten minutes after updating and move to a new key at their next renewal ([ENROLLMENT.md](ENROLLMENT.md#device-credentials)). Update the server first: older servers renew only the key in use, so agents keep their key until the server is updated. Restoring a device's agent folder onto another machine or a reinstalled Windows no longer works; reinstall the agent instead ([RECOVERY.md](RECOVERY.md#windows-agent-state)).
+- **Renewal overlap of two hours** instead of five minutes, so an agent whose renewal reply was lost recovers at its next hourly attempt.
+- **Sign-in limits.** Successful sign-ins no longer count, and a browser that signed in before keeps signing in during a flood of attempts. Behind a reverse proxy, name it with `install.sh --trusted-proxies` so the limits apply per client ([INSTALL.md](INSTALL.md)).
+
 ### 0.1.3
 
 Scale and long-running servers; nothing to do when updating.
