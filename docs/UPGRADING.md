@@ -80,6 +80,15 @@ Only the latest release receives fixes, including security fixes. Pre-releases a
 
 ## Version notes
 
+### 0.1.5
+
+Cleanups; nothing to do when updating.
+
+- **Application installers download through the agent's proxy** when one applies to the installer's address. Application versions saved earlier keep downloading directly ([APPLICATIONS.md](APPLICATIONS.md)).
+- **Windows Update jobs that can no longer run are cancelled** when the device asks for work, with the reason in the audit log, instead of waiting a minute to expire ([WINDOWS-UPDATES.md](WINDOWS-UPDATES.md)).
+- **Disk alert readings say "free"**, since disk alerts measure free space while charts show space used.
+- **Script parameter names** may no longer be a short alias of a PowerShell common parameter (such as `ea` or `ov`) in new script versions; existing versions keep running ([SCRIPTS.md](SCRIPTS.md)).
+
 ### 0.1.4
 
 Agent proxies, protected device keys and sign-in limits; nothing to do when updating.
