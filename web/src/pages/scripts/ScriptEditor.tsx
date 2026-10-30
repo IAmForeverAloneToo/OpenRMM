@@ -11,7 +11,9 @@ import { Badge, Button, ErrorNotice, Field, Input, Mono, Panel, Spinner, cx } fr
 const empty: ScriptDefinition = { name: "", description: "", body: "", parameters: [], timeout_seconds: 60, run_as: "system" };
 const paramName = /^[A-Za-z][A-Za-z0-9_]{0,31}$/;
 // PowerShell common parameters cannot be redefined.
-const reserved = new Set(["debug", "verbose", "erroraction", "errorvariable", "warningaction", "warningvariable", "informationaction", "informationvariable", "outvariable", "outbuffer", "pipelinevariable", "whatif", "confirm", "progressaction"]);
+const reserved = new Set(["debug", "verbose", "erroraction", "errorvariable", "warningaction", "warningvariable", "informationaction", "informationvariable", "outvariable", "outbuffer", "pipelinevariable", "whatif", "confirm", "progressaction",
+  // Their short aliases bind the same way.
+  "db", "vb", "ea", "ev", "wa", "wv", "infa", "iv", "ov", "ob", "pv", "wi", "cf", "proga"]);
 const validParam = (n: string) => paramName.test(n) && !reserved.has(n.toLowerCase());
 
 export function ScriptEditor() {
@@ -131,7 +133,7 @@ export function ScriptEditor() {
                     <Input value={p.description} onChange={(e) => setParam(i, { description: e.target.value })} placeholder="Description (optional)" maxLength={256} />
                   </div>
                 ))}
-                {!paramsValid ? <p className="text-[12px] text-danger">Names start with a letter, use up to 32 letters, digits or _, must be unique, and can't be a PowerShell common parameter (Verbose, ErrorAction…).</p> : null}
+                {!paramsValid ? <p className="text-[12px] text-danger">Names start with a letter, use up to 32 letters, digits or _, must be unique, and can't be a PowerShell common parameter or its alias (Verbose, ErrorAction, ea…).</p> : null}
               </div>
             )}
           </Panel>

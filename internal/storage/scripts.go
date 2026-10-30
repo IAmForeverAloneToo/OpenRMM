@@ -43,7 +43,7 @@ const (
 )
 
 func (s *Store) CreateScriptVersion(ctx context.Context, v ScriptVersion, now time.Time) (ScriptVersion, error) {
-	if !protocol.ValidID(v.ID) || !protocol.ValidID(v.ScriptID) || !scripting.DefinitionValid(v.Definition) || v.Actor == "" || !scripting.Text(v.Actor, 128, false) {
+	if !protocol.ValidID(v.ID) || !protocol.ValidID(v.ScriptID) || !scripting.NewDefinitionValid(v.Definition) || v.Actor == "" || !scripting.Text(v.Actor, 128, false) {
 		return v, ErrScript
 	}
 	tx, e := s.db.BeginTx(ctx, nil)

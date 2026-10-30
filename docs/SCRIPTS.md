@@ -78,7 +78,7 @@ Declare `Message` as an optional string parameter in the form.
 - Use `exit 7` (or any code) to return a deliberate nonzero exit code. A terminating PowerShell error returns failure.
 - Non-terminating errors and native programs follow normal PowerShell semantics, so scripts should check their own operations and return an appropriate code.
 - Parameters arrive as JSON and are splatted by a fixed wrapper. OpenRMM never interpolates values into the command line or evaluates them as code.
-- Parameter names are ASCII, start with a letter and are up to 32 characters. PowerShell common parameter names (such as `Verbose`, `ErrorAction` or `WhatIf`) are not allowed.
+- Parameter names are ASCII, start with a letter and are up to 32 characters. PowerShell common parameter names (such as `Verbose`, `ErrorAction` or `WhatIf`) and their short aliases (`db`, `vb`, `ea`, `ev`, `wa`, `wv`, `infa`, `iv`, `ov`, `ob`, `pv`, `wi`, `cf`, `proga`) are not allowed, since an argument for such a parameter would change how PowerShell runs the script. Versions saved before 0.1.5 that use an alias keep running.
 
 > [!IMPORTANT]
 > Parameters and output are stored as plaintext application data visible to the primary administrator. Do not put passwords, tokens or private keys in them. There is no secret-parameter store and no automatic output redaction. They do not appear in audit messages or ordinary logs.

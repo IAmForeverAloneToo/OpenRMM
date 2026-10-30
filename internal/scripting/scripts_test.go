@@ -32,6 +32,18 @@ func TestVersionHashParametersAndStrictSchemas(t *testing.T) {
 			t.Fatal("unsafe parameter")
 		}
 	}
+	// Aliases of common parameters: new versions may not use them, versions
+	// saved earlier still run.
+	for _, name := range []string{"ea", "OV", "proga"} {
+		d := q.Version.Definition
+		d.Parameters = []protocol.ScriptParameter{{Name: name}}
+		if NewDefinitionValid(d) || !DefinitionValid(d) {
+			t.Fatal("alias rule wrong for", name)
+		}
+	}
+	if !NewDefinitionValid(q.Version.Definition) {
+		t.Fatal("ordinary definition rejected as new")
+	}
 	raw, _ := json.Marshal(q)
 	var out protocol.ScriptJob
 	if Decode(append(raw, []byte("{}")...), &out) == nil {

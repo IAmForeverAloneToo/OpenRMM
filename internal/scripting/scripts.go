@@ -67,6 +67,27 @@ func DefinitionValid(d protocol.ScriptDefinition) bool {
 	}
 	return true
 }
+
+// commonAliases are PowerShell's short names for its common parameters
+// (-ea for -ErrorAction and so on). An argument for a script parameter with
+// one of these names can bind to the common parameter and change how the
+// script runs, so new versions may not use them; versions saved earlier keep
+// running.
+var commonAliases = map[string]bool{"db": true, "vb": true, "ea": true, "ev": true, "wa": true, "wv": true, "infa": true, "iv": true, "ov": true, "ob": true, "pv": true, "wi": true, "cf": true, "proga": true}
+
+// NewDefinitionValid applies the rules for saving a new version.
+func NewDefinitionValid(d protocol.ScriptDefinition) bool {
+	if !DefinitionValid(d) {
+		return false
+	}
+	for _, p := range d.Parameters {
+		if commonAliases[strings.ToLower(p.Name)] {
+			return false
+		}
+	}
+	return true
+}
+
 func Digest(v protocol.ScriptVersion) string {
 	b, _ := json.Marshal(struct {
 		ID, ScriptID string
