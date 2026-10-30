@@ -924,3 +924,17 @@ export type HuntSummary = {
   finished: number;
   problems: number;
 };
+export type NtfsVolume = {
+  volume: string;
+  serial?: string;
+  method?: "snapshot" | "live";
+  files: { name: string; size: number; sha256: string }[];
+  journal_offset?: number;
+  mft_rows: number;
+  usn_rows: number;
+  damaged: number;
+  excluded: number;
+  error?: string;
+};
+export type NtfsManifest = { format: string; version: number; device_time: string; volumes: NtfsVolume[]; notes: string[] };
+export type NtfsPage = { columns: string[]; rows: string[][]; offset: number; more: boolean };

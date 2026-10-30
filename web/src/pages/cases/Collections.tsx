@@ -6,6 +6,7 @@ import { get, post } from "../../lib/api";
 import { absoluteTime, bytes, relativeTime } from "../../lib/format";
 import type { DevicesResponse, EvidenceCollection, ResponseAction } from "../../lib/types";
 import { ActionViewer } from "./ActionViewer";
+import { NtfsViewer } from "./NtfsViewer";
 import { DropAndScript } from "./DropAndScript";
 import { useTriageProfiles } from "./TriageProfiles";
 import { ntfsVolumes } from "../../lib/ntfs";
@@ -324,7 +325,7 @@ export function Collections({ caseId, open }: { caseId: string; open: boolean })
                   ) : null}
                   {c.server_sha256 ? <Mono className="block truncate text-[11px] text-faint">SHA-256 {c.server_sha256}</Mono> : null}
                 </div>
-                {c.status === "succeeded" && c.source === "action" ? (
+                {c.status === "succeeded" && (c.source === "action" || c.source === "ntfs") ? (
                   <Button size="sm" icon={<Eye className="size-3.5" />} onClick={() => setViewing(c)}>
                     View
                   </Button>
@@ -349,7 +350,11 @@ export function Collections({ caseId, open }: { caseId: string; open: boolean })
         </ul>
       )}
       <p className="border-t border-border px-4 py-2 text-[12px] text-faint">Every download is recorded in the custody log with the account that downloaded it.</p>
-      {viewing ? <ActionViewer caseId={caseId} job={viewing} open onClose={() => setViewing(null)} onQueued={refresh} /> : null}
+      {viewing?.source === "ntfs" ? (
+        <NtfsViewer base={`/api/v1/cases/${caseId}/collections/${viewing.id}/ntfs`} job={viewing} open onClose={() => setViewing(null)} />
+      ) : viewing ? (
+        <ActionViewer caseId={caseId} job={viewing} open onClose={() => setViewing(null)} onQueued={refresh} />
+      ) : null}
     </Panel>
   );
 }

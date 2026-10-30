@@ -87,7 +87,7 @@ func sha256Text(s string) bool {
 // Valid checks metadata reported by an agent.
 func (m EvidenceMeta) Valid() bool {
 	switch m.Method {
-	case "read", "backup", "shadow_copy", "registry_save", "action", "export", "triage":
+	case "read", "backup", "shadow_copy", "registry_save", "action", "export", "triage", "ntfs":
 	default:
 		return false
 	}

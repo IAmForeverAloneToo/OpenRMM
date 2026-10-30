@@ -8,6 +8,7 @@ import type { CaseSummary, EvidenceCollection, ResponseAction } from "../lib/typ
 import { Modal } from "../components/Dialog";
 import { Badge, Button, ErrorNotice, Field, Input, Mono, Segmented, Select, Tip, type Tone } from "../components/ui";
 import { ActionViewer } from "./cases/ActionViewer";
+import { NtfsViewer } from "./cases/NtfsViewer";
 import { progress, reasons, states } from "./cases/Collections";
 
 // The device terminal is a live response session. Built-in commands run
@@ -337,7 +338,7 @@ export function LiveConsole({ session, caseId, active }: { session: string; case
                     <div className="text-muted">{relativeTime(j.created_at)}</div>
                     {j.status === "failed" || j.status === "expired" ? <div className="text-danger">{reasons[j.outcome] ?? j.outcome}</div> : null}
                   </div>
-                  {j.status === "succeeded" && j.source === "action" ? (
+                  {j.status === "succeeded" && (j.source === "action" || j.source === "ntfs") ? (
                     <Button size="sm" icon={<Eye className="size-3.5" />} onClick={() => setViewing(j)}>
                       View
                     </Button>
@@ -358,7 +359,9 @@ export function LiveConsole({ session, caseId, active }: { session: string; case
           </ul>
         )}
       </div>
-      {viewing ? (
+      {viewing?.source === "ntfs" ? (
+        <NtfsViewer base={`${base}/jobs/${viewing.id}/ntfs`} job={viewing} open onClose={() => setViewing(null)} recordedIn={recordedIn(viewing)} />
+      ) : viewing ? (
         <ActionViewer
           caseId={viewing.case_id}
           job={viewing}

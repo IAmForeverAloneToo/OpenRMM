@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"io"
 	"math/rand/v2"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -184,5 +185,65 @@ func TestRandomInput(t *testing.T) {
 			}
 			_ = boot
 		}
+	}
+}
+
+func TestQueryCSV(t *testing.T) {
+	var mft, usn bytes.Buffer
+	c, _ := NewCSV(&mft, MFTColumns)
+	row := func(n int, inUse bool, parent, name, created string) []string {
+		r := make([]string, len(MFTColumns))
+		r[0], r[2], r[5], r[6], r[11] = strconv.Itoa(n), strconv.FormatBool(inUse), parent, name, created
+		return r
+	}
+	for i := 0; i < 1000; i++ {
+		c.Write(row(i, i%10 != 0, `C:\Users`, "file"+strconv.Itoa(i)+".txt", "2026-10-30 12:00:00.0000000"))
+	}
+	c.Write(row(1000, true, `C:\Windows`, "evil.exe", "2026-10-29 01:00:00.0000000"))
+	c.Flush()
+	q := func(f Filter, offset, limit int) Page {
+		p, err := QueryCSV(bytes.NewReader(mft.Bytes()), f, offset, limit)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	if p := q(Filter{}, 0, 100); len(p.Rows) != 100 || !p.More || p.Rows[0][0] != "0" {
+		t.Fatal("first page")
+	}
+	if p := q(Filter{}, 950, 100); len(p.Rows) != 51 || p.More {
+		t.Fatal("last page", len(p.Rows), p.More)
+	}
+	if p := q(Filter{Contains: `windows\EVIL`}, 0, 10); len(p.Rows) != 1 || p.Rows[0][6] != "evil.exe" {
+		t.Fatal("contains")
+	}
+	if p := q(Filter{From: "2026-10-29 00:00:00", To: "2026-10-29 23:59:59.9999999"}, 0, 10); len(p.Rows) != 1 {
+		t.Fatal("time range", len(p.Rows))
+	}
+	if p := q(Filter{Deleted: true}, 0, 500); len(p.Rows) != 100 {
+		t.Fatal("deleted", len(p.Rows))
+	}
+	c, _ = NewCSV(&usn, USNColumns)
+	for _, reason := range []string{"FileCreate", "FileDelete|Close", "RenameOldName"} {
+		r := make([]string, len(USNColumns))
+		r[0], r[6], r[8], r[9] = "x.txt", `C:\Temp`, "2026-10-30 12:00:00.0000000", reason
+		c.Write(r)
+	}
+	c.Flush()
+	p, err := QueryCSV(bytes.NewReader(usn.Bytes()), Filter{Reasons: []string{"renameoldname", "FileCreate"}}, 0, 10)
+	if err != nil || len(p.Rows) != 2 {
+		t.Fatal("reasons", p.Rows, err)
+	}
+	if p, _ := QueryCSV(bytes.NewReader(usn.Bytes()), Filter{Deleted: true}, 0, 10); len(p.Rows) != 1 {
+		t.Fatal("journal deletes")
+	}
+	if _, err := QueryCSV(bytes.NewReader(usn.Bytes()), Filter{Reasons: []string{"Nope"}}, 0, 10); err == nil {
+		t.Fatal("unknown reason accepted")
+	}
+	if _, err := QueryCSV(strings.NewReader("a,b\n1,2\n"), Filter{}, 0, 10); err == nil {
+		t.Fatal("foreign CSV accepted")
+	}
+	if _, err := QueryCSV(bytes.NewReader(usn.Bytes()), Filter{}, 0, MaxPage+1); err == nil {
+		t.Fatal("oversized page accepted")
 	}
 }
