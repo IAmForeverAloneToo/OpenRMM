@@ -80,6 +80,14 @@ Only the latest release receives fixes, including security fixes. Pre-releases a
 
 ## Version notes
 
+### 0.2.0
+
+NTFS artifacts; nothing to do when updating.
+
+- **NTFS artifact packages.** Collect the raw `$MFT`, `$LogFile` and USN change journal of a device's drives, with timelines parsed on the device that you can search on the case page or download as CSV ([NTFS.md](NTFS.md)). From the case page (**Collect: NTFS artifacts**) or the console (`ntfs`). Agents need this release.
+- **Whole-drive hunts.** With file search on, name and path indicators match every file on fixed NTFS drives through their MFT; hashes are still checked in the common locations ([HUNTING.md](HUNTING.md)).
+- The server adds the new evidence source on its first start (database migration 53).
+
 ### 0.1.5
 
 Cleanups; nothing to do when updating.
