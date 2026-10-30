@@ -99,7 +99,7 @@ Each target runs the response action `hunt` in the agent's long-job worker, the 
 | DNS client cache | Domain and IP indicators. Read with a fixed `Get-DnsClientCache` command. |
 | Persistence report | The same autostart report as [PERSISTENCE.md](PERSISTENCE.md). |
 | Files in common locations | All indicator types that match files, when **Search files** is on (the default). |
-| MFT of fixed NTFS drives | Name and path indicators against every file in use on each fixed NTFS drive, with the same option. Read from the drive's master file table, without a folder walk; see [NTFS.md](NTFS.md#hunts-on-whole-drives). |
+| MFT of fixed NTFS drives | Name and path indicators against every file in use on each fixed NTFS drive (a file with hard links under each of its paths), with the same option. Read from the drive's master file table, without a folder walk; see [NTFS.md](NTFS.md#hunts-on-whole-drives). |
 
 **Searched file locations:**
 

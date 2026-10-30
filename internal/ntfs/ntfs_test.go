@@ -46,7 +46,7 @@ func TestRecordsStreamsAndPaths(t *testing.T) {
 	}
 	// Record 21 lies in the second MFT run, reached through the extension.
 	r, err := v.Record(21)
-	if err != nil || !r.InUse || r.Directory || len(r.Names) != 1 || r.Names[0].Name != "a.txt" || r.USN != 99 || r.SI.Modified != ntfstest.Time.Add(time.Hour).Truncate(100) {
+	if err != nil || !r.InUse || r.Directory || len(r.Names) != 3 || len(r.Links()) != 2 || r.Names[0].Name != "a.txt" || r.USN != 99 || r.SI.Modified != ntfstest.Time.Add(time.Hour).Truncate(100) {
 		t.Fatal(r, err)
 	}
 	if len(r.Streams) != 2 || string(r.Streams[0].Data) != "hello" || r.Streams[1].Name != "Zone.Identifier" {
@@ -97,12 +97,15 @@ func TestRecordsStreamsAndPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 	ScanMFT(bytes.NewReader(mft), v.Boot, func(r Record, err error) error {
-		if row, p, ok := MFTRow(x, r, "C:"); ok && err == nil {
-			rows, paths = append(rows, row), append(paths, p)
+		if err != nil {
+			return nil
 		}
-		return nil
+		return MFTRows(x, r, "C:", func(row []string, p string) error {
+			rows, paths = append(rows, row), append(paths, p)
+			return nil
+		})
 	})
-	want := map[string]bool{`C:\$MFT`: true, `C:\.`: true, `C:\$Extend`: true, `C:\Users`: true, `C:\Users\a.txt`: true, `C:\<unknown>\gone.exe`: true, `C:\$Extend\$UsnJrnl`: true}
+	want := map[string]bool{`C:\$MFT`: true, `C:\.`: true, `C:\$Extend`: true, `C:\Users`: true, `C:\Users\a.txt`: true, `C:\Link to a.txt`: true, `C:\<unknown>\gone.exe`: true, `C:\$Extend\$UsnJrnl`: true}
 	if len(paths) != len(want) {
 		t.Fatal(paths)
 	}

@@ -121,19 +121,17 @@ func writeNTFSVolume(ctx context.Context, zw *zip.Writer, letter string, raw io.
 			mv.Damaged++
 			return nil
 		}
-		row, path, ok := ntfs.MFTRow(x, r, letter)
-		if !ok {
-			return nil
-		}
-		if ntfsExcluded(path, deny) {
-			mv.Excluded++
-			return nil
-		}
-		mv.MFTRows++
-		if mv.MFTRows%50000 == 0 && ctx.Err() != nil {
-			return ctx.Err()
-		}
-		return c.Write(row)
+		return ntfs.MFTRows(x, r, letter, func(row []string, path string) error {
+			if ntfsExcluded(path, deny) {
+				mv.Excluded++
+				return nil
+			}
+			mv.MFTRows++
+			if mv.MFTRows%50000 == 0 && ctx.Err() != nil {
+				return ctx.Err()
+			}
+			return c.Write(row)
+		})
 	})
 	if f, e = h.finish(c, e, folder+"mft.csv"); e != nil {
 		return e
@@ -277,18 +275,19 @@ func mftFiles(ctx context.Context, letter string, raw io.ReaderAt, fn func(NTFSE
 		if !r.InUse || r.Directory || r.Base.Record != 0 {
 			return true
 		}
-		name, ok := r.Name()
-		dir := x.Dir(name.Parent)
-		if !ok || dir == "" {
-			return true
-		}
-		f := NTFSEntry{Path: letter + ntfs.Join(dir, name.Name), Name: name.Name, Modified: r.SI.Modified}
+		var size int64
 		for _, s := range r.Streams {
 			if s.Name == "" && s.StartVCN == 0 {
-				f.Size = s.Size
+				size = s.Size
 			}
 		}
-		return fn(f)
+		// A file with hard links is listed under each of its paths.
+		for _, name := range r.Links() {
+			if dir := x.Dir(name.Parent); dir != "" && !fn(NTFSEntry{Path: letter + ntfs.Join(dir, name.Name), Name: name.Name, Size: size, Modified: r.SI.Modified}) {
+				return false
+			}
+		}
+		return true
 	})
 	if errors.Is(e, errStop) {
 		return nil

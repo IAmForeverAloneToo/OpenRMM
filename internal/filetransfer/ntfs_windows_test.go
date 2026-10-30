@@ -28,16 +28,20 @@ func TestNativeNTFS(t *testing.T) {
 	defer raw.f.Close()
 	cmd := strings.ToLower(filepath.Join(os.Getenv("SystemRoot"), "System32", "cmd.exe"))
 	found, files := false, 0
+	var named []string
 	if e := mftFiles(context.Background(), system, raw, func(f NTFSEntry) bool {
 		files++
 		found = found || strings.ToLower(f.Path) == cmd
+		if strings.EqualFold(f.Name, "cmd.exe") && len(named) < 5 {
+			named = append(named, f.Path)
+		}
 		return true
 	}); e != nil {
 		t.Fatal(e)
 	}
 	t.Logf("%d files in use on %s", files, system)
 	if !found || files < 10000 {
-		t.Fatal("cmd.exe not found in the MFT")
+		t.Fatal("cmd.exe not found in the MFT; files named cmd.exe:", named)
 	}
 	// A package of the live volume (no shadow copy, to keep the test quick).
 	out, e := os.Create(filepath.Join(t.TempDir(), "ntfs.zip"))

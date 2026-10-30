@@ -33,7 +33,7 @@ Only devices whose agent reports the `ntfs` ability accept the request; an older
 
 1. The agent makes a Volume Shadow Copy of each drive and reads the copy's raw volume, so the raw files and the timelines show the same moment. If no copy can be made, it reads the live volume and the manifest says **live**; the timelines are then parsed from a second read moments later.
 2. It copies `$MFT` (following its runs, also when the MFT is fragmented), `$LogFile`, and the allocated part of `$J`. The journal's earlier part is unallocated (sparse) on disk and is left out; `journal_offset` in the manifest says where the copy starts, and `usn.csv` gives each record's offset in the full stream.
-3. It parses `$MFT` and the journal into `mft.csv` and `usn.csv`, building each path from the parent folders recorded in the MFT. A path whose folder was deleted and its record reused shows `<unknown>` as its folder.
+3. It parses `$MFT` and the journal into `mft.csv` and `usn.csv`, building each path from the parent folders recorded in the MFT. A path whose folder was deleted and its record reused shows `<unknown>` as its folder. A file with hard links (common in `C:\Windows`) has a row for each of its paths, with the same `EntryNumber`.
 4. Rows for OpenRMM's own files (the agent's program, data and log folders, and `.openrmm-*` files) are left out of the timelines and counted as excluded. The raw `$MFT` is copied whole, as it is on disk.
 
 The agent reads the volume as SYSTEM through the Windows volume device; nothing is written to the drive except the temporary shadow copy, which is deleted afterwards. The package is built in the agent's state folder and must fit there, keeping 1 GiB free.

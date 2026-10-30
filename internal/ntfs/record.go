@@ -9,6 +9,7 @@ package ntfs
 import (
 	"encoding/binary"
 	"errors"
+	"slices"
 	"time"
 	"unicode/utf16"
 )
@@ -335,4 +336,20 @@ func (r Record) Name() (FileName, bool) {
 		}
 	}
 	return best, rank >= 0
+}
+
+// Links returns a record's names, one per hard link: each name that is not
+// only a DOS short name, or the preferred name when there is no other.
+func (r Record) Links() []FileName {
+	var out []FileName
+	for _, n := range r.Names {
+		if n.Namespace == 2 || slices.ContainsFunc(out, func(o FileName) bool { return o.Parent == n.Parent && o.Name == n.Name }) {
+			continue
+		}
+		out = append(out, n)
+	}
+	if n, ok := r.Name(); ok && len(out) == 0 {
+		out = append(out, n)
+	}
+	return out
 }

@@ -34,8 +34,8 @@ func TestWriteNTFSVolume(t *testing.T) {
 		t.Fatalf("files %v %+v", names, mv)
 	}
 	// $Extend and $Extend\$UsnJrnl are excluded; $MFT, the root, Users,
-	// a.txt and the deleted gone.exe remain.
-	if mv.MFTRows != 5 || mv.Excluded != 2 || mv.USNRows != 2 || mv.Damaged != 0 {
+	// a.txt with its hard link and the deleted gone.exe remain.
+	if mv.MFTRows != 6 || mv.Excluded != 2 || mv.USNRows != 2 || mv.Damaged != 0 {
 		t.Fatalf("counts %+v", mv)
 	}
 	r, _ := zip.NewReader(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
@@ -72,9 +72,9 @@ func TestMFTFiles(t *testing.T) {
 	if e := mftFiles(context.Background(), "C:", bytes.NewReader(vol), func(f NTFSEntry) bool { got = append(got, f.Path); return true }); e != nil {
 		t.Fatal(e)
 	}
-	// Files in use only: $MFT, a.txt and $UsnJrnl (gone.exe is deleted;
-	// the root, $Extend and Users are directories).
-	if strings.Join(got, " ") != `C:\$MFT C:\Users\a.txt C:\$Extend\$UsnJrnl` {
+	// Files in use only: $MFT, a.txt under both its links and $UsnJrnl
+	// (gone.exe is deleted; the root, $Extend and Users are directories).
+	if strings.Join(got, " ") != `C:\$MFT C:\Users\a.txt C:\Link to a.txt C:\$Extend\$UsnJrnl` {
 		t.Fatal(got)
 	}
 	n := 0

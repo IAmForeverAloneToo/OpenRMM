@@ -214,7 +214,8 @@ func USNV3(file, parent uint64, usn int64, reason uint32, name string) []byte {
 // Volume returns a 1 MiB volume: the MFT is split in two runs (clusters 4-7
 // and 40-43, 32 records); record 0's second fragment is in extension record
 // 15 through an attribute list. Record 5 is the root, 11 is $Extend, 20 is
-// a directory "Users", 21 a file "a.txt" with an alternate stream, 22 a
+// a directory "Users", 21 a file "a.txt" with an alternate stream and a
+// hard link "Link to a.txt" in the root (with a DOS short name), 22 a
 // deleted file whose directory was reused, 23 "$UsnJrnl" with a sparse $J.
 func Volume() ([]byte, []byte) {
 	vol := make([]byte, 256*Cluster)
@@ -236,7 +237,7 @@ func Volume() ([]byte, []byte) {
 		5:  record(5, 3, 0, si(Time, 6, 0), fn(5, 5, ".", 1, 0, Time)),
 		11: record(11, 3, 0, fn(5, 5, "$Extend", 3, 0, Time)),
 		20: record(1, 3, 0, si(Time, 0x10, 0), fn(5, 5, "Users", 1, 0, Time), fn(5, 5, "USERS~1", 2, 0, Time)),
-		21: record(1, 1, 0, si(Time, 0x20, 99), fn(20, 1, "a.txt", 3, 5, Time), resident(0x80, "", []byte("hello")), resident(0x80, "Zone.Identifier", []byte("[ZoneTransfer]"))),
+		21: record(1, 1, 0, si(Time, 0x20, 99), fn(20, 1, "a.txt", 3, 5, Time), fn(5, 5, "Link to a.txt", 1, 5, Time), fn(5, 5, "LINKTO~1.TXT", 2, 5, Time), resident(0x80, "", []byte("hello")), resident(0x80, "Zone.Identifier", []byte("[ZoneTransfer]"))),
 		22: record(2, 0, 0, si(Time, 0x20, 0), fn(20, 7, "gone.exe", 1, 0, Time)),
 		23: record(1, 1, 0, fn(11, 11, "$UsnJrnl", 3, 0, Time), nonResident(0x80, "$J", 0, 3*Cluster, []tRun{{length: 2, sparse: true}, {lcn: 60, length: 1}}, 0x8000)),
 	}

@@ -157,16 +157,22 @@ func extension(name string) string {
 	return ""
 }
 
-// MFTRow returns a record's timeline row, prefix being the volume ("C:").
-// Records without a name (extension records, damaged ones) have no row.
-func MFTRow(x *Index, r Record, prefix string) ([]string, string, bool) {
+// MFTRows calls fn with a record's timeline rows and their paths, prefix
+// being the volume ("C:"): one row per hard link. Records without a name
+// (extension records, damaged ones) have no row.
+func MFTRows(x *Index, r Record, prefix string, fn func(row []string, path string) error) error {
 	if r.Base.Record != 0 {
-		return nil, "", false
+		return nil
 	}
-	name, ok := r.Name()
-	if !ok {
-		return nil, "", false
+	for _, name := range r.Links() {
+		if err := fn(mftRow(x, r, name, prefix)); err != nil {
+			return err
+		}
 	}
+	return nil
+}
+
+func mftRow(x *Index, r Record, name FileName, prefix string) ([]string, string) {
 	dir := x.Dir(name.Parent)
 	if dir == "" {
 		dir = `\` + Unknown
@@ -193,7 +199,7 @@ func MFTRow(x *Index, r Record, prefix string) ([]string, string, bool) {
 		ts(r.SI.Changed), ts(name.Times.Changed), ts(r.SI.Accessed), ts(name.Times.Accessed),
 		"0x" + strconv.FormatUint(uint64(r.SIFlags), 16), nt, strconv.FormatUint(r.USN, 10), strconv.FormatUint(r.LSN, 10),
 	}
-	return row, prefix + Join(dir, name.Name), true
+	return row, prefix + Join(dir, name.Name)
 }
 
 // USNRow returns a change journal entry's timeline row.
