@@ -136,6 +136,40 @@ func TestRecordsStreamsAndPaths(t *testing.T) {
 	}
 }
 
+// countingReader counts the reads that reach it.
+type countingReader struct {
+	r     io.Reader
+	reads int
+}
+
+func (c *countingReader) Read(p []byte) (int, error) {
+	c.reads++
+	return c.r.Read(p)
+}
+
+// The MFT is read in large chunks, not a read per record: on a raw volume
+// each read is a device read.
+func TestScanMFTReadsInChunks(t *testing.T) {
+	vol, _ := ntfstest.Volume()
+	v, err := Open(bytes.NewReader(vol))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mft := make([]byte, v.MFT().Size())
+	if _, err := v.MFT().ReadAt(mft, 0); err != nil {
+		t.Fatal(err)
+	}
+	mft = bytes.Repeat(mft, 1<<20/len(mft)+1)
+	c := &countingReader{r: bytes.NewReader(mft)}
+	records := 0
+	if err := ScanMFT(c, v.Boot, func(Record, error) error { records++; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if records < 100 || c.reads > 4 {
+		t.Fatal(records, "records in", c.reads, "reads")
+	}
+}
+
 // Records are found across buffer boundaries, damage loses only the
 // records it covers, and zero fill is skipped.
 func TestScanUSNBoundariesAndDamage(t *testing.T) {

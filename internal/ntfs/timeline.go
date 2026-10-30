@@ -1,6 +1,7 @@
 package ntfs
 
 import (
+	"bufio"
 	"encoding/csv"
 	"io"
 	"strconv"
@@ -9,8 +10,10 @@ import (
 )
 
 // ScanMFT decodes the records of a $MFT copy in order. Damaged records are
-// passed with their error; unused slots are skipped.
+// passed with their error; unused slots are skipped. r is read in 1 MiB
+// chunks: on a raw volume every read is a device read.
 func ScanMFT(r io.Reader, boot Boot, fn func(Record, error) error) error {
+	r = bufio.NewReaderSize(r, 1<<20)
 	raw := make([]byte, boot.RecordSize)
 	for n := uint64(0); ; n++ {
 		if _, err := io.ReadFull(r, raw); err == io.EOF || err == io.ErrUnexpectedEOF {
