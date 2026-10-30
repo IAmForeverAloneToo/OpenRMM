@@ -4,6 +4,8 @@
 # A machine whose installed agent already has an identity is left as it is: it
 # updates itself. Exit codes: 0 done, 1 error, 2 incomplete or changed download,
 # 3 Windows Installer failed, 4 installed but not enrolled yet, 5 not elevated.
+# -Proxy sets the proxy the agent uses to reach the server (none removes it).
+param([string]$Proxy = '')
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
@@ -16,6 +18,8 @@ try {
     $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
     if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { Stop-Setup 'run install.cmd as administrator.' 5 }
     if (-not [Environment]::Is64BitOperatingSystem) { Stop-Setup 'the OpenRMM agent needs 64-bit Windows.' 1 }
+    # The agent checks the value again and logs why it rejects one.
+    if ($Proxy -ne '' -and ($Proxy.Length -gt 512 -or $Proxy -notmatch '^(none|direct|(https?://)?([^\s/?#@]+@)?([A-Za-z0-9.-]+|\[[0-9A-Fa-f:.]+\])(:\d{1,5})?/?)$')) { Stop-Setup 'the proxy must be none, direct or http://[user:password@]host:port (percent-encode special characters in the password).' 1 }
     $msi = Join-Path $PSScriptRoot 'openrmm-agent.msi'
     $release = Join-Path $PSScriptRoot 'release.json'
     $enrollment = Join-Path $PSScriptRoot 'enrollment.json'
@@ -35,6 +39,13 @@ try {
     $state = Join-Path $dataRoot 'state'
     $service = Get-Service -Name OpenRMMAgent -ErrorAction SilentlyContinue
     if ($null -ne $service -and (Test-Path -LiteralPath $record)) {
+        if ($Proxy -ne '') {
+            # The service takes the setting into its protected state when it starts.
+            [IO.File]::WriteAllText((Join-Path $dataRoot 'proxy.txt'), $Proxy)
+            Restart-Service -Name OpenRMMAgent
+            Write-Output 'OpenRMM Agent is already installed and enrolled; its proxy setting was updated and the agent restarted.'
+            exit 0
+        }
         Write-Output 'OpenRMM Agent is already installed and enrolled on this machine; nothing to do. It keeps itself up to date.'
         exit 0
     }
@@ -54,6 +65,7 @@ try {
     & (Join-Path $system32 'icacls.exe') $dataRoot /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' | Out-Null
     if ($LASTEXITCODE -ne 0) { Stop-Setup 'cannot protect the agent data folder.' 1 }
     Copy-Item -LiteralPath $enrollment -Destination (Join-Path $dataRoot 'enrollment.json') -Force
+    if ($Proxy -ne '') { [IO.File]::WriteAllText((Join-Path $dataRoot 'proxy.txt'), $Proxy) }
     # The first rollback package for the agent's self-updates.
     $packages = Join-Path $dataRoot 'packages'
     New-Item -ItemType Directory -Path $packages -Force | Out-Null

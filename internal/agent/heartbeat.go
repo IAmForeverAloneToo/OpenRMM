@@ -83,6 +83,8 @@ type heartbeatSession struct {
 	// wake replaces idle polling with one work wait (wake.go); nil in tests.
 	wake    *waker
 	desktop desktopRelay
+	// proxyNote is the proxy last logged (proxy.go).
+	proxyNote string
 }
 
 func newHeartbeatSession(c config.Agent, metadata protocol.Heartbeat) (*heartbeatSession, error) {
@@ -110,7 +112,11 @@ func (s *heartbeatSession) reload() error {
 	}
 	// A few idle connections, so the held work wait and the workers reuse
 	// connections instead of each request starting a new TLS handshake.
-	transport := &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS13, RootCAs: roots, Certificates: []tls.Certificate{pair}}, MaxIdleConns: 4, MaxIdleConnsPerHost: 4, IdleConnTimeout: 90 * time.Second}
+	transport := &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS13, RootCAs: roots, Certificates: []tls.Certificate{pair}}, Proxy: proxyFunc(s.config.State), MaxIdleConns: 4, MaxIdleConnsPerHost: 4, IdleConnTimeout: 90 * time.Second}
+	if note := proxies.describe(s.config.State, value.DeviceURL); note != s.proxyNote {
+		s.logger.Info("server connection", "proxy", note)
+		s.proxyNote = note
+	}
 	s.transportMu.Lock()
 	defer s.transportMu.Unlock()
 	if s.transport != nil {
@@ -293,6 +299,7 @@ func (s *heartbeatSession) heartbeat(ctx context.Context) error {
 // restarted with the new settings; the process and its identity stay.
 func Run(ctx context.Context, c config.Agent, logger *slog.Logger) error {
 	if c.Service {
+		applyProxyHandoff(c, logger)
 		if err := enrollFromFile(ctx, c, logger); err != nil {
 			return err
 		}

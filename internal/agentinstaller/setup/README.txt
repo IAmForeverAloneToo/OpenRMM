@@ -17,6 +17,13 @@ Deploy with Intune, Group Policy or a remote shell
   3 Windows Installer failed, 4 installed but not enrolled yet (the agent keeps
   retrying), 5 not run as administrator.
 
+Through a proxy
+  Add /proxy http://host:port (or http://user:password@host:port), for
+  example "install.cmd /quiet /proxy http://proxy.example:8080". Run it again
+  with another /proxy value to change the setting on an installed agent, or
+  /proxy none to remove it. Without one the agent uses the machine's WinHTTP
+  proxy (netsh winhttp set proxy), if any.
+
 What it does
   - Checks the MSI's SHA-256 against release.json. (The agent verifies the
     signature of every later update itself.)

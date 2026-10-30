@@ -58,7 +58,14 @@ func (s *heartbeatSession) isolationLocal(ctx context.Context) isolation.Local {
 	if e != nil {
 		return l
 	}
+	// Through a proxy, the proxy is what the agent must still reach.
+	if p, _ := proxies.forURL(s.config.State, u); p != nil {
+		u = p
+	}
 	host, portText := u.Hostname(), u.Port()
+	if portText == "" {
+		portText = map[string]string{"http": "80"}[u.Scheme]
+	}
 	if portText == "" {
 		portText = "443"
 	}

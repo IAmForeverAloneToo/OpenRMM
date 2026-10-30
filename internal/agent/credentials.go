@@ -56,7 +56,7 @@ func trust(value string) (*x509.CertPool, error) {
 	return pool, nil
 }
 func requestJSON(ctx context.Context, c config.Agent, tlsConfig *tls.Config, origin, method, path string, input, output any) error {
-	transport := &http.Transport{TLSClientConfig: tlsConfig}
+	transport := &http.Transport{TLSClientConfig: tlsConfig, Proxy: proxyFunc(c.State)}
 	defer transport.CloseIdleConnections()
 	client := &http.Client{Transport: transport, Timeout: c.Timeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	return requestWithClient(ctx, client, origin, method, path, input, output)

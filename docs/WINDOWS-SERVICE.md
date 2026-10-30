@@ -109,6 +109,20 @@ Review the protected log and folder permissions. Do not disable TLS verification
 
 **After a Windows restart.** The service starts automatically (delayed start) and retries until the server is reachable. The local development server does not start with Windows; start it with `.\scripts\local.ps1 -Action up`, and the device returns to **Online** without enrolling again.
 
+## Proxy
+
+The agent connects directly unless a proxy is set. It uses the first of:
+
+1. **Machine policy.** The string value `Proxy` under `HKLM\SOFTWARE\Policies\OpenRMM\Agent`, settable by Group Policy. Every user on the machine can read this key, so prefer a proxy without a password here.
+2. **Installer setting.** `install.cmd /proxy VALUE`, on a new machine or on one where the agent is already installed (it restarts the agent). The agent keeps the value encrypted with Windows DPAPI in its SYSTEM-only state folder; `install.cmd /proxy none` removes it.
+3. **The machine's WinHTTP proxy** (`netsh winhttp set proxy`), including its bypass list. The per-user Internet Options proxy and automatic configuration (WPAD or PAC scripts) are not used.
+
+`VALUE` is `http://host:port`, `http://user:password@host:port` (Basic authentication; percent-encode special characters in the password) or `direct` (no proxy, overriding the WinHTTP proxy). Proxies that require Windows sign-in (NTLM or Kerberos) are not supported; let the OpenRMM server's addresses through without sign-in.
+
+- The connection to the server stays end-to-end TLS inside the proxy tunnel (`CONNECT`); the proxy cannot read or change it, and mutual TLS works through it.
+- Changes to the policy value or the WinHTTP proxy apply within five minutes. The agent log names the proxy in use when the agent starts or renews its certificate (never the password), and policy or installer values it ignores because they are invalid.
+- Enrollment, heartbeats, all agent work and agent updates use the proxy. While a device is network-isolated, the proxy's address is what stays reachable.
+- Application deployments download their installers directly, not through the proxy ([applications](APPLICATIONS.md)).
 ## Feature switches
 
 Every agent feature is on by default. There are two ways to turn one off.

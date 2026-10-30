@@ -82,6 +82,8 @@ Extract the whole ZIP, then either:
 - double-click `install.cmd`; it asks for administrator approval (UAC) and runs the setup in a new window; or
 - run `install.cmd /quiet` from the extracted folder as administrator or SYSTEM, for example from Intune, Group Policy or a remote shell. Without administrator rights it exits with code 5 instead of prompting.
 
+Add `/proxy http://host:port` when the device reaches the server only through a proxy (see [proxy](WINDOWS-SERVICE.md#proxy)); running `install.cmd /proxy VALUE` again on an installed agent changes the setting.
+
 `install.ps1`:
 
 1. requires administrator rights and 64-bit Windows;
