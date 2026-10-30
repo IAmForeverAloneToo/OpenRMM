@@ -98,7 +98,8 @@ Each target runs the response action `hunt` in the agent's long-job worker, the 
 | Network connections | IP indicators. |
 | DNS client cache | Domain and IP indicators. Read with a fixed `Get-DnsClientCache` command. |
 | Persistence report | The same autostart report as [PERSISTENCE.md](PERSISTENCE.md). |
-| Files | All indicator types that match files, when **Search files in common locations** is on (the default). |
+| Files in common locations | All indicator types that match files, when **Search files** is on (the default). |
+| MFT of fixed NTFS drives | Name and path indicators against every file in use on each fixed NTFS drive, with the same option. Read from the drive's master file table, without a folder walk; see [NTFS.md](NTFS.md#hunts-on-whole-drives). |
 
 **Searched file locations:**
 
@@ -106,7 +107,7 @@ Each target runs the response action `hunt` in the agent's long-job worker, the 
 - ProgramData, `Windows\Temp` and the Public profile;
 - the files at the root of each fixed drive (not their subfolders).
 
-Links and junctions are not followed, and files on other computers are never opened. With hash indicators, every file up to 100 MB is hashed by four workers; larger and unreadable files are counted as skipped. The hashes of hunted files are kept in a cache of their own (100,000 files), so a later hunt skips unchanged files and process image hashes are not pushed out.
+Links and junctions are not followed, and files on other computers are never opened. A file found both in the MFT and in these locations is listed once per indicator. With hash indicators, every file up to 100 MB is hashed by four workers; larger and unreadable files are counted as skipped. The hashes of hunted files are kept in a cache of their own (100,000 files), so a later hunt skips unchanged files and process image hashes are not pushed out.
 
 > [!TIP]
 > A hunt with only names, paths, network or command indicators does not read file contents and is much faster than a hash hunt over all common locations.

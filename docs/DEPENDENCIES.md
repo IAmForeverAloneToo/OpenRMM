@@ -201,6 +201,8 @@ Revisit dependencies when features change, and remove those no longer needed.
 
 **Mail.** Alert e-mail uses the standard library's `net/smtp` with explicit verified TLS, deadlines and bounded messages; third-party mail libraries add no needed capability. The runtime image copies the public CA bundle from the pinned builder image instead of installing a package; an explicit root CA file can restrict SMTP trust instead.
 
+**NTFS artifacts.** `$MFT`, `$LogFile` and the USN journal are read from the raw volume with an NTFS metadata parser written on the standard library (`internal/ntfs`: boot sector, MFT records with fixups, attribute lists, data runs, USN records), with every on-disk length checked and random-input tests. The volume is opened with the typed `CreateFile`, `GetLogicalDrives`, `GetDriveType` and `GetVolumeInformation` wrappers in `x/sys/windows`; shadow copies reuse the existing WMI path. Forensic parsing libraries (such as go-ntfs from Velocidex) were rejected: only metadata is read, and their scope and trust surface are much larger.
+
 **Terminal, files, desktop and transfers.** The live terminal relay, file transfer (with `os.Root` containment), attended desktop (JPEG frames over a bounded relay) and scheduling use the standard library and existing `x/sys` APIs. WebSocket, WebRTC, codec, SFTP/SMB and remote-control products (such as MeshCentral or RustDesk) were rejected as large new trust surfaces for the current scope.
 
 **Scheduling, reports and search.** Fixed UTC intervals, patch windows, CSV export and fleet software search use the standard library and SQLite transactions. Cron parsers, job frameworks, query builders, search engines and spreadsheet libraries were rejected.

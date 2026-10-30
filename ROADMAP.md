@@ -11,7 +11,7 @@ OpenRMM aims to be a complete, self-hosted RMM that also gives incident responde
 | Windows agent | A single LocalSystem service, installed from a pre-configured MSI, that updates itself through signed releases and pilot rings; waits for work instead of polling, works through a proxy, and keeps its key in the TPM where available |
 | Monitoring | Inventory, hardware and OS details, CPU, memory, disk, uptime, metrics history, sessions, logon history, local accounts, BitLocker and Defender status, alerts and health checks |
 | Management | Scripts, schedules and fleet batches, Windows Update and patch policies, MSI deployment, services, processes, software inventory, terminal, remote desktop, file transfer |
-| Incident response | Cases with a hash-chained chain of custody, evidence collection, a live response console, triage packages, persistence report, event log search across the fleet, indicator hunts |
+| Incident response | Cases with a hash-chained chain of custody, evidence collection, a live response console, triage packages, raw NTFS artifacts ($MFT, $LogFile, USN journal) with searchable timelines, persistence report, event log search across the fleet, indicator hunts |
 | Access control | An owner account plus technicians, with mandatory MFA, device and group scope, and per-feature permissions |
 
 ## Next
@@ -24,7 +24,7 @@ OpenRMM aims to be a complete, self-hosted RMM that also gives incident responde
 - Agents for Linux, and later macOS.
 - Memory acquisition.
 - YARA scanning.
-- Raw NTFS artefact parsing, and artefact parsing on the server.
+- Artefact parsing on the server.
 - Further hardening of the server and the agent.
 
 ## Not planned

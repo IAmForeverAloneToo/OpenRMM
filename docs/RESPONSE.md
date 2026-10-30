@@ -75,14 +75,14 @@ It checks that every entry belongs to the case, is numbered without gaps, names 
 
 ## Evidence collection
 
-From an open case, collect a file, an alternate data stream, a registry hive, an event log export or a triage package from one device. The file is read on the device, uploaded in chunks, verified on the server and stored by its SHA-256 in a separate evidence store.
+From an open case, collect a file, an alternate data stream, a registry hive, an event log export, a triage package or NTFS artifacts from one device. The file is read on the device, uploaded in chunks, verified on the server and stored by its SHA-256 in a separate evidence store.
 
 ### Requesting a collection
 
-- Use the **Evidence** panel on the case page (`POST /api/v1/cases/{case}/collect` with `device_id` and `path`, or a `source`), or the `get`, `hive`, `evtx` and `triage` commands of the [live response console](#live-response-console).
+- Use the **Evidence** panel on the case page (`POST /api/v1/cases/{case}/collect` with `device_id` and `path`, or a `source`), or the `get`, `hive`, `evtx`, `triage` and `ntfs` commands of the [live response console](#live-response-console).
 - The device must exist, not be revoked, and have **Incident response** switched on (see [Feature switch](#feature-switch)). This is checked on request and again on pickup.
 - A closed case refuses new collections.
-- Other sources have their own guides: event log exports in [EVENT-LOGS.md](EVENT-LOGS.md) and triage packages in [TRIAGE.md](TRIAGE.md).
+- Other sources have their own guides: event log exports in [EVENT-LOGS.md](EVENT-LOGS.md), triage packages in [TRIAGE.md](TRIAGE.md) and NTFS artifacts in [NTFS.md](NTFS.md).
 
 ### How a collection runs
 
@@ -109,7 +109,7 @@ The `method` metadata records how the agent read a file:
 | `backup` | Access was denied: the file is opened with the backup privilege, which bypasses permissions. |
 | `shadow_copy` | Another program holds the file exclusively (sharing violation). The agent describes the live file through an attributes-only handle, makes a temporary Volume Shadow Copy of the drive (WMI `Win32_ShadowCopy` through Windows PowerShell), reads the file from it and deletes the copy. |
 | `registry_save` | A loaded registry hive saved with `RegSaveKeyEx`. |
-| `export`, `triage` | Event log exports and triage packages. |
+| `export`, `triage`, `ntfs` | Event log exports, triage packages and NTFS artifact packages (read from the raw volume). |
 
 - **The backup privilege is never enabled for the whole agent**, only on an impersonation token of the one thread doing a backup open or hive save, and it is dropped right after.
 - **Privileged opens are path-checked.** A file opened by full path (backup or shadow copy) must resolve to exactly the requested path (a junction or 8.3 short name anywhere on the path is refused), must be a regular file, and all of its hard links must be outside OpenRMM's folders. A file read from a shadow copy must be at the same place inside the copy and have the same file number as the checked live file, so a junction swapped in while the copy is made is refused.
@@ -299,6 +299,7 @@ Type commands in the command bar under the shell (`POST /api/v1/terminal/{sessio
 | `hive <name>` | Collects a hive: `SYSTEM`, `SOFTWARE`, `SAM`, `SECURITY`, `DEFAULT`, `NTUSER:<user>`, `USRCLASS:<user>`. |
 | `evtx <channel> [<xpath>]` | Exports an event log as `.evtx`; see [EVENT-LOGS.md](EVENT-LOGS.md). |
 | `triage [<profile>]` | Collects a triage package (default **Full triage**); see [TRIAGE.md](TRIAGE.md). |
+| `ntfs [<drive> ...\|all]` | Collects `$MFT`, `$LogFile` and the USN journal raw, with parsed timelines (default: the system drive); see [NTFS.md](NTFS.md). |
 | `put <tool> <path> [-overwrite]` | Writes the newest non-withdrawn library tool with that name to the device. |
 | `run <script> [Name=Value ...]` | Runs the library script with that name as SYSTEM; arguments are checked. |
 | `hunt [-files] <indicator ...>` / `hunt [-files] -list <name>` | Searches this device for indicators; see [HUNTING.md](HUNTING.md). |
