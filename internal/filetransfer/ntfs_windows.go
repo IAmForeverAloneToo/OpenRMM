@@ -212,3 +212,35 @@ func ntfsVolume(ctx context.Context, zw *zip.Writer, letter string, o EvidenceOp
 	defer raw.f.Close()
 	return writeNTFSVolume(ctx, zw, letter, raw, o.Deny, mv)
 }
+
+// NTFSFiles calls fn for every file in use on each fixed NTFS drive, read
+// live from the drive's MFT instead of walking its folders; fn returns false
+// to stop. It returns the drives read and the first error.
+func NTFSFiles(ctx context.Context, fn func(NTFSEntry) bool) ([]string, error) {
+	var done []string
+	var first error
+	stopped := false
+	for _, letter := range fixedNTFSVolumes() {
+		if stopped || ctx.Err() != nil {
+			break
+		}
+		raw, e := openRawVolume(`\.\` + letter)
+		if e == nil {
+			e = mftFiles(ctx, letter, raw, func(f NTFSEntry) bool {
+				if !fn(f) {
+					stopped = true
+				}
+				return !stopped
+			})
+			raw.f.Close()
+		}
+		if e != nil {
+			if first == nil {
+				first = e
+			}
+			continue
+		}
+		done = append(done, letter)
+	}
+	return done, first
+}

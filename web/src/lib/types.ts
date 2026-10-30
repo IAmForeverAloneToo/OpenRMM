@@ -810,7 +810,7 @@ export type HuntResult = {
   outcome: string;
   matches: HuntMatch[];
   more: boolean;
-  scanned: { files: number; hashed: number; processes: number; connections: number; dns: number; persistence: number };
+  scanned: { files: number; hashed: number; processes: number; connections: number; dns: number; persistence: number; mft_files?: number };
   skipped: number;
 };
 export type IOCList = { id: string; name: string; indicators: Indicator[]; created_by: string; created_at: number; updated_by: string; updated_at: number };

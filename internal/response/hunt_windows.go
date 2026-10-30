@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/IAmForeverAloneToo/OpenRMM/internal/filetransfer"
 	"github.com/IAmForeverAloneToo/OpenRMM/internal/protocol"
 	"golang.org/x/sys/windows"
 )
@@ -25,6 +26,7 @@ func huntSourcesFor(cache *HashCache, n *notes) huntSources {
 		hash: func(ctx context.Context, path string, want hashSet) (fileHashes, string) {
 			return hashFile(ctx, huntFiles, path, want)
 		},
+		mft: filetransfer.NTFSFiles,
 	}
 }
 

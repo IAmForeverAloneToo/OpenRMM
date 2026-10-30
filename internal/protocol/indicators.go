@@ -67,6 +67,9 @@ type HuntScanned struct {
 	Connections int `json:"connections"`
 	DNS         int `json:"dns"`
 	Persistence int `json:"persistence"`
+	// MFTFiles are the files on fixed NTFS drives whose names and paths
+	// were matched through the drives' MFT.
+	MFTFiles int `json:"mft_files,omitempty"`
 }
 
 // HuntMatch is one object that matched one indicator. Area is file,

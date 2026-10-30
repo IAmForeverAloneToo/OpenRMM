@@ -241,3 +241,59 @@ func (e *hashedEntry) finish(c interface {
 	}
 	return protocol.NTFSFile{Name: name, Size: e.size, SHA256: hex.EncodeToString(e.sum())}, nil
 }
+
+// NTFSEntry is a file found in an NTFS volume's MFT.
+type NTFSEntry struct {
+	Path, Name string
+	Size       int64
+	Modified   time.Time
+}
+
+// mftFiles calls fn for every file in use in a volume's MFT (directories
+// and extension records left out); fn returns false to stop.
+func mftFiles(ctx context.Context, letter string, raw io.ReaderAt, fn func(NTFSEntry) bool) error {
+	v, e := ntfs.Open(raw)
+	if e != nil {
+		return e
+	}
+	mft := v.MFT()
+	x := ntfs.NewIndex()
+	n := 0
+	scan := func(each func(ntfs.Record) bool) error {
+		return ntfs.ScanMFT(io.NewSectionReader(mft, 0, mft.Size()), v.Boot, func(r ntfs.Record, err error) error {
+			if n++; n%20000 == 0 && ctx.Err() != nil {
+				return ctx.Err()
+			}
+			if err == nil && !each(r) {
+				return errStop
+			}
+			return nil
+		})
+	}
+	if e = scan(func(r ntfs.Record) bool { x.Add(r); return true }); e != nil {
+		return e
+	}
+	e = scan(func(r ntfs.Record) bool {
+		if !r.InUse || r.Directory || r.Base.Record != 0 {
+			return true
+		}
+		name, ok := r.Name()
+		dir := x.Dir(name.Parent)
+		if !ok || dir == "" {
+			return true
+		}
+		f := NTFSEntry{Path: letter + ntfs.Join(dir, name.Name), Name: name.Name, Modified: r.SI.Modified}
+		for _, s := range r.Streams {
+			if s.Name == "" && s.StartVCN == 0 {
+				f.Size = s.Size
+			}
+		}
+		return fn(f)
+	})
+	if errors.Is(e, errStop) {
+		return nil
+	}
+	return e
+}
+
+var errStop = errors.New("stopped")

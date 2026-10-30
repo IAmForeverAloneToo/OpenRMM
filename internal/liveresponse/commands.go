@@ -69,8 +69,9 @@ const Help = `Built-in commands (anything else is typed into the PowerShell cons
   put <tool> <path> [-overwrite]    write a tool from the tool library to the device
   run <script> [Name=Value ...]     run a library script as SYSTEM
   hunt [-files] <indicator ...>     search this device for indicators: hashes, names,
-                                    paths, IPs, domain:..., cmd:... (-files also searches
-                                    and hashes files in common locations; slow)
+                                    paths, IPs, domain:..., cmd:... (-files also matches
+                                    names and paths of every file on fixed drives and
+                                    hashes files in common locations; slow)
   hunt [-files] -list <name>        the same with a saved indicator list (Hunting page)
 Paths with spaces go in double quotes.`
 

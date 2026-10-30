@@ -65,3 +65,21 @@ func TestWriteNTFSVolume(t *testing.T) {
 		t.Fatal("exclusion rules")
 	}
 }
+
+func TestMFTFiles(t *testing.T) {
+	vol, _ := ntfstest.Volume()
+	var got []string
+	if e := mftFiles(context.Background(), "C:", bytes.NewReader(vol), func(f NTFSEntry) bool { got = append(got, f.Path); return true }); e != nil {
+		t.Fatal(e)
+	}
+	// Files in use only: $MFT, a.txt and $UsnJrnl (gone.exe is deleted;
+	// the root, $Extend and Users are directories).
+	if strings.Join(got, " ") != `C:\$MFT C:\Users\a.txt C:\$Extend\$UsnJrnl` {
+		t.Fatal(got)
+	}
+	n := 0
+	mftFiles(context.Background(), "C:", bytes.NewReader(vol), func(NTFSEntry) bool { n++; return false })
+	if n != 1 {
+		t.Fatal("did not stop")
+	}
+}

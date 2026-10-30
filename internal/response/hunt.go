@@ -19,6 +19,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/IAmForeverAloneToo/OpenRMM/internal/filetransfer"
 	"github.com/IAmForeverAloneToo/OpenRMM/internal/protocol"
 )
 
@@ -214,6 +215,9 @@ type huntSources struct {
 	// hash computes the wanted digests of a file of at most
 	// protocol.MaxHuntFileBytes, or returns a note (too_large, unreadable).
 	hash func(ctx context.Context, path string, want hashSet) (fileHashes, string)
+	// mft lists every file on fixed NTFS drives from their MFT, for names
+	// and paths; it returns the drives read.
+	mft func(ctx context.Context, fn func(filetransfer.NTFSEntry) bool) ([]string, error)
 }
 
 type huntRoot struct {
@@ -229,8 +233,18 @@ func hunt(ctx context.Context, spec protocol.HuntSpec, src huntSources, n *notes
 	defer cancel()
 	m := newMatcher(spec)
 	r := protocol.HuntResult{Outcome: "ok", Matches: []protocol.HuntMatch{}}
+	// A file matched through the MFT and again in the common locations is
+	// listed once per indicator.
+	reported := map[string]bool{}
 	add := func(base protocol.HuntMatch, found []protocol.Indicator) bool {
 		for _, i := range found {
+			if base.Area == "file" {
+				key := strings.ToLower(base.Path) + "\x00" + i.Type + ":" + i.Value
+				if reported[key] {
+					continue
+				}
+				reported[key] = true
+			}
 			if len(r.Matches) == protocol.MaxHuntMatches {
 				r.More = true
 				return false
@@ -316,6 +330,18 @@ func hunt(ctx context.Context, spec protocol.HuntSpec, src huntSources, n *notes
 			if !add(protocol.HuntMatch{Area: "persistence", Path: p.Image, Name: p.Name, User: p.User, Command: p.Command, SHA256: p.SHA256, Detail: p.Category + ": " + p.Location}, found) {
 				break
 			}
+		}
+	}
+	// Every file on fixed NTFS drives by name and path, from their MFT
+	// (quick: no folder walk). Hashes are checked in the common locations.
+	if spec.Files && spec.Needs("name", "path") && src.mft != nil && !partial() {
+		_, e := src.mft(ctx, func(f filetransfer.NTFSEntry) bool {
+			r.Scanned.MFTFiles++
+			found := append(m.byName(f.Name), m.byPath(f.Path)...)
+			return len(found) == 0 || add(protocol.HuntMatch{Area: "file", Path: f.Path, Name: f.Name, Size: f.Size, Modified: stamp(f.Modified), Detail: "found in the MFT"}, found)
+		})
+		if e != nil && ctx.Err() == nil {
+			n.add("the MFT of a drive could not be read; its names and paths were searched in the common locations only")
 		}
 	}
 	// Files in the common locations.

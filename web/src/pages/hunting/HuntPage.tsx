@@ -182,7 +182,7 @@ export function HuntPage() {
                 <IndicatorText key={`${i.type}:${i.value}`} i={i} />
               ))}
               {indicators.length > 6 ? <span className="text-faint">and {indicators.length - 6} more</span> : null}
-              <span className="text-muted">{h.spec?.files ? "· files in common locations searched" : "· files not searched"}</span>
+              <span className="text-muted">{h.spec?.files ? "· files searched" : "· files not searched"}</span>
             </span>
           ) : (
           <span>

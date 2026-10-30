@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/IAmForeverAloneToo/OpenRMM/internal/filetransfer"
 	"github.com/IAmForeverAloneToo/OpenRMM/internal/protocol"
 )
 
@@ -85,6 +86,30 @@ func TestHuntMatching(t *testing.T) {
 	if len(count) != len(want) || r.Outcome != "ok" || r.More || r.Scanned.Files != 4 || r.Scanned.Hashed != 4 || r.Scanned.Processes != 2 || r.Scanned.DNS != 3 {
 		t.Fatalf("result %+v %v", r.Scanned, count)
 	}
+	// Through the MFT, names and paths match on the whole drive; a file
+	// also found in the common locations is listed once per indicator.
+	src.mft = func(_ context.Context, fn func(filetransfer.NTFSEntry) bool) ([]string, error) {
+		for _, f := range []filetransfer.NTFSEntry{{Path: filepath.Join(sub, "dropper.EXE"), Name: "dropper.EXE"}, {Path: `D:\Tools\dropper2.exe`, Name: "dropper2.exe", Size: 7}, {Path: `D:\clean.txt`, Name: "clean.txt"}} {
+			if !fn(f) {
+				break
+			}
+		}
+		return []string{"C:", "D:"}, nil
+	}
+	r = hunt(context.Background(), spec, src, &notes{})
+	names := 0
+	for _, m := range r.Matches {
+		if m.Area == "file" && m.Indicator.Type == "name" {
+			names++
+			if m.Path == `D:\Tools\dropper2.exe` && (m.Detail != "found in the MFT" || m.Size != 7) {
+				t.Fatal("MFT match details", m)
+			}
+		}
+	}
+	if names != 3 || r.Scanned.MFTFiles != 3 {
+		t.Fatal("MFT matches", names, r.Scanned.MFTFiles)
+	}
+	src.mft = nil
 	// Shallow roots: a file below the root is not searched there (only once
 	// through the deeper root), and files are not searched without Files.
 	spec.Files = false

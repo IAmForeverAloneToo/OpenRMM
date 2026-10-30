@@ -110,7 +110,8 @@ export function Scanned({ r }: { r: HuntResult }) {
     s.connections ? `${s.connections} connections` : "",
     s.dns ? `${s.dns} DNS records` : "",
     s.persistence ? `${s.persistence} autostart entries` : "",
-    s.files ? `${s.files.toLocaleString()} files (${s.hashed.toLocaleString()} hashed)` : "",
+    s.mft_files ? `${s.mft_files.toLocaleString()} files on whole drives by name and path (MFT)` : "",
+    s.files ? `${s.files.toLocaleString()} files in common locations (${s.hashed.toLocaleString()} hashed)` : "",
   ].filter(Boolean);
   return (
     <p className="text-[12px] text-muted">

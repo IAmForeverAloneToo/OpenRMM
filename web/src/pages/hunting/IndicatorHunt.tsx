@@ -165,9 +165,10 @@ export function NewIndicatorHunt({ initialList }: { initialList?: string }) {
           <label className="flex items-start gap-2 text-[12.5px] text-fg">
             <input type="checkbox" className="mt-0.5 accent-[var(--accent)]" checked={files} onChange={(e) => setFiles(e.target.checked)} />
             <span>
-              Search files in common locations
+              Search files
               <span className="block text-[12px] text-muted">
-                Users' Downloads, Desktop and AppData, ProgramData, Windows\Temp, Public and the root of each fixed drive. With hashes in the list every file up to 100 MB is hashed: this can take up to 15 minutes per device. Processes,
+                Names and paths are matched against every file on fixed NTFS drives (from the drive's MFT, quick; agents from this release on). Hashes are checked in users' Downloads, Desktop and AppData, ProgramData, Windows\Temp, Public and the
+                root of each fixed drive: with hashes in the list every file up to 100 MB there is hashed, which can take up to 15 minutes per device. Processes,
                 connections, the DNS cache and autostart entries are always searched.
               </span>
             </span>
