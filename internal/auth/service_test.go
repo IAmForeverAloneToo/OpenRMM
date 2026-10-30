@@ -122,16 +122,9 @@ func TestPendingSetupAndLocalResetInvalidateOldMaterial(t *testing.T) {
 	}
 }
 
-func TestExpiryCSRFAndLoginThrottling(t *testing.T) {
+func TestExpiryAndLoginThrottling(t *testing.T) {
 	service, _, _, now := testService(t)
 	result := provision(t, service, *now)
-	csrf, err := service.LoginCSRF()
-	if err != nil || !service.ValidLoginCSRF(csrf, csrf) {
-		t.Fatal("fresh login CSRF rejected")
-	}
-	if service.ValidLoginCSRF(csrf, csrf+"x") {
-		t.Fatal("mismatched login CSRF accepted")
-	}
 	signedIn, err := service.Login(context.Background(), "admin", testPassword, result.RecoveryCodes[0], "127.0.0.1")
 	if err != nil {
 		t.Fatal(err)
@@ -139,9 +132,6 @@ func TestExpiryCSRFAndLoginThrottling(t *testing.T) {
 	*now = now.Add(30 * time.Minute)
 	if _, err := service.Session(context.Background(), signedIn.Token); !errors.Is(err, storage.ErrAuthentication) {
 		t.Fatal("idle session did not expire")
-	}
-	if service.ValidLoginCSRF(csrf, csrf) {
-		t.Fatal("expired login CSRF accepted")
 	}
 	for index := 0; index < 5; index++ {
 		if _, err := service.Login(context.Background(), "admin", "incorrect", "000000", "127.0.0.1"); !errors.Is(err, ErrCredentials) {

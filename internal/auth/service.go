@@ -7,7 +7,6 @@ import (
 	"crypto/hkdf"
 	"crypto/hmac"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/base64"
 	"encoding/binary"
 	"errors"
@@ -27,7 +26,6 @@ var (
 type Service struct {
 	store     *storage.Store
 	aead      cipher.AEAD
-	csrfKey   []byte
 	dummyHash string
 	now       func() time.Time
 	knownKey  []byte
@@ -80,10 +78,6 @@ func New(ctx context.Context, store *storage.Store, keyPath string) (*Service, e
 	if err != nil {
 		return nil, errors.New("cannot initialize administrator encryption")
 	}
-	csrfKey, err := hkdf.Key(sha256.New, key, nil, "openrmm:login-csrf:v1", 32)
-	if err != nil {
-		return nil, errors.New("cannot derive login CSRF key")
-	}
 	knownKey, err := hkdf.Key(sha256.New, key, nil, "openrmm:known-browser:v1", 32)
 	if err != nil {
 		return nil, errors.New("cannot derive known browser key")
@@ -92,7 +86,7 @@ func New(ctx context.Context, store *storage.Store, keyPath string) (*Service, e
 	if err != nil {
 		return nil, err
 	}
-	service := &Service{store: store, aead: aead, csrfKey: csrfKey, knownKey: knownKey, dummyHash: dummy, now: time.Now, gate: make(chan struct{}, 1), known: make(chan struct{}, 1), attempts: make(map[string]attempt)}
+	service := &Service{store: store, aead: aead, knownKey: knownKey, dummyHash: dummy, now: time.Now, gate: make(chan struct{}, 1), known: make(chan struct{}, 1), attempts: make(map[string]attempt)}
 	if hasAdministrator {
 		if _, err := service.decrypt(admin.TOTPCipher); err != nil {
 			return nil, err
@@ -447,35 +441,4 @@ func (s *Service) Session(ctx context.Context, token string) (storage.Session, e
 
 func (s *Service) Logout(ctx context.Context, token string) error {
 	return s.store.Logout(ctx, tokenHash(token), s.now())
-}
-
-func (s *Service) LoginCSRF() (string, error) {
-	nonce, err := randomBytes(32)
-	if err != nil {
-		return "", err
-	}
-	value := make([]byte, 8, 72)
-	binary.BigEndian.PutUint64(value, uint64(s.now().Unix()))
-	value = append(value, nonce...)
-	mac := hmac.New(sha256.New, s.csrfKey)
-	_, _ = mac.Write(value)
-	return base64.RawURLEncoding.EncodeToString(append(value, mac.Sum(nil)...)), nil
-}
-
-func (s *Service) ValidLoginCSRF(cookie, submitted string) bool {
-	if len(cookie) > 128 || subtle.ConstantTimeCompare([]byte(cookie), []byte(submitted)) != 1 {
-		return false
-	}
-	value, err := base64.RawURLEncoding.DecodeString(cookie)
-	if err != nil || len(value) != 72 {
-		return false
-	}
-	issued := int64(binary.BigEndian.Uint64(value[:8]))
-	now := s.now().Unix()
-	if issued > now+5 || issued <= now-600 {
-		return false
-	}
-	mac := hmac.New(sha256.New, s.csrfKey)
-	_, _ = mac.Write(value[:40])
-	return hmac.Equal(mac.Sum(nil), value[40:])
 }
