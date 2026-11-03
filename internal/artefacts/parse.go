@@ -34,6 +34,8 @@ type file struct {
 	path string
 	size int64
 	open func() (io.ReadCloser, error)
+	// sibling finds another file of the same collection by its path.
+	sibling func(path string) (file, bool)
 }
 
 // parser handles the files it matches, up to max bytes each: by the
@@ -46,7 +48,7 @@ type parser struct {
 	parse func(ctx context.Context, o *Output, f file) error
 }
 
-var parsers = []parser{prefetchParser}
+var parsers = []parser{prefetchParser, registryParser}
 
 // Parse reads a collection and writes the parsed results to req.Output.
 func Parse(ctx context.Context, req Request) (Manifest, error) {
@@ -84,12 +86,29 @@ func Parse(ctx context.Context, req Request) (Manifest, error) {
 			return Manifest{}, ErrUnreadable
 		}
 		defer zr.Close()
+		byPath := map[string]*zip.File{}
+		for _, z := range zr.File {
+			if path, ok := devicePath(z.Name); ok && !z.FileInfo().IsDir() {
+				byPath[strings.ToLower(path)] = z
+			}
+		}
+		var sibling func(string) (file, bool)
+		entry := func(path string, z *zip.File) file {
+			return file{path: path, size: int64(z.UncompressedSize64), open: z.Open, sibling: sibling}
+		}
+		sibling = func(path string) (file, bool) {
+			z, ok := byPath[strings.ToLower(path)]
+			if !ok {
+				return file{}, false
+			}
+			return entry(path, z), true
+		}
 		for _, z := range zr.File {
 			path, ok := devicePath(z.Name)
 			if !ok || z.FileInfo().IsDir() {
 				continue
 			}
-			if e := each(file{path: path, size: int64(z.UncompressedSize64), open: z.Open}); e != nil {
+			if e := each(entry(path, z)); e != nil {
 				return Manifest{}, e
 			}
 		}
@@ -99,7 +118,8 @@ func Parse(ctx context.Context, req Request) (Manifest, error) {
 			return Manifest{}, ErrUnreadable
 		}
 		input := req.Input
-		if e := each(file{path: req.Name, size: i.Size(), open: func() (io.ReadCloser, error) { return os.Open(input) }}); e != nil {
+		none := func(string) (file, bool) { return file{}, false }
+		if e := each(file{path: req.Name, size: i.Size(), open: func() (io.ReadCloser, error) { return os.Open(input) }, sibling: none}); e != nil {
 			return Manifest{}, e
 		}
 	}

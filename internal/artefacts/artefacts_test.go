@@ -95,7 +95,8 @@ func TestParseTriagePackage(t *testing.T) {
 	if m.Format != Format || m.Parser != ParserVersion || len(m.Tables) != 1 || m.Tables[0].Name != "prefetch" || m.Tables[0].Rows != 2 || m.Tables[0].Sources != 2 {
 		t.Fatalf("%+v", m)
 	}
-	if len(m.Errors) != 1 || m.Errors[0].Path != `C:\Windows\Prefetch\BROKEN.EXE-00000000.pf` || m.Errors[0].Table != "prefetch" {
+	// The broken prefetch file and the placeholder SOFTWARE hive.
+	if len(m.Errors) != 2 || m.Errors[0].Path != `C:\Windows\Prefetch\BROKEN.EXE-00000000.pf` && m.Errors[1].Path != `C:\Windows\Prefetch\BROKEN.EXE-00000000.pf` {
 		t.Fatalf("errors %+v", m.Errors)
 	}
 	table := string(readTable(t, req.Output, "prefetch"))
@@ -152,3 +153,5 @@ func TestParseInChildProcess(t *testing.T) {
 		t.Fatal(outcome)
 	}
 }
+
+func writeFile(path string, b []byte) error { return os.WriteFile(path, b, 0600) }
