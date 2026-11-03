@@ -27,11 +27,13 @@ export function Modal({
         <D.Content
           {...(description ? {} : { "aria-describedby": undefined })}
           className={cx(
-            "fixed top-[12vh] left-1/2 z-50 w-[calc(100vw-2rem)] -translate-x-1/2 rounded-lg border border-border-strong bg-surface shadow-panel focus:outline-none",
+            // The dialog fits the window: its body scrolls when the content
+            // is taller (a short window, or a large viewer).
+            "fixed top-[12vh] left-1/2 z-50 flex max-h-[calc(88vh-1rem)] w-[calc(100vw-2rem)] -translate-x-1/2 flex-col rounded-lg border border-border-strong bg-surface shadow-panel focus:outline-none",
             width,
           )}
         >
-          <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
+          <div className="flex shrink-0 items-start justify-between gap-4 border-b border-border px-5 py-4">
             <div className="space-y-1">
               <D.Title className="text-[15px] font-semibold text-fg">{title}</D.Title>
               {description ? <D.Description className="text-[13px] text-muted">{description}</D.Description> : null}
@@ -40,8 +42,8 @@ export function Modal({
               <X className="size-4" />
             </D.Close>
           </div>
-          {children ? <div className="px-5 py-4">{children}</div> : null}
-          {footer ? <div className="flex justify-end gap-2 border-t border-border px-5 py-3">{footer}</div> : null}
+          {children ? <div className="min-h-0 overflow-y-auto px-5 py-4">{children}</div> : null}
+          {footer ? <div className="flex shrink-0 justify-end gap-2 border-t border-border px-5 py-3">{footer}</div> : null}
         </D.Content>
       </D.Portal>
     </D.Root>
