@@ -20,10 +20,11 @@ try {
     $env:GOWORK = 'off'
     & (Join-Path $PSScriptRoot 'check-dependencies.ps1')
     & (Join-Path $PSScriptRoot 'build-web.ps1') -CheckOnly
-    $sourceFiles = @(Get-ChildItem -Path cmd,internal -Recurse -Filter '*.go' | ForEach-Object FullName)
-    # The pinned toolchain's own gofmt, not whichever one is on PATH.
+    # The pinned toolchain's own gofmt, not whichever one is on PATH. It is
+    # given the folders, which it walks itself: the list of every file is
+    # longer than a Windows command line.
     $gofmt = Join-Path (& go env GOROOT) 'bin/gofmt'
-    $unformatted = @(& $gofmt -l @sourceFiles)
+    $unformatted = @(& $gofmt -l cmd internal)
     if ($LASTEXITCODE -ne 0) { throw 'Formatting check failed.' }
     if ($unformatted.Count -ne 0) {
         $unformatted | Write-Output
