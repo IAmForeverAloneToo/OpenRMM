@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"debug/pe"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -72,5 +73,43 @@ func TestPESystemFiles(t *testing.T) {
 			t.Errorf("%s: version info %q, pdb %q", name, company, p.pdb)
 		}
 		t.Logf("%s: %d sections, %d DLLs imported, %d exports, %d resources, pdb %s", name, len(p.sections), len(p.imports), len(p.exports), len(p.resources), p.pdb)
+	}
+}
+
+// Signed programs installed on this machine (Node.js, Python, Git and
+// others, where present) verify in full against the system's roots,
+// including their timestamps. Skipped in short mode, as it depends on what
+// is installed.
+func TestAuthenticodeInstalledPrograms(t *testing.T) {
+	if os.Getenv("SystemRoot") == "" || testing.Short() {
+		t.Skip("Windows, not in short mode")
+	}
+	found := 0
+	for _, name := range []string{"node.exe", "python.exe", "git.exe", "pwsh.exe", "msedge.exe"} {
+		path, err := exec.LookPath(name)
+		if err != nil {
+			continue
+		}
+		data, err := os.ReadFile(path)
+		if err != nil || len(data) > 200<<20 {
+			continue
+		}
+		p := parsePE(data, false, 0)
+		if p == nil {
+			continue
+		}
+		sigs := p.signatures()
+		if len(sigs) == 0 {
+			continue
+		}
+		found++
+		s := sigs[0]
+		if !s.verified || s.digest != s.fileDigest || len(s.countersignatures) == 0 || !s.countersignatures[0].verified {
+			t.Errorf("%s: verified %v, countersignatures %+v", path, s.verified, s.countersignatures)
+		}
+		t.Logf("%s: signed by %s", path, s.cert.subject)
+	}
+	if found == 0 {
+		t.Skip("no signed programs found on the path")
 	}
 }

@@ -182,6 +182,35 @@ func init() {
 			return boolV(false)
 		}))),
 	}
+	cert := map[string]*ftype{
+		"thumbprint": tStr, "issuer": tStr, "subject": tStr, "version": tInt, "algorithm": tStr, "algorithm_oid": tStr,
+		"serial": tStr, "not_before": tInt, "not_after": tInt,
+	}
+	chain := arrayT(structT(cert))
+	signature := map[string]*ftype{
+		"verified": tInt, "digest_alg": tStr, "digest": tStr, "file_digest": tStr,
+		"number_of_certificates": tInt, "certificates": chain,
+		"signer_info":                 structT(map[string]*ftype{"program_name": tStr, "digest": tStr, "digest_alg": tStr, "length": tInt, "chain": chain}),
+		"number_of_countersignatures": tInt,
+		"countersignatures": arrayT(structT(map[string]*ftype{
+			"verified": tInt, "sign_time": tInt, "digest": tStr, "digest_alg": tStr, "length": tInt, "chain": chain,
+		})),
+		"valid_on": funcT(overload("i", tBool, func(_ *evaluator, self any, a []value) value {
+			s, _ := self.(obj)
+			from, ok1 := s["not_before"].(int64)
+			to, ok2 := s["not_after"].(int64)
+			if !ok1 || !ok2 {
+				return undefined
+			}
+			return boolV(from <= a[0].i && a[0].i <= to)
+		})),
+	}
+	for k, v := range cert {
+		signature[k] = v
+	}
+	fields["number_of_signatures"] = tInt
+	fields["is_signed"] = tInt
+	fields["signatures"] = arrayT(structT(signature))
 	for name := range peConstants {
 		fields[name] = tInt
 	}
@@ -383,6 +412,21 @@ func loadPE(e *evaluator) any {
 	if p.pdb != "" {
 		set("pdb_path", p.pdb)
 	}
+	if e.rs.UsesSignatures() {
+		signedFile := p
+		if p.image {
+			signedFile = nil
+			if e.target.ImageFile != nil {
+				signedFile = parsePE(e.target.ImageFile, false, 0)
+			}
+		}
+		if signedFile != nil {
+			sigs, signed := signatureData(signedFile.signatures())
+			set("signatures", sigs)
+			set("number_of_signatures", int64(len(sigs)))
+			set("is_signed", signed)
+		}
+	}
 	if r := p.rich; r != nil {
 		var vd strings.Builder
 		for _, e := range r.entries {
@@ -520,4 +564,59 @@ func exportOverloads(index bool) []*fn {
 			return find(p, func(x peExport) bool { return x.name != "" && regexMatch(a[0], x.name) })
 		})),
 	}
+}
+
+func certData(c peCert) obj {
+	return obj{
+		"thumbprint": c.thumbprint, "issuer": c.issuer, "subject": c.subject, "version": c.version,
+		"algorithm": c.algorithm, "algorithm_oid": c.algorithmOID, "serial": c.serial,
+		"not_before": c.notBefore, "not_after": c.notAfter,
+	}
+}
+
+func chainData(list []peCert) arr {
+	out := arr{}
+	for _, c := range list {
+		out = append(out, certData(c))
+	}
+	return out
+}
+
+// signatureData describes the signatures for pe.signatures, and whether
+// one of them verified (pe.is_signed).
+func signatureData(sigs []peSignature) (arr, int64) {
+	out, signed := arr{}, int64(0)
+	for _, s := range sigs {
+		o := certData(s.cert)
+		if s.cert.thumbprint == "" {
+			o = obj{}
+		}
+		verified := int64(0)
+		if s.verified {
+			verified, signed = 1, 1
+		}
+		o["verified"] = verified
+		o["digest_alg"], o["digest"], o["file_digest"] = s.digestAlg, s.digest, s.fileDigest
+		o["number_of_certificates"] = int64(len(s.certificates))
+		o["certificates"] = chainData(s.certificates)
+		o["signer_info"] = obj{
+			"program_name": s.programName, "digest": s.signerDigest, "digest_alg": s.signerDigestAlg,
+			"length": int64(len(s.signerChain)), "chain": chainData(s.signerChain),
+		}
+		cs := arr{}
+		for _, c := range s.countersignatures {
+			v := int64(0)
+			if c.verified {
+				v = 1
+			}
+			cs = append(cs, obj{
+				"verified": v, "sign_time": c.signTime, "digest": c.digest, "digest_alg": c.digestAlg,
+				"length": int64(len(c.chain)), "chain": chainData(c.chain),
+			})
+		}
+		o["number_of_countersignatures"] = int64(len(cs))
+		o["countersignatures"] = cs
+		out = append(out, o)
+	}
+	return out, signed
 }

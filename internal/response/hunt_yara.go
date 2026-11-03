@@ -112,6 +112,12 @@ func (m *matcher) memory(ctx context.Context, src huntSources, spec *protocol.Ya
 		var target yara.Target
 		if m.yara.Uses("pe") && src.image != nil {
 			target.Image, _ = src.image(ctx, p.PID)
+			// Signatures are not loaded into memory: read the program's file.
+			if target.Image != nil && m.yara.UsesSignatures() && p.Image != "" {
+				if fi, e := os.Stat(p.Image); e == nil && fi.Size() <= protocol.MaxYaraFileBytes {
+					target.ImageFile, _ = os.ReadFile(p.Image)
+				}
+			}
 		}
 		e := src.memory(ctx, p.PID, func(blocks []yara.Block) error {
 			ms, err := m.yara.ScanTarget(ctx, blocks, -1, target)

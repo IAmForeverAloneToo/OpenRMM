@@ -110,6 +110,8 @@ type parser struct {
 	// condition uses the entrypoint keyword (the pe module).
 	imports    map[string]*module
 	entrypoint bool
+	// fields are the module fields conditions reach directly ("pe.is_signed").
+	fields map[string]bool
 }
 
 // varDef is a loop variable and its type.
@@ -589,6 +591,12 @@ func (p *parser) postfix(x node, t *ftype, path string) (node, *ftype, error) {
 			ft := t.fields[name.text]
 			if ft == nil {
 				return nil, nil, p.errorf(name, "%s has no field %s", path, name.text)
+			}
+			if m, ok := x.(modRef); ok {
+				if p.fields == nil {
+					p.fields = map[string]bool{}
+				}
+				p.fields[m.m.name+"."+name.text] = true
 			}
 			path += "." + name.text
 			if ft.kind == 'F' {

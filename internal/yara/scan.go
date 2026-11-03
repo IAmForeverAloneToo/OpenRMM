@@ -31,8 +31,14 @@ type Rules struct {
 }
 
 // Uses reports whether the rules use a module (imported, or pe through
-// the entrypoint keyword).
+// the entrypoint keyword), or a module's field ("pe.is_signed").
 func (r *Rules) Uses(module string) bool { return r.uses[module] }
+
+// UsesSignatures reports whether the rules read Authenticode signatures,
+// which a memory scan takes from the program's file.
+func (r *Rules) UsesSignatures() bool {
+	return r.uses["pe.signatures"] || r.uses["pe.is_signed"] || r.uses["pe.number_of_signatures"]
+}
 
 // Compile parses and compiles rules.
 func Compile(src string) (*Rules, error) {
@@ -52,6 +58,9 @@ func Compile(src string) (*Rules, error) {
 	}
 	rs := &Rules{rules: p.order, uses: map[string]bool{}}
 	for name := range p.imports {
+		rs.uses[name] = true
+	}
+	for name := range p.fields {
 		rs.uses[name] = true
 	}
 	if p.entrypoint {
@@ -116,6 +125,9 @@ type hit struct {
 // when scanning a file, whose blocks are the file).
 type Target struct {
 	Image *Block
+	// ImageFile is the program's file, for the image's Authenticode
+	// signatures (they are not loaded into memory).
+	ImageFile []byte
 }
 
 // Scan runs the rules over blocks. size is the file size for filesize, or

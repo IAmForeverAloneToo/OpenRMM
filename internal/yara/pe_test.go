@@ -2,9 +2,12 @@ package yara
 
 import (
 	"context"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/binary"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf16"
 )
 
@@ -274,7 +277,7 @@ rule no_entry { condition: not defined entrypoint }`, "MZ but not a PE file at a
 
 // Damaged and truncated copies of the DLL never panic; a parse stays cheap.
 func TestPEDamaged(t *testing.T) {
-	file := buildFixture()
+	file := signedFixture(t)
 	for n := range len(file) {
 		parsePE(file[:n], false, 0)
 	}
@@ -291,11 +294,30 @@ func TestPEDamaged(t *testing.T) {
 		}
 		parsePE(c, true, fxBase)
 	}
+	// The signature (from 0xC10 on): parsed and verified on every change.
+	for range 2000 {
+		c := append([]byte(nil), file...)
+		for range 1 + seed%4 {
+			seed = seed*1664525 + 1013904223
+			c[fxSize+16+int(seed>>8)%(len(c)-fxSize-16)] = byte(seed >> 24)
+		}
+		if p := parsePE(c, false, 0); p != nil {
+			p.signatures()
+		}
+	}
+}
+
+// signedFixture is the DLL with an Authenticode signature.
+func signedFixture(t testing.TB) []byte {
+	ca := newCert(t, pkix.Name{CommonName: "CA"}, nil, true)
+	leaf := newCert(t, pkix.Name{CommonName: "Signer"}, ca, false, x509.ExtKeyUsageCodeSigning)
+	return signFixture(t, buildFixture(), leaf, leaf, []*x509.Certificate{ca.cert}, time.Now())
 }
 
 func FuzzParsePE(f *testing.F) {
 	f.Add(buildFixture())
 	f.Add(mapImage(buildFixture()))
+	f.Add(signedFixture(f))
 	f.Fuzz(func(t *testing.T, data []byte) {
 		for _, image := range []bool{false, true} {
 			if p := parsePE(data, image, fxBase); p != nil {
@@ -303,6 +325,7 @@ func FuzzParsePE(f *testing.F) {
 				if !image {
 					p.calculatedChecksum()
 					p.overlay()
+					p.signatures()
 				}
 			}
 		}
