@@ -64,6 +64,7 @@ Guides for installing, operating and extending OpenRMM. New here? Start with **[
 | [Persistence](PERSISTENCE.md) | The persistence report |
 | [Event logs](EVENT-LOGS.md) | Queries, .evtx export and fleet log search |
 | [Hunting](HUNTING.md) | Indicator hunts and saved indicator lists |
+| [YARA](YARA.md) | YARA rule sets, and scanning files and process memory in hunts, the console and cases |
 | [Network isolation](ISOLATION.md) | Isolating a device while keeping it manageable |
 
 ## Contributing

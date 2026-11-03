@@ -1,6 +1,6 @@
 # Hunting
 
-The **Hunting** page (sidebar, **Investigate**) searches many devices at once: **Log search** queries Windows event logs across the fleet, and **Indicators** hunts for files, processes, network connections and persistence entries that match a list of indicators of compromise. It is for responders with the response permission.
+The **Hunting** page (sidebar, **Investigate**) searches many devices at once: **Log search** queries Windows event logs across the fleet, and **Indicators** hunts for files, processes, network connections and persistence entries that match a list of indicators of compromise, and can scan files and process memory with YARA rules ([YARA.md](YARA.md)). It is for responders with the response permission.
 
 ## Contents
 
@@ -56,7 +56,7 @@ The **Log search** tab runs one event log query on every target.
 
 ## Indicator hunts
 
-The **Indicators** tab searches each target for a pasted list of indicators, or a [saved list](#saved-lists).
+The **Indicators** tab searches each target for a pasted list of indicators, or a [saved list](#saved-lists), and can run a YARA rule set over the files searched and process memory, with or without indicators ([YARA.md](YARA.md)).
 
 ### Indicator format
 
@@ -148,6 +148,8 @@ In a [live response](RESPONSE.md) console, the command `hunt [-files] <indicator
 ```text
 hunt -files evil.exe 203.0.113.7 domain:bad.example
 ```
+
+`yara <set> [files|memory|pid <n>|<path>]` scans the device with a saved YARA rule set; see [YARA.md](YARA.md#running-a-scan).
 
 ## Cases, retention and visibility
 

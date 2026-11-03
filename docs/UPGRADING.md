@@ -80,6 +80,15 @@ Only the latest release receives fixes, including security fixes. Pre-releases a
 
 ## Version notes
 
+### 0.4.0
+
+YARA scanning; nothing to do when updating.
+
+- **YARA rule sets.** The administrator keeps YARA rule sets on the Hunting page (**YARA rules**); every save is checked and versioned ([YARA.md](YARA.md)).
+- **Scans of files and process memory** in indicator hunts, with the console command `yara`, and from a case. Agents need this release; older agents are listed as not searched. Memory is only read, and never that of LSASS, security products or the agent itself.
+- Rules that need YARA modules (`pe`, `math`, `hash` and others), `include`, or the `xor` and `base64` modifiers are refused with the reason.
+- The server adds the rule set tables on its first start (database migration 55).
+
 ### 0.3.1
 
 Dashboard fixes for narrow windows; nothing to do when updating.

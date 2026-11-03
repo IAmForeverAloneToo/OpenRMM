@@ -303,6 +303,7 @@ Type commands in the command bar under the shell (`POST /api/v1/terminal/{sessio
 | `put <tool> <path> [-overwrite]` | Writes the newest non-withdrawn library tool with that name to the device. |
 | `run <script> [Name=Value ...]` | Runs the library script with that name as SYSTEM; arguments are checked. |
 | `hunt [-files] <indicator ...>` / `hunt [-files] -list <name>` | Searches this device for indicators; see [HUNTING.md](HUNTING.md). |
+| `yara <set> [files\|memory\|pid <n>\|<path>]` | Scans files and process memory with a saved YARA rule set (default both; or only files, only memory, one process, or one file or folder); see [YARA.md](YARA.md). |
 
 - Paths with spaces go in double quotes; a doubled quote inside is a literal quote. A command line is at most 8,192 bytes.
 - Each command maps onto the corresponding case action or collection, with the same validation, limits, feature switch and two-jobs-per-device rule.
