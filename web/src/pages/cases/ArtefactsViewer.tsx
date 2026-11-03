@@ -7,7 +7,7 @@ import type { ArtefactsManifest, EvidenceCollection, TablePage } from "../../lib
 import { Modal } from "../../components/Dialog";
 import { Badge, Button, ErrorNotice, Field, Input, Select, Spinner, Tip, type Tone } from "../../components/ui";
 
-// Browses the artefacts the server parsed from a triage package, registry
+// Browses the artifacts the server parsed from a triage package, registry
 // hive or event log: one table per artefact, paged on the server with a
 // text and time filter. Opening the results and each download are recorded
 // in the custody log (or, for console results, as session activity).
@@ -124,8 +124,8 @@ export function ArtefactsViewer({ base, job, open, onClose, recordedIn }: { base
   const current = tables.find((t) => t.name === table);
   const m = manifest.data;
   return (
-    <Modal open={open} onOpenChange={(o) => !o && onClose()} title="Parsed artefacts" description={`${job.hostname || job.device_id.slice(0, 12)} · opening and downloads are recorded ${recordedIn ?? "in the custody log"}`} width="max-w-[1300px]">
-      {manifest.isPending ? <Spinner label="Opening the parsed artefacts" /> : null}
+    <Modal open={open} onOpenChange={(o) => !o && onClose()} title="Parsed artifacts" description={`${job.hostname || job.device_id.slice(0, 12)} · opening and downloads are recorded ${recordedIn ?? "in the custody log"}`} width="max-w-[1300px]">
+      {manifest.isPending ? <Spinner label="Opening the parsed artifacts" /> : null}
       {manifest.isError ? <ErrorNotice error={manifest.error} retry={() => void manifest.refetch()} /> : null}
       {m ? (
         <div className="space-y-3">

@@ -60,6 +60,7 @@ Guides for installing, operating and extending OpenRMM. New here? Start with **[
 | [Incident response](RESPONSE.md) | Cases, evidence, chain of custody and the live response console |
 | [Triage](TRIAGE.md) | Triage packages and profiles |
 | [NTFS artifacts](NTFS.md) | Raw $MFT, $LogFile and USN journal with parsed timelines, and whole-drive name hunts |
+| [Parsed artifacts](ARTIFACTS.md) | Prefetch, registry, event logs, shortcuts and jump lists parsed on the server, with a combined timeline |
 | [Persistence](PERSISTENCE.md) | The persistence report |
 | [Event logs](EVENT-LOGS.md) | Queries, .evtx export and fleet log search |
 | [Hunting](HUNTING.md) | Indicator hunts and saved indicator lists |

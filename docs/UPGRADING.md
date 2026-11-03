@@ -80,6 +80,15 @@ Only the latest release receives fixes, including security fixes. Pre-releases a
 
 ## Version notes
 
+### 0.3.0
+
+Parsed artifacts; nothing to do when updating.
+
+- **Artifacts parsed on the server.** Triage packages, registry hive collections and event log exports are parsed once verified into searchable tables (Prefetch, registry hives with their transaction logs, Amcache, ShimCache, UserAssist, BAM, ShellBags, autostart entries, services, USB devices, event logs, shortcuts, jump lists) and a combined timeline, viewed with **View parsed** on the case page or downloaded as CSV ([ARTIFACTS.md](ARTIFACTS.md)). Agents need no update.
+- **Collections from before the update** are not parsed by themselves; select **Parse** on one to parse it.
+- **Parsed results count toward the evidence quota**, typically a fraction of the package's size. A parse that would not fit ends as **quota** and stores nothing.
+- The server adds the parse records on its first start (database migration 54).
+
 ### 0.2.0
 
 NTFS artifacts; nothing to do when updating.

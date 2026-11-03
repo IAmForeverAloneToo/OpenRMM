@@ -24,6 +24,8 @@ const actions: Record<string, string> = {
   collection_cancelled: "Collection cancelled",
   terminal_opened: "Live response recorded",
   terminal_transcript: "Terminal transcript stored",
+  artefacts_parse_requested: "Artifact parsing requested",
+  artefacts_parsed: "Artifacts parsed",
 };
 
 const textareaClass =

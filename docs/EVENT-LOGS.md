@@ -85,6 +85,7 @@ Export a whole channel, or the events matching the current filter, as case evide
   - **Event log (.evtx)** in a case's evidence form (whole channel).
   - The live response command `evtx <channel> [<xpath>]`; without a case, the export is kept for 24 hours.
 - **How:** an evidence job of source `evtx` (path: the channel; query: the XPath, empty for the whole channel). The agent runs Windows' `EvtExportLog` on the channel (never a file path) into a private file in its state folder, uploads it in verified chunks like any collection (metadata method `export`, no file times) and deletes it. The filter's query is `*[System[time, level, ID, provider]]` plus any raw XPath. Downloads are named `eventlog-<channel>.evtx`.
+- **Parsed:** once verified, the export is parsed on the server into a table of its events, searchable by event ID, channel and time ([ARTIFACTS.md](ARTIFACTS.md)).
 - **Rules:** the Incident response switch, the two-collections-per-device limit, the 16 GB file limit, the quota and custody entries of [evidence collection](RESPONSE.md#evidence-collection) apply. The requested and collected custody entries name the source `event log` and the query.
 - **Requirements and limits:**
   - The device must report the second version of the event log capability or later; otherwise the request is refused with a message to update the agent.
@@ -149,4 +150,5 @@ The device detail API includes `event_logs` availability and whether it is curre
 - [HUNTING.md](HUNTING.md): fleet log search and indicator hunts
 - [RESPONSE.md](RESPONSE.md): cases and evidence collection
 - [TRIAGE.md](TRIAGE.md): collecting all `.evtx` files with other artifacts
+- [ARTIFACTS.md](ARTIFACTS.md): event logs parsed on the server
 - [TECHNICIANS.md](TECHNICIANS.md): technician permissions

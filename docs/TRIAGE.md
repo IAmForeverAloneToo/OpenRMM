@@ -19,6 +19,7 @@ A triage package collects many forensic artifacts from one Windows device in a s
 - One ZIP per device, with every file under its original path and a manifest (path, size, times, SHA-256 and how each file was read).
 - The ZIP is uploaded, hashed and verified as one piece of case evidence, with the same custody logging as any [evidence collection](RESPONSE.md#evidence-collection).
 - Files are read from a Volume Shadow Copy, so registry hives, event logs and databases in use are captured consistently as they were at one moment.
+- The server parses each verified package into searchable tables (Prefetch, registry artifacts, event logs, shortcuts and jump lists) and one combined timeline; see [ARTIFACTS.md](ARTIFACTS.md).
 
 ## Artifact types
 
@@ -101,10 +102,12 @@ The evidence quota, the two-jobs-per-device limit and the other evidence rules a
 - A triage package is an evidence job with source `triage`; its path is the profile name and its query is the artifact types, comma-separated.
 - An interrupted upload is not resumed, because a new package would differ; the job ends as `changed` and must be requested again.
 - Custody entries name the source `triage package` and the artifact types.
+- Once verified, the package is queued for parsing on the server ([ARTIFACTS.md](ARTIFACTS.md)).
 - API: `GET /api/v1/triage-profiles` lists profiles; the owner adds one with `POST /api/v1/triage-profiles` (name and artifact types) and withdraws it with `POST /api/v1/triage-profiles/{id}/withdraw`. A collection is `POST /api/v1/cases/{case}/collect` with `source` `triage` and `profile`.
 
 ## Related
 
+- [ARTIFACTS.md](ARTIFACTS.md): the tables and timeline parsed from a package
 - [RESPONSE.md](RESPONSE.md): cases, evidence collection and chain of custody
 - [EVENT-LOGS.md](EVENT-LOGS.md): exporting a single event log as `.evtx`
 - [PERSISTENCE.md](PERSISTENCE.md): autostart report

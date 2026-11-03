@@ -31,7 +31,7 @@ func TestTimeline(t *testing.T) {
 		t.Fatal(m, err)
 	}
 	lines := strings.Split(strings.TrimSpace(string(readTable(t, req.Output, "timeline"))), "\n")
-	if lines[0] != "Time,Artefact,Event,Path,Details,SourceFile" || int64(len(lines)-1) != m.Tables[0].Rows {
+	if lines[0] != "Time,Artifact,Event,Path,Details,SourceFile" || int64(len(lines)-1) != m.Tables[0].Rows {
 		t.Fatal(lines[0], len(lines), m.Tables[0].Rows)
 	}
 	last := ""

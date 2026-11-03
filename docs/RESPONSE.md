@@ -82,7 +82,7 @@ From an open case, collect a file, an alternate data stream, a registry hive, an
 - Use the **Evidence** panel on the case page (`POST /api/v1/cases/{case}/collect` with `device_id` and `path`, or a `source`), or the `get`, `hive`, `evtx`, `triage` and `ntfs` commands of the [live response console](#live-response-console).
 - The device must exist, not be revoked, and have **Incident response** switched on (see [Feature switch](#feature-switch)). This is checked on request and again on pickup.
 - A closed case refuses new collections.
-- Other sources have their own guides: event log exports in [EVENT-LOGS.md](EVENT-LOGS.md), triage packages in [TRIAGE.md](TRIAGE.md) and NTFS artifacts in [NTFS.md](NTFS.md).
+- Other sources have their own guides: event log exports in [EVENT-LOGS.md](EVENT-LOGS.md), triage packages in [TRIAGE.md](TRIAGE.md) and NTFS artifacts in [NTFS.md](NTFS.md). Triage packages, registry hives and event log exports are also parsed on the server into searchable tables ([ARTIFACTS.md](ARTIFACTS.md)).
 
 ### How a collection runs
 

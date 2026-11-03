@@ -53,17 +53,17 @@ func registerArtefactsAPI(mux *http.ServeMux, a *api) {
 			}
 			f, j, e := a.store.OpenParsed(r.Context(), caseID, r.PathValue("job"), s.Actor(), record, time.Now())
 			if errors.Is(e, storage.ErrEvidence) {
-				apiError(w, http.StatusNotFound, "not_found", "No parsed artefacts for this collection yet.")
+				apiError(w, http.StatusNotFound, "not_found", "No parsed artifacts for this collection yet.")
 				return nil, j, nil, false
 			}
 			if e != nil {
-				apiError(w, http.StatusServiceUnavailable, "unavailable", "The parsed artefacts cannot be read from the evidence store. Check the evidence volume.")
+				apiError(w, http.StatusServiceUnavailable, "unavailable", "The parsed artifacts cannot be read from the evidence store. Check the evidence volume.")
 				return nil, j, nil, false
 			}
 			zr, e := zip.NewReader(f, j.Size)
 			if e != nil {
 				f.Close()
-				apiError(w, http.StatusUnprocessableEntity, "package", "The parsed artefacts are not a readable ZIP file.")
+				apiError(w, http.StatusUnprocessableEntity, "package", "The parsed artifacts are not a readable ZIP file.")
 				return nil, j, nil, false
 			}
 			return f, j, zr, true
@@ -76,7 +76,7 @@ func registerArtefactsAPI(mux *http.ServeMux, a *api) {
 				rc.Close()
 			}
 			if e != nil || m.Format != artefacts.Format {
-				apiError(w, http.StatusUnprocessableEntity, "package", "The parsed artefacts have no readable manifest.")
+				apiError(w, http.StatusUnprocessableEntity, "package", "The parsed artifacts have no readable manifest.")
 				return m, false
 			}
 			return m, true
@@ -118,7 +118,7 @@ func registerArtefactsAPI(mux *http.ServeMux, a *api) {
 			i := slices.IndexFunc(m.Tables, func(t artefacts.TableInfo) bool { return t.Name == table })
 			rc, e := zr.Open("tables/" + table + ".csv")
 			if i < 0 || e != nil {
-				apiError(w, http.StatusNotFound, "not_found", "The parsed artefacts have no such table.")
+				apiError(w, http.StatusNotFound, "not_found", "The parsed artifacts have no such table.")
 				return
 			}
 			defer rc.Close()

@@ -23,7 +23,7 @@ type EventDef struct {
 }
 
 var timelineTable = Def{Name: "timeline", Title: "Combined timeline",
-	Columns: []string{"Time", "Artefact", "Event", "Path", "Details", "SourceFile"}, Times: []string{"Time"}}
+	Columns: []string{"Time", "Artifact", "Event", "Path", "Details", "SourceFile"}, Times: []string{"Time"}}
 
 // runSize events are sorted in memory before they go to a run file.
 var runSize = 200_000
