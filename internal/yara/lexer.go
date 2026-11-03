@@ -3,7 +3,7 @@
 // (ascii, wide, nocase, fullword, private) and the usual conditions (boolean
 // and arithmetic expressions, counts, offsets and lengths of matches, at and
 // in, filesize, integer reads, "of" and "for" expressions, references to
-// other rules). Modules (pe, math, hash, dotnet and others), external
+// other rules), and the modules in modules.go. Other modules, external
 // variables and the xor and base64 modifiers are refused when compiling.
 package yara
 
@@ -22,6 +22,7 @@ const (
 	tHex     // { hex }
 	tRegex   // /regex/flags
 	tNumber  // 12, 0x1F, 4KB
+	tFloat   // 7.25
 	tStrID   // $a, $ (anonymous), $a*
 	tCount   // #a
 	tOffset  // @a
@@ -43,6 +44,7 @@ type token struct {
 	kind  tokenKind
 	text  string
 	num   int64
+	f     float64
 	line  int
 	flags string // regex flags
 }
@@ -75,10 +77,10 @@ func (l *lexer) errorf(format string, args ...any) error {
 	return &Error{Line: l.line, Msg: fmt.Sprintf(format, args...)}
 }
 
-// tokens splits a source into tokens. Hex strings and regular expressions
-// are recognized by what follows "=" in a strings section, so the lexer
-// gets a hint from the parser: after "=" a "{" starts a hex string and "/"
-// a regular expression.
+// tokens splits a source into tokens. Hex strings are recognized by what
+// follows "=" in a strings section: after "=" a "{" starts a hex string. A
+// "/" always starts a regular expression (YARA has no division by "/";
+// comments are skipped before).
 func lex(src string) ([]token, error) {
 	l := &lexer{src: src, line: 1}
 	var out []token
@@ -96,10 +98,6 @@ func lex(src string) ([]token, error) {
 			return nil, err
 		}
 		afterAssign = t.kind == tPunct && t.text == "="
-		// A regular expression can also follow "matches".
-		if t.kind == tKeyword && t.text == "matches" {
-			afterAssign = true
-		}
 		out = append(out, t)
 	}
 }
@@ -152,7 +150,7 @@ func (l *lexer) next(afterAssign bool) (token, error) {
 		l.line += strings.Count(body, "\n")
 		l.pos += end + 1
 		return token{kind: tHex, text: body, line: line}, nil
-	case c == '/' && afterAssign:
+	case c == '/':
 		return l.regex()
 	case c == '$' || c == '#' || c == '@' || c == '!' && l.pos+1 < len(l.src) && isIdent(l.src[l.pos+1], true):
 		l.pos++
@@ -167,7 +165,7 @@ func (l *lexer) next(afterAssign bool) (token, error) {
 	case c >= '0' && c <= '9':
 		return l.number()
 	case isIdent(c, true):
-		for l.pos < len(l.src) && (isIdent(l.src[l.pos], false) || l.src[l.pos] == '.') {
+		for l.pos < len(l.src) && isIdent(l.src[l.pos], false) {
 			l.pos++
 		}
 		word := l.src[start:l.pos]
@@ -182,7 +180,7 @@ func (l *lexer) next(afterAssign bool) (token, error) {
 			return token{kind: tPunct, text: op, line: line}, nil
 		}
 	}
-	if strings.ContainsRune("{}()[]:=,<>+-*\\%&|^~", rune(c)) {
+	if strings.ContainsRune("{}()[]:=,<>+-*\\%&|^~.", rune(c)) {
 		l.pos++
 		return token{kind: tPunct, text: string(c), line: line}, nil
 	}
@@ -270,7 +268,7 @@ func (l *lexer) regex() (token, error) {
 }
 
 // number reads a decimal or hexadecimal integer with an optional KB or MB
-// suffix.
+// suffix, or a decimal number with a fraction (7.25; "1..5" is a range).
 func (l *lexer) number() (token, error) {
 	start, line := l.pos, l.line
 	base := 10
@@ -284,6 +282,17 @@ func (l *lexer) number() (token, error) {
 	digits := l.pos
 	for l.pos < len(l.src) && (l.src[l.pos] >= '0' && l.src[l.pos] <= '9' || base == 16 && strings.ContainsRune("abcdefABCDEF", rune(l.src[l.pos]))) {
 		l.pos++
+	}
+	if base == 10 && l.pos+1 < len(l.src) && l.src[l.pos] == '.' && l.src[l.pos+1] >= '0' && l.src[l.pos+1] <= '9' {
+		l.pos++
+		for l.pos < len(l.src) && l.src[l.pos] >= '0' && l.src[l.pos] <= '9' {
+			l.pos++
+		}
+		f, err := strconv.ParseFloat(l.src[start:l.pos], 64)
+		if err != nil || l.pos < len(l.src) && isIdent(l.src[l.pos], false) {
+			return token{}, l.errorf("bad number %q", l.src[start:l.pos])
+		}
+		return token{kind: tFloat, text: l.src[start:l.pos], f: f, line: line}, nil
 	}
 	v, err := strconv.ParseInt(l.src[digits:l.pos], base, 64)
 	if err != nil {

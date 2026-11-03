@@ -2,6 +2,7 @@ package yara
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -73,14 +74,15 @@ type (
 		of   *ofExpr
 		body node
 	}
-	forIn struct { // for any i in (1..#a) : ( cond with i )
+	forIn struct { // for any i in (1..#a) : ( cond with i ), for any s in pe.sections : (...)
 		quant node
 		all   bool
 		none  bool
-		name  string
+		names []string // one, or key and value for a dictionary
 		lo    node
 		hi    node
 		list  []node
+		iter  node // a module array or dictionary
 		body  node
 	}
 	varRef  struct{ name string }
@@ -101,9 +103,26 @@ type parser struct {
 	order []*Rule
 	// Inside a rule: its strings by identifier.
 	cur  *Rule
-	vars []string
+	vars []varDef
 	// anon is the string bound by a for-of loop body ($, #, @, !).
 	inForOf int
+	// imports are the modules the rules imported.
+	imports map[string]*module
+}
+
+// varDef is a loop variable and its type.
+type varDef struct {
+	name string
+	t    *ftype
+}
+
+func (p *parser) varType(name string) *ftype {
+	for i := len(p.vars) - 1; i >= 0; i-- {
+		if p.vars[i].name == name {
+			return p.vars[i].t
+		}
+	}
+	return nil
 }
 
 func (p *parser) peek() token { return p.toks[p.pos] }
@@ -143,8 +162,18 @@ func (p *parser) parse() error {
 		switch {
 		case t.kind == tKeyword && t.text == "import":
 			p.take()
-			m, _ := p.expect(tString, "")
-			return p.errorf(t, "module %q is not supported; rules may only use strings and plain conditions", m.text)
+			name, err := p.expect(tString, "")
+			if err != nil {
+				return err
+			}
+			m := modules[name.text]
+			if m == nil {
+				return p.errorf(t, "module %q is not supported; supported modules: %s", name.text, supported())
+			}
+			if p.imports == nil {
+				p.imports = map[string]*module{}
+			}
+			p.imports[m.name] = m
 		case t.kind == tKeyword && t.text == "include":
 			return p.errorf(t, "include is not supported; paste the included rules instead")
 		default:
@@ -302,6 +331,16 @@ func (p *parser) stringDef(r *Rule) error {
 	return nil
 }
 
+// supported lists the modules that can be imported.
+func supported() string {
+	var names []string
+	for n := range modules {
+		names = append(names, n)
+	}
+	slices.Sort(names)
+	return strings.Join(names, ", ")
+}
+
 // Expression grammar, lowest precedence first: or, and, not, comparison,
 // bitwise or, xor, and, shift, additive, multiplicative, unary, primary.
 
@@ -435,6 +474,9 @@ func (p *parser) primary() (node, error) {
 		}
 		p.take()
 		return intLit{t.num}, nil
+	case tFloat:
+		p.take()
+		return floatLit{t.f}, nil
 	case tString:
 		p.take()
 		return strLit{t.text}, nil
@@ -482,14 +524,23 @@ func (p *parser) primary() (node, error) {
 			_, err = p.expect(tPunct, ")")
 			return intRead{f.size, f.signed, f.big, x}, err
 		}
-		if strings.Contains(t.text, ".") {
-			return nil, p.errorf(t, "%s needs a module; modules are not supported", t.text)
-		}
-		if containsStr(p.vars, t.text) {
-			return varRef{t.text}, nil
+		if p.varType(t.text) != nil || p.imports[t.text] != nil {
+			n, ft, err := p.reference(t)
+			if err == nil && (ft.kind == 'S' || ft.kind == 'A' || ft.kind == 'D') {
+				err = p.errorf(t, "%s is not a value; use one of its fields, or loop over it with for", t.text)
+			}
+			return n, err
 		}
 		if r := p.rules[t.text]; r != nil {
 			return ruleRef{r}, nil
+		}
+		if p.is(tPunct, ".") {
+			if modules[t.text] != nil {
+				return nil, p.errorf(t, "%s is used without import %q", t.text, t.text)
+			}
+			if containsStr(knownModules, t.text) {
+				return nil, p.errorf(t, "module %q is not supported; supported modules: %s", t.text, supported())
+			}
 		}
 		// "2 of them" starts with a number; a name here is a loop
 		// variable or rule, else unknown.
@@ -497,6 +548,123 @@ func (p *parser) primary() (node, error) {
 	}
 	// A number of: "2 of ($a, $b)" or "50% of them".
 	return nil, p.errorf(t, "unexpected %s", t)
+}
+
+// reference is a loop variable or an imported module (the name t, already
+// taken) with its fields, indexes and calls.
+func (p *parser) reference(t token) (node, *ftype, error) {
+	if vt := p.varType(t.text); vt != nil {
+		return p.postfix(varRef{t.text}, vt, t.text)
+	}
+	m := p.imports[t.text]
+	if m == nil {
+		return nil, nil, p.errorf(t, "unknown identifier %q", t.text)
+	}
+	if !p.is(tPunct, ".") {
+		return nil, nil, p.errorf(t, "%s is a module; use one of its fields, such as %s.%s", t.text, t.text, firstField(m.t))
+	}
+	return p.postfix(modRef{m}, m.t, t.text)
+}
+
+// postfix reads ".field", "[index]" and "(arguments)" after a module or a
+// loop variable holding module data, checking each against the types; path
+// names the expression so far for errors.
+func (p *parser) postfix(x node, t *ftype, path string) (node, *ftype, error) {
+	for {
+		switch {
+		case p.is(tPunct, "."):
+			p.take()
+			name, err := p.expect(tIdent, "")
+			if err != nil {
+				return nil, nil, err
+			}
+			if t.kind != 'S' {
+				return nil, nil, p.errorf(name, "%s has no field %s", path, name.text)
+			}
+			ft := t.fields[name.text]
+			if ft == nil {
+				return nil, nil, p.errorf(name, "%s has no field %s", path, name.text)
+			}
+			path += "." + name.text
+			if ft.kind == 'F' {
+				if _, err := p.expect(tPunct, "("); err != nil {
+					return nil, nil, p.errorf(name, "%s is a function: call it as %s", path, signatures(path, ft))
+				}
+				var args []node
+				for !p.is(tPunct, ")") {
+					if len(args) > 0 {
+						if _, err := p.expect(tPunct, ","); err != nil {
+							return nil, nil, err
+						}
+					}
+					a, err := p.argument()
+					if err != nil {
+						return nil, nil, err
+					}
+					args = append(args, a)
+				}
+				p.take()
+				f := pick(ft, args, p.vars)
+				if f == nil {
+					return nil, nil, p.errorf(name, "wrong arguments for %s; use %s", path, signatures(path, ft))
+				}
+				x, t = callN{x: x, f: f, args: args, t: f.ret}, f.ret
+				continue
+			}
+			x, t = fieldN{x: x, name: name.text, t: ft}, ft
+		case p.is(tPunct, "["):
+			open := p.take()
+			if t.kind != 'A' && t.kind != 'D' {
+				return nil, nil, p.errorf(open, "%s is not an array or dictionary", path)
+			}
+			i, err := p.expr()
+			if err != nil {
+				return nil, nil, err
+			}
+			if _, err := p.expect(tPunct, "]"); err != nil {
+				return nil, nil, err
+			}
+			want := byte('i')
+			if t.kind == 'D' {
+				want = 's'
+			}
+			if !accepts(want, staticType(i, p.vars)) {
+				return nil, nil, p.errorf(open, "%s needs an %s index", path, map[byte]string{'i': "integer", 's': "text"}[want])
+			}
+			x, t = indexN{x: x, i: i, t: t.elem}, t.elem
+			path += "[]"
+		default:
+			return x, t, nil
+		}
+	}
+}
+
+// argument is a function argument: a regular expression or an expression.
+func (p *parser) argument() (node, error) {
+	if t := p.peek(); t.kind == tRegex {
+		p.take()
+		pt := &pattern{}
+		if err := pt.compileRegex(t.text, t.flags, nil); err != nil {
+			return nil, p.errorf(t, "%v", err)
+		}
+		return regexLit{pt}, nil
+	}
+	return p.expr()
+}
+
+// firstField names one field of a module, for an error message.
+func firstField(t *ftype) string {
+	var names []string
+	for n, f := range t.fields {
+		if f.kind != 'F' {
+			names = append(names, n)
+		}
+	}
+	slices.Sort(names)
+	if len(names) == 0 {
+		return "..."
+	}
+	return names[0]
 }
 
 // stringExpr is $a, $a at x or $a in (x..y), or $ inside a for-of body.
@@ -776,12 +944,47 @@ func (p *parser) forExpr() (node, error) {
 	if err != nil {
 		return nil, err
 	}
+	f := forIn{quant: o.quant, all: o.all, none: o.none, names: []string{name.text}}
+	for p.is(tPunct, ",") {
+		p.take()
+		n, err := p.expect(tIdent, "")
+		if err != nil {
+			return nil, err
+		}
+		f.names = append(f.names, n.text)
+	}
 	if _, err := p.expect(tKeyword, "in"); err != nil {
 		return nil, err
 	}
-	f := forIn{quant: o.quant, all: o.all, none: o.none, name: name.text}
 	if o.percent {
 		return nil, p.errorf(name, "percentages are not supported in for ... in")
+	}
+	if !p.is(tPunct, "(") {
+		// A module array (one name) or dictionary (key and value names).
+		t := p.take()
+		if t.kind != tIdent {
+			return nil, p.errorf(t, "expected a range, a list or a module array, found %s", t)
+		}
+		it, ft, err := p.reference(t)
+		if err != nil {
+			return nil, err
+		}
+		var defs []varDef
+		switch {
+		case ft.kind == 'A' && len(f.names) == 1:
+			defs = []varDef{{f.names[0], ft.elem}}
+		case ft.kind == 'D' && len(f.names) == 2:
+			defs = []varDef{{f.names[0], tStr}, {f.names[1], ft.elem}}
+		case ft.kind == 'A' || ft.kind == 'D':
+			return nil, p.errorf(name, "loop over an array with one name, over a dictionary with two (key, value)")
+		default:
+			return nil, p.errorf(t, "%s is not an array or dictionary", t.text)
+		}
+		f.iter = it
+		return p.forBody(f, defs)
+	}
+	if len(f.names) != 1 {
+		return nil, p.errorf(name, "a range or list takes one loop name")
 	}
 	if _, err := p.expect(tPunct, "("); err != nil {
 		return nil, err
@@ -810,15 +1013,24 @@ func (p *parser) forExpr() (node, error) {
 	if _, err := p.expect(tPunct, ")"); err != nil {
 		return nil, err
 	}
+	vt := tInt
+	if f.list != nil {
+		vt = staticType(f.list[0], p.vars)
+	}
+	return p.forBody(f, []varDef{{f.names[0], vt}})
+}
+
+// forBody reads ": ( body )" with the loop's names defined.
+func (p *parser) forBody(f forIn, defs []varDef) (node, error) {
 	if _, err := p.expect(tPunct, ":"); err != nil {
 		return nil, err
 	}
 	if _, err := p.expect(tPunct, "("); err != nil {
 		return nil, err
 	}
-	p.vars = append(p.vars, name.text)
+	p.vars = append(p.vars, defs...)
 	body, err := p.expr()
-	p.vars = p.vars[:len(p.vars)-1]
+	p.vars = p.vars[:len(p.vars)-len(defs)]
 	if err != nil {
 		return nil, err
 	}

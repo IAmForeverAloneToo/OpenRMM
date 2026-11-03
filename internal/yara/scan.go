@@ -99,10 +99,22 @@ type hit struct {
 	n   int
 }
 
+// Target is what modules describe besides the scanned blocks: Image is a
+// process's main executable as mapped in memory, for a memory scan (nil
+// when scanning a file, whose blocks are the file).
+type Target struct {
+	Image *Block
+}
+
 // Scan runs the rules over blocks. size is the file size for filesize, or
 // -1 when scanning memory (filesize is then undefined). The context stops
 // a long scan.
 func (r *Rules) Scan(ctx context.Context, blocks []Block, size int64) ([]Match, error) {
+	return r.ScanTarget(ctx, blocks, size, Target{})
+}
+
+// ScanTarget is Scan with what the modules describe.
+func (r *Rules) ScanTarget(ctx context.Context, blocks []Block, size int64, target Target) ([]Match, error) {
 	hits := make([][]hit, len(r.patterns))
 	add := func(pi int, off uint64, n int) bool {
 		if len(hits[pi]) >= MaxMatchesPerString {
@@ -128,7 +140,7 @@ func (r *Rules) Scan(ctx context.Context, blocks []Block, size int64) ([]Match, 
 		})
 		hits[i] = slices.CompactFunc(hits[i], func(a, b hit) bool { return a.off == b.off })
 	}
-	e := &evaluator{rs: r, hits: hits, blocks: blocks, size: size, results: map[*Rule]bool{}, index: map[*pattern]int{}}
+	e := &evaluator{rs: r, hits: hits, blocks: blocks, size: size, results: map[*Rule]bool{}, index: map[*pattern]int{}, target: target}
 	for i, p := range r.patterns {
 		e.index[p] = i
 	}

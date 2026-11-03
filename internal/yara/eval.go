@@ -2,19 +2,33 @@ package yara
 
 import (
 	"encoding/binary"
+	"slices"
 	"strings"
 )
 
-// value is a condition value: undefined, an integer, a boolean or text.
+// value is a condition value: undefined, an integer, a decimal, a boolean,
+// text, or module data (a structure, array or dictionary; a regular
+// expression passed to a module function).
 type value struct {
-	kind byte // 0 undefined, 'i', 'b', 's'
+	kind byte // 0 undefined, 'i', 'f', 'b', 's', 'o', 'r'
 	i    int64
+	f    float64
 	s    string
+	o    any
 }
 
 var undefined = value{}
 
-func intV(i int64) value { return value{kind: 'i', i: i} }
+func intV(i int64) value     { return value{kind: 'i', i: i} }
+func floatV(f float64) value { return value{kind: 'f', f: f} }
+
+// num is a number as a decimal.
+func (v value) num() float64 {
+	if v.kind == 'f' {
+		return v.f
+	}
+	return float64(v.i)
+}
 func boolV(b bool) value {
 	if b {
 		return value{kind: 'b', i: 1}
@@ -27,8 +41,12 @@ func (v value) truth() bool {
 	switch v.kind {
 	case 'i', 'b':
 		return v.i != 0
+	case 'f':
+		return v.f != 0
 	case 's':
 		return v.s != ""
+	case 'o':
+		return true
 	}
 	return false
 }
@@ -44,6 +62,10 @@ type evaluator struct {
 	results map[*Rule]bool
 	index   map[*pattern]int
 	vars    []binding
+	// mods holds each module's data for this scan; target is what the
+	// modules describe.
+	mods   map[*module]any
+	target Target
 	// anon is the string a for-of body refers to as $, #, @ and !.
 	anon []*pattern
 }
@@ -72,6 +94,10 @@ func (e *evaluator) eval(n node) value {
 		return boolV(x.v)
 	case intLit:
 		return intV(x.v)
+	case floatLit:
+		return floatV(x.v)
+	case modRef, fieldN, indexN, callN:
+		return e.evalModule(n)
 	case strLit:
 		return value{kind: 's', s: x.v}
 	case filesizeN:
@@ -148,10 +174,13 @@ func (e *evaluator) eval(n node) value {
 		case "defined":
 			return boolV(v.kind != 0)
 		case "-":
-			if v.kind != 'i' {
-				return undefined
+			switch v.kind {
+			case 'i':
+				return intV(-v.i)
+			case 'f':
+				return floatV(-v.f)
 			}
-			return intV(-v.i)
+			return undefined
 		case "~":
 			if v.kind != 'i' {
 				return undefined
@@ -253,8 +282,14 @@ func (e *evaluator) binop(x binop) value {
 		return boolV(p.re.FindReaderIndex(&byteReader{b: []byte(a.s)}) != nil)
 	}
 	a, b := e.eval(x.x), e.eval(x.y)
-	if a.kind == 0 || b.kind == 0 {
+	if a.kind == 0 || b.kind == 0 || a.kind == 'o' || b.kind == 'o' {
 		return undefined
+	}
+	if a.kind == 'f' || b.kind == 'f' {
+		if a.kind == 's' || b.kind == 's' {
+			return undefined
+		}
+		return floatOp(x.op, a.num(), b.num())
 	}
 	if a.kind == 's' || b.kind == 's' {
 		if a.kind != 's' || b.kind != 's' {
@@ -341,6 +376,37 @@ func (e *evaluator) binop(x binop) value {
 	return undefined
 }
 
+// floatOp is an arithmetic or comparison with a decimal operand; integer
+// operators (%, bit operations, shifts) are undefined on decimals.
+func floatOp(op string, p, q float64) value {
+	switch op {
+	case "==":
+		return boolV(p == q)
+	case "!=":
+		return boolV(p != q)
+	case "<":
+		return boolV(p < q)
+	case ">":
+		return boolV(p > q)
+	case "<=":
+		return boolV(p <= q)
+	case ">=":
+		return boolV(p >= q)
+	case "+":
+		return floatV(p + q)
+	case "-":
+		return floatV(p - q)
+	case "*":
+		return floatV(p * q)
+	case "\\":
+		if q == 0 {
+			return undefined
+		}
+		return floatV(p / q)
+	}
+	return undefined
+}
+
 // quantified applies a quantifier to how many of total items held.
 func (e *evaluator) quantified(quant node, all, none, percent bool, held, total int) value {
 	switch {
@@ -397,6 +463,42 @@ func (e *evaluator) of(o *ofExpr, body node) value {
 
 func (e *evaluator) forIn(f forIn) value {
 	var items []value
+	// Over a module array (one name per item) or dictionary (key, value).
+	if f.iter != nil {
+		v := e.eval(f.iter)
+		var keys []value
+		switch c := v.o.(type) {
+		case arr:
+			for _, x := range c[:min(len(c), maxLoop)] {
+				items = append(items, toValue(x))
+			}
+		case dict:
+			names := make([]string, 0, len(c))
+			for k := range c {
+				names = append(names, k)
+			}
+			slices.Sort(names)
+			for _, k := range names[:min(len(names), maxLoop)] {
+				keys = append(keys, value{kind: 's', s: k})
+				items = append(items, toValue(c[k]))
+			}
+		default:
+			return undefined
+		}
+		held := 0
+		for i, v := range items {
+			if keys != nil {
+				e.vars = append(e.vars, binding{f.names[0], keys[i]}, binding{f.names[1], v})
+			} else {
+				e.vars = append(e.vars, binding{f.names[0], v})
+			}
+			if e.eval(f.body).truth() {
+				held++
+			}
+			e.vars = e.vars[:len(e.vars)-len(f.names)]
+		}
+		return e.quantified(f.quant, f.all, f.none, false, held, len(items))
+	}
 	if f.list != nil {
 		for _, x := range f.list {
 			items = append(items, e.eval(x))
@@ -415,7 +517,7 @@ func (e *evaluator) forIn(f forIn) value {
 	}
 	held := 0
 	for _, v := range items {
-		e.vars = append(e.vars, binding{f.name, v})
+		e.vars = append(e.vars, binding{f.names[0], v})
 		if e.eval(f.body).truth() {
 			held++
 		}
