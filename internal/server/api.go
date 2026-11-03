@@ -267,5 +267,6 @@ func registerAPI(mux *http.ServeMux, a *api) {
 	registerIsolationAPI(mux, a)
 	registerTriageAPI(mux, a)
 	registerNTFSAPI(mux, a)
+	registerArtefactsAPI(mux, a)
 	registerToolsAPI(mux, a)
 }

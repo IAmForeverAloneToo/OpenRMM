@@ -9,6 +9,7 @@ import { Modal } from "../components/Dialog";
 import { Badge, Button, ErrorNotice, Field, Input, Mono, Segmented, Select, Tip, type Tone } from "../components/ui";
 import { ActionViewer } from "./cases/ActionViewer";
 import { NtfsViewer } from "./cases/NtfsViewer";
+import { ArtefactsViewer, ParseStatus } from "./cases/ArtefactsViewer";
 import { progress, reasons, states } from "./cases/Collections";
 
 // The device terminal is a live response session. Built-in commands run
@@ -171,12 +172,13 @@ export function LiveConsole({ session, caseId, active }: { session: string; case
   const [history, setHistory] = useState<string[]>([]);
   const [cursor, setCursor] = useState(-1);
   const [viewing, setViewing] = useState<EvidenceCollection | null>(null);
+  const [parsed, setParsed] = useState<EvidenceCollection | null>(null);
   const logEnd = useRef<HTMLDivElement>(null);
   const counter = useRef(0);
   const jobs = useQuery({
     queryKey: ["live-jobs", session],
     queryFn: ({ signal }) => get<{ jobs: EvidenceCollection[] }>(`${base}/jobs`, signal),
-    refetchInterval: (q) => (q.state.data?.jobs.some((j) => ["queued", "dispatched", "uploading", "verifying"].includes(j.status)) || active ? 2000 : false),
+    refetchInterval: (q) => (q.state.data?.jobs.some((j) => ["queued", "dispatched", "uploading", "verifying"].includes(j.status) || j.parse?.status === "queued" || j.parse?.status === "running") || active ? 2000 : false),
   });
   const run = useMutation({
     mutationFn: (text: string) => post<{ id?: string; label?: string; help?: string }>(`${base}/command`, { line: text }),
@@ -337,6 +339,7 @@ export function LiveConsole({ session, caseId, active }: { session: string; case
                     </div>
                     <div className="text-muted">{relativeTime(j.created_at)}</div>
                     {j.status === "failed" || j.status === "expired" ? <div className="text-danger">{reasons[j.outcome] ?? j.outcome}</div> : null}
+                    <ParseStatus c={j} base={`${base}/jobs/${j.id}`} canParse onView={() => setParsed(j)} onQueued={() => void qc.invalidateQueries({ queryKey: ["live-jobs", session] })} />
                   </div>
                   {j.status === "succeeded" && (j.source === "action" || j.source === "ntfs") ? (
                     <Button size="sm" icon={<Eye className="size-3.5" />} onClick={() => setViewing(j)}>
@@ -359,6 +362,7 @@ export function LiveConsole({ session, caseId, active }: { session: string; case
           </ul>
         )}
       </div>
+      {parsed ? <ArtefactsViewer base={`${base}/jobs/${parsed.id}`} job={parsed} open onClose={() => setParsed(null)} recordedIn={recordedIn(parsed)} /> : null}
       {viewing?.source === "ntfs" ? (
         <NtfsViewer base={`${base}/jobs/${viewing.id}/ntfs`} job={viewing} open onClose={() => setViewing(null)} recordedIn={recordedIn(viewing)} />
       ) : viewing ? (

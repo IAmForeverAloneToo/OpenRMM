@@ -7,6 +7,7 @@ import { absoluteTime, bytes, relativeTime } from "../../lib/format";
 import type { DevicesResponse, EvidenceCollection, ResponseAction } from "../../lib/types";
 import { ActionViewer } from "./ActionViewer";
 import { NtfsViewer } from "./NtfsViewer";
+import { ArtefactsViewer, ParseStatus } from "./ArtefactsViewer";
 import { DropAndScript } from "./DropAndScript";
 import { useTriageProfiles } from "./TriageProfiles";
 import { ntfsVolumes } from "../../lib/ntfs";
@@ -71,7 +72,7 @@ export function Collections({ caseId, open }: { caseId: string; open: boolean })
   const q = useQuery({
     queryKey: ["collections", caseId],
     queryFn: ({ signal }) => get<{ collections: EvidenceCollection[] }>(`/api/v1/cases/${caseId}/collections`, signal),
-    refetchInterval: (query) => ((query.state.data?.collections ?? []).some((c) => active.has(c.status)) ? 3000 : false),
+    refetchInterval: (query) => ((query.state.data?.collections ?? []).some((c) => active.has(c.status) || c.parse?.status === "queued" || c.parse?.status === "running") ? 3000 : false),
   });
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ["collections", caseId] });
@@ -108,6 +109,7 @@ export function Collections({ caseId, open }: { caseId: string; open: boolean })
   // Structured actions; their results are case evidence.
   const [registryKey, setRegistryKey] = useState("HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run");
   const [viewing, setViewing] = useState<EvidenceCollection | null>(null);
+  const [parsed, setParsed] = useState<EvidenceCollection | null>(null);
   const action = useMutation({
     mutationFn: (a: ResponseAction) => post(`/api/v1/cases/${caseId}/actions`, { device_id: device, action: a }),
     onSuccess: refresh,
@@ -324,6 +326,7 @@ export function Collections({ caseId, open }: { caseId: string; open: boolean })
                     <div className="text-warn">Stored after a server stop: it ends where the recording stopped and could not be checked against the recorder&apos;s hash.</div>
                   ) : null}
                   {c.server_sha256 ? <Mono className="block truncate text-[11px] text-faint">SHA-256 {c.server_sha256}</Mono> : null}
+                  <ParseStatus c={c} base={`/api/v1/cases/${caseId}/collections/${c.id}`} canParse={open} onView={() => setParsed(c)} onQueued={refresh} />
                 </div>
                 {c.status === "succeeded" && (c.source === "action" || c.source === "ntfs") ? (
                   <Button size="sm" icon={<Eye className="size-3.5" />} onClick={() => setViewing(c)}>
@@ -350,6 +353,7 @@ export function Collections({ caseId, open }: { caseId: string; open: boolean })
         </ul>
       )}
       <p className="border-t border-border px-4 py-2 text-[12px] text-faint">Every download is recorded in the custody log with the account that downloaded it.</p>
+      {parsed ? <ArtefactsViewer base={`/api/v1/cases/${caseId}/collections/${parsed.id}`} job={parsed} open onClose={() => setParsed(null)} /> : null}
       {viewing?.source === "ntfs" ? (
         <NtfsViewer base={`/api/v1/cases/${caseId}/collections/${viewing.id}/ntfs`} job={viewing} open onClose={() => setViewing(null)} />
       ) : viewing ? (

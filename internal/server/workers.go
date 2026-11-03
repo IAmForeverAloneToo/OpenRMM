@@ -3,8 +3,10 @@ package server
 import (
 	"context"
 	"log/slog"
+	"os"
 	"time"
 
+	"github.com/IAmForeverAloneToo/OpenRMM/internal/artefacts"
 	"github.com/IAmForeverAloneToo/OpenRMM/internal/storage"
 )
 
@@ -66,6 +68,52 @@ func runEvidenceVerifier(ctx context.Context, store *storage.Store, logger *slog
 		case <-ctx.Done():
 			return
 		case <-time.After(5 * time.Second):
+		}
+	}
+}
+
+// parseTime bounds the parse of one collection.
+const parseTime = 2 * time.Hour
+
+// runArtefactParser parses collected triage packages, hives and event logs
+// one at a time, each in its own process: the server binary started with
+// artefacts.ChildArg, limited in memory, priority and output.
+func runArtefactParser(ctx context.Context, store *storage.Store, logger *slog.Logger) {
+	exe, e := os.Executable()
+	if e != nil {
+		logger.Warn("artefact parsing unavailable: the server binary cannot be found")
+		return
+	}
+	if e := store.RecoverParses(ctx, time.Now()); e != nil && ctx.Err() == nil {
+		logger.Warn("interrupted artefact parses could not be restarted")
+	}
+	for ctx.Err() == nil {
+		t, ok, e := store.ClaimParse(ctx, time.Now())
+		if e != nil && ctx.Err() == nil {
+			logger.Warn("artefact parsing unavailable")
+		}
+		if !ok || e != nil {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(5 * time.Second):
+			}
+			continue
+		}
+		parse, cancel := context.WithTimeout(ctx, parseTime)
+		m, outcome := artefacts.Run(parse, exe, t.Request)
+		cancel()
+		if ctx.Err() != nil {
+			return // restarted at the next start
+		}
+		if outcome != "" {
+			logger.Info("artefact parse ended without results", "job", t.JobID, "reason", outcome)
+			e = store.FailParse(ctx, t, outcome, time.Now())
+		} else {
+			e = store.FinishParse(ctx, t, m, time.Now())
+		}
+		if e != nil && ctx.Err() == nil {
+			logger.Warn("parsed artefacts could not be stored", "job", t.JobID)
 		}
 	}
 }

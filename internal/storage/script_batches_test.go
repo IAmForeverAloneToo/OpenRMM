@@ -252,7 +252,7 @@ func TestScriptBatchMigrationRetainsInstallationAndVersions(t *testing.T) {
 	}
 	defer s.Close()
 	after, _ := s.Info(ctx)
-	if before != after || after.SchemaVersion != 53 {
+	if before != after || after.SchemaVersion != 54 {
 		t.Fatal(before, after)
 	}
 }

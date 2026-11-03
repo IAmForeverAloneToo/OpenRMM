@@ -765,6 +765,16 @@ export type EvidenceCollection = {
   action?: string;
   meta?: EvidenceMeta;
   parent_id?: string;
+  // Latest server-side parse of a triage package, hive or event log.
+  parse?: ParseState;
+};
+export type ParseState = {
+  status: "queued" | "running" | "succeeded" | "failed";
+  outcome: string;
+  parser: number;
+  size: number;
+  tables: { name: string; title: string; rows: number }[];
+  finished_at: number | null;
 };
 export type EvidenceMeta = {
   method: "read" | "backup" | "shadow_copy" | "registry_save" | "export" | "triage";
@@ -938,3 +948,13 @@ export type NtfsVolume = {
 };
 export type NtfsManifest = { format: string; version: number; device_time: string; volumes: NtfsVolume[]; notes: string[] };
 export type NtfsPage = { columns: string[]; rows: string[][]; offset: number; more: boolean };
+export type TablePage = NtfsPage;
+export type ArtefactsManifest = {
+  format: string;
+  version: number;
+  parser: number;
+  source: string;
+  tables: { name: string; title: string; columns: string[]; times: string[]; rows: number; sources: number }[];
+  errors: { path: string; table: string; error: string }[];
+  errors_more?: number;
+};

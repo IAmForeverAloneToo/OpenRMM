@@ -18,6 +18,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/IAmForeverAloneToo/OpenRMM/internal/artefacts"
 	"github.com/IAmForeverAloneToo/OpenRMM/internal/custody"
 	"github.com/IAmForeverAloneToo/OpenRMM/internal/eventlogs"
 	"github.com/IAmForeverAloneToo/OpenRMM/internal/protocol"
@@ -82,6 +83,8 @@ type EvidenceJob struct {
 	// Query is the event XPath of an event log export (Source "evtx", Path
 	// the channel; empty for the whole channel).
 	Query string `json:"query,omitempty"`
+	// Parse is the latest parse of a triage package, hive or event log.
+	Parse *ParseState `json:"parse,omitempty"`
 }
 
 var codeHash = regexp.MustCompile(`"code_hash":"[0-9a-f]{64}"`)
@@ -482,7 +485,12 @@ func (s *Store) quotaUsed(ctx context.Context, tx *sql.Tx) (int64, error) {
 	if e := tx.QueryRowContext(ctx, `SELECT COALESCE(SUM(size),0) FROM evidence_jobs WHERE status IN ('uploading','verifying') OR case_id=? AND status='succeeded'`, LiveCase).Scan(&pending); e != nil {
 		return 0, e
 	}
-	return stored + pending, nil
+	// So do their parsed results.
+	var parsed int64
+	if e := tx.QueryRowContext(ctx, `SELECT COALESCE(SUM(p.size),0) FROM artefact_parses p JOIN evidence_jobs j ON j.id=p.job_id WHERE j.case_id=? AND j.status='succeeded' AND p.status='succeeded'`, LiveCase).Scan(&parsed); e != nil {
+		return 0, e
+	}
+	return stored + pending + parsed, nil
 }
 
 // StartEvidence records the opened file and returns the chunks already held;
@@ -866,6 +874,12 @@ func (s *Store) VerifyEvidence(ctx context.Context, now func() time.Time) (bool,
 	if e = queueStreams(ctx, tx, j, streams, at); e != nil {
 		return false, e
 	}
+	// Triage packages, hives and event logs are parsed on the server.
+	if j.Action == "" && artefacts.Parseable(j.Source) {
+		if _, e = queueParseTx(ctx, tx, j.ID, "system", at); e != nil {
+			return false, e
+		}
+	}
 	return true, tx.Commit()
 }
 
@@ -1086,11 +1100,16 @@ func (s *Store) purgeLiveResults(ctx context.Context, now time.Time) error {
 	}
 	rows.Close()
 	for _, id := range ids {
-		_ = os.Chmod(s.scratch(id), 0600)
-		if e := os.Remove(s.scratch(id)); e != nil && !errors.Is(e, os.ErrNotExist) {
-			return e
+		for _, f := range []string{s.scratch(id), s.scratch(id) + ".parsed"} {
+			_ = os.Chmod(f, 0600)
+			if e := os.Remove(f); e != nil && !errors.Is(e, os.ErrNotExist) {
+				return e
+			}
 		}
 		if _, e := s.db.ExecContext(ctx, `UPDATE evidence_jobs SET status='expired',outcome='purged' WHERE id=? AND status='succeeded'`, id); e != nil {
+			return e
+		}
+		if _, e := s.db.ExecContext(ctx, `DELETE FROM artefact_parses WHERE job_id=?`, id); e != nil {
 			return e
 		}
 	}
@@ -1179,8 +1198,9 @@ func (s *Store) SessionJobCase(ctx context.Context, session, actor, job string) 
 }
 
 func (s *Store) listJobs(ctx context.Context, where string, args ...any) ([]EvidenceJob, error) {
-	rows, e := s.db.QueryContext(ctx, `SELECT j.id,j.case_id,j.device_id,COALESCE(d.hostname,''),j.actor,j.path,j.status,j.outcome,j.chunk_size,j.size,(SELECT COUNT(*) FROM evidence_chunks c WHERE c.job_id=j.id),j.resolved_path,j.file_modified,j.file_created,j.device_sha256,j.server_sha256,j.created_at,j.finished_at,j.kind,j.source,j.meta_json,j.parent_id,j.action,j.query
- FROM evidence_jobs j LEFT JOIN devices d ON d.id=j.device_id WHERE `+where+` ORDER BY j.created_at DESC,j.id LIMIT 500`, args...)
+	rows, e := s.db.QueryContext(ctx, `SELECT j.id,j.case_id,j.device_id,COALESCE(d.hostname,''),j.actor,j.path,j.status,j.outcome,j.chunk_size,j.size,(SELECT COUNT(*) FROM evidence_chunks c WHERE c.job_id=j.id),j.resolved_path,j.file_modified,j.file_created,j.device_sha256,j.server_sha256,j.created_at,j.finished_at,j.kind,j.source,j.meta_json,j.parent_id,j.action,j.query,
+ COALESCE(p.status,''),COALESCE(p.outcome,''),COALESCE(p.parser,0),COALESCE(p.size,0),COALESCE(p.tables_json,'[]'),p.finished_at
+ FROM evidence_jobs j LEFT JOIN devices d ON d.id=j.device_id LEFT JOIN artefact_parses p ON p.job_id=j.id WHERE `+where+` ORDER BY j.created_at DESC,j.id LIMIT 500`, args...)
 	if e != nil {
 		return nil, errors.New("cannot list collections")
 	}
@@ -1188,9 +1208,14 @@ func (s *Store) listJobs(ctx context.Context, where string, args ...any) ([]Evid
 	out := []EvidenceJob{}
 	for rows.Next() {
 		var j EvidenceJob
-		var meta string
-		if rows.Scan(&j.ID, &j.CaseID, &j.DeviceID, &j.Hostname, &j.Actor, &j.Path, &j.Status, &j.Outcome, &j.ChunkSize, &j.Size, &j.Received, &j.Resolved, &j.FileModified, &j.FileCreated, &j.DeviceSHA256, &j.ServerSHA256, &j.CreatedAt, &j.FinishedAt, &j.Kind, &j.Source, &meta, &j.ParentID, &j.Action, &j.Query) != nil {
+		var meta, tables string
+		var p ParseState
+		if rows.Scan(&j.ID, &j.CaseID, &j.DeviceID, &j.Hostname, &j.Actor, &j.Path, &j.Status, &j.Outcome, &j.ChunkSize, &j.Size, &j.Received, &j.Resolved, &j.FileModified, &j.FileCreated, &j.DeviceSHA256, &j.ServerSHA256, &j.CreatedAt, &j.FinishedAt, &j.Kind, &j.Source, &meta, &j.ParentID, &j.Action, &j.Query, &p.Status, &p.Outcome, &p.Parser, &p.Size, &tables, &p.FinishedAt) != nil {
 			return nil, errors.New("cannot read collection")
+		}
+		if p.Status != "" {
+			p.Tables = json.RawMessage(tables)
+			j.Parse = &p
 		}
 		if j.Action != "" {
 			j.Source = "action"

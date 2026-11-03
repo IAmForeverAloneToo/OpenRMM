@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/IAmForeverAloneToo/OpenRMM/internal/artefacts"
 	"github.com/IAmForeverAloneToo/OpenRMM/internal/config"
 	"github.com/IAmForeverAloneToo/OpenRMM/internal/logging"
 	"github.com/IAmForeverAloneToo/OpenRMM/internal/server"
@@ -94,4 +95,10 @@ func run() int {
 	return 0
 }
 
-func main() { os.Exit(run()) }
+func main() {
+	// The server parses collected artefacts in a copy of itself.
+	if len(os.Args) == 2 && os.Args[1] == artefacts.ChildArg {
+		os.Exit(artefacts.ChildMain(os.Stdin, os.Stdout))
+	}
+	os.Exit(run())
+}
