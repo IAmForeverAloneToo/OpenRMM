@@ -78,3 +78,24 @@ func TestParse(t *testing.T) {
 		}
 	}
 }
+
+func TestParseYara(t *testing.T) {
+	for line, want := range map[string]Command{
+		`yara Tools`:                        {Verb: "yara", List: "Tools", Files: true, YaraMemory: true},
+		`yara "Credential tools" files`:     {Verb: "yara", List: "Credential tools", Files: true},
+		`yara Tools memory`:                 {Verb: "yara", List: "Tools", YaraMemory: true},
+		`yara Tools pid 4242`:               {Verb: "yara", List: "Tools", YaraPID: 4242},
+		`yara Tools "C:\Users\a\Downloads"`: {Verb: "yara", List: "Tools", YaraPath: `C:\Users\a\Downloads`},
+		`yara Tools C:\`:                    {Verb: "yara", List: "Tools", YaraPath: `C:\`},
+	} {
+		c, e := Parse(line)
+		if e != nil || c.Verb != want.Verb || c.List != want.List || c.Files != want.Files || c.YaraMemory != want.YaraMemory || c.YaraPID != want.YaraPID || c.YaraPath != want.YaraPath {
+			t.Errorf("%s: %+v %v", line, c, e)
+		}
+	}
+	for _, bad := range []string{`yara`, `yara Tools pid 4`, `yara Tools pid x`, `yara Tools relative\path`, `yara Tools files memory extra`} {
+		if _, e := Parse(bad); e == nil {
+			t.Errorf("%s accepted", bad)
+		}
+	}
+}

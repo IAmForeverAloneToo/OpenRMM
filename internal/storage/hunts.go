@@ -78,13 +78,15 @@ type HuntTarget struct {
 
 // HuntSummary is a hunt in the list.
 type HuntSummary struct {
-	ID          string `json:"id"`
-	Kind        string `json:"kind"`
-	CaseID      string `json:"case_id"`
-	Actor       string `json:"actor"`
-	Channel     string `json:"channel"`
-	Indicators  int    `json:"indicators"`
-	Files       bool   `json:"files"`
+	ID         string `json:"id"`
+	Kind       string `json:"kind"`
+	CaseID     string `json:"case_id"`
+	Actor      string `json:"actor"`
+	Channel    string `json:"channel"`
+	Indicators int    `json:"indicators"`
+	Files      bool   `json:"files"`
+	// Yara names the YARA rules a hunt ran, if any.
+	Yara        string `json:"yara,omitempty"`
 	CreatedAt   int64  `json:"created_at"`
 	ExpiresAt   int64  `json:"expires_at"`
 	CancelledAt *int64 `json:"cancelled_at"`
@@ -375,6 +377,9 @@ func (s *Store) Hunts(ctx context.Context, actor string, all bool) ([]HuntSummar
 		}
 		_ = json.Unmarshal([]byte(problems), &p)
 		v.Channel, v.Indicators, v.Files, v.Finished, v.Problems = f.Channel, len(hs.Indicators), hs.Files, v.Targets-v.Waiting, len(p)
+		if hs.Yara != nil {
+			v.Yara = hs.Yara.Name
+		}
 		out = append(out, v)
 	}
 	return out, rows.Err()

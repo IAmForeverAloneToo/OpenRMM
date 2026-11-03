@@ -799,9 +799,10 @@ export type ResponseAction =
   | { kind: "hunt"; hunt: HuntSpec };
 
 // Indicator hunts.
-export type IndicatorType = "sha256" | "sha1" | "md5" | "name" | "path" | "ip" | "domain" | "cmd";
+// "yara" appears only in matches: a YARA rule that matched, by name.
+export type IndicatorType = "sha256" | "sha1" | "md5" | "name" | "path" | "ip" | "domain" | "cmd" | "yara";
 export type Indicator = { type: IndicatorType; value: string };
-export type HuntSpec = { indicators: Indicator[]; files: boolean };
+export type HuntSpec = { indicators: Indicator[]; files: boolean; yara?: { name: string; sha256: string; memory?: boolean; path?: string; pid?: number } };
 export type HuntMatch = {
   area: "file" | "process" | "connection" | "dns" | "persistence";
   indicator: Indicator;
@@ -925,7 +926,7 @@ export type HuntSummary = {
   actor: string;
   channel: string;
   indicators: number;
-  files: boolean;
+  files: boolean; yara?: string;
   created_at: number;
   expires_at: number;
   cancelled_at: number | null;

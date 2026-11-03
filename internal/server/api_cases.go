@@ -180,10 +180,25 @@ func registerCasesAPI(mux *http.ServeMux, a *api) {
 		var in struct {
 			DeviceID string                  `json:"device_id"`
 			Action   protocol.ResponseAction `json:"action"`
+			// Yara is a YARA scan with a saved rule set instead of an
+			// action; Files adds the common file locations.
+			Yara  *yaraInput `json:"yara"`
+			Files bool       `json:"files"`
 		}
 		// A typed script may be 64 KiB, which JSON escaping expands.
 		if !decodeJSON(w, r, &in, 512*1024) {
 			return
+		}
+		if in.Yara != nil {
+			if in.Yara.Set == "" {
+				apiError(w, http.StatusBadRequest, "invalid_request", "Choose a rule set.")
+				return
+			}
+			y, ok := a.yaraSpec(w, r, *in.Yara)
+			if !ok {
+				return
+			}
+			in.Action = protocol.ResponseAction{Kind: "hunt", Hunt: &protocol.HuntSpec{Files: in.Files, Yara: y}}
 		}
 		// Scripts and drops are completed from the library and the case:
 		// the spec then says exactly what runs or is written.

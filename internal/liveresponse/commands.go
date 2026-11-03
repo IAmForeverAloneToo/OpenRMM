@@ -39,6 +39,11 @@ type Command struct {
 	Indicators []protocol.Indicator
 	List       string
 	Files      bool
+	// Yara names a saved rule set for yara (in List); Files, YaraMemory,
+	// YaraPath and YaraPID say what it scans.
+	YaraMemory bool
+	YaraPath   string
+	YaraPID    uint32
 }
 
 // ErrUsage carries a message for the person typing.
@@ -73,6 +78,11 @@ const Help = `Built-in commands (anything else is typed into the PowerShell cons
                                     names and paths of every file on fixed drives and
                                     hashes files in common locations; slow)
   hunt [-files] -list <name>        the same with a saved indicator list (Hunting page)
+  yara <set> [files|memory|pid <n>|<path>]
+                                    scan with a saved YARA rule set (Hunting page):
+                                    files in common locations and process memory, or
+                                    only files, only memory, one process, or one file
+                                    or folder
 Paths with spaces go in double quotes.`
 
 // split tokenizes a command line: whitespace-separated, double quotes group
@@ -259,6 +269,30 @@ func Parse(line string) (Command, error) {
 				return c, usage("Give 1 to 1,000 different indicators.")
 			}
 			c.Indicators = list
+		}
+	case "yara":
+		const yaraUsage = `Usage: yara <set> [files|memory|pid <n>|<path>], for example yara "Credential tools" or yara Tools C:\Users\alice\Downloads`
+		if len(args) < 1 || args[0] == "" || len(args[0]) > 100 || len(args) > 3 {
+			return c, usage(yaraUsage)
+		}
+		c.List = args[0]
+		switch rest := args[1:]; {
+		case len(rest) == 0:
+			c.Files, c.YaraMemory = true, true
+		case len(rest) == 1 && strings.EqualFold(rest[0], "files"):
+			c.Files = true
+		case len(rest) == 1 && strings.EqualFold(rest[0], "memory"):
+			c.YaraMemory = true
+		case len(rest) == 2 && strings.EqualFold(rest[0], "pid"):
+			pid, e := strconv.ParseUint(rest[1], 10, 32)
+			if e != nil || pid <= 4 {
+				return c, usage("pid takes a process ID; run ps first.")
+			}
+			c.YaraPID = uint32(pid)
+		case len(rest) == 1 && protocol.ValidScanPath(rest[0]):
+			c.YaraPath = rest[0]
+		default:
+			return c, usage(yaraUsage)
 		}
 	case "run":
 		if len(args) < 1 {

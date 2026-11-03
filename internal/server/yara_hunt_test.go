@@ -74,4 +74,19 @@ func TestYaraHuntAPI(t *testing.T) {
 	if d.Job.Action.WithoutRules().Text() != jobs[0].Action {
 		t.Fatal("echoed action differs from the stored one")
 	}
+	// A scan from the case page, by rule set.
+	if resp, body = f.do(t, "POST", "/api/v1/cases/"+h.CaseID+"/actions", map[string]any{"device_id": able, "yara": map[string]any{"memory": true}}, true); resp.StatusCode != 400 {
+		t.Fatalf("case scan without a set %d %s", resp.StatusCode, body)
+	}
+	if resp, body = f.do(t, "POST", "/api/v1/cases/"+h.CaseID+"/actions", map[string]any{"device_id": old, "yara": map[string]any{"set": set.ID, "memory": true}}, true); resp.StatusCode != 409 {
+		t.Fatalf("case scan on an old agent %d %s", resp.StatusCode, body)
+	}
+	if resp, body = f.do(t, "POST", "/api/v1/cases/"+h.CaseID+"/actions", map[string]any{"device_id": able, "yara": map[string]any{"set": set.ID, "path": `C:\Users\alice\Downloads`}}, true); resp.StatusCode != 201 {
+		t.Fatalf("case scan %d %s", resp.StatusCode, body)
+	}
+	// Both jobs may share a creation second, so their order is open.
+	jobs, _ = f.store.EvidenceJobs(t.Context(), h.CaseID)
+	if len(jobs) != 2 || !strings.Contains(jobs[0].Action+jobs[1].Action, `"path":"C:\\Users\\alice\\Downloads"`) {
+		t.Fatalf("%+v", jobs)
+	}
 }

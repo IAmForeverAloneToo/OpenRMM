@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ListPlus, Pencil, Radar, Trash2 } from "lucide-react";
 import { csrfHeader, del, get, post, put } from "../../lib/api";
 import { absoluteTime, relativeTime } from "../../lib/format";
-import type { Hunt, HuntProblem, Indicator, IOCList } from "../../lib/types";
+import type { Hunt, HuntProblem, Indicator, IOCList, YaraRuleSet } from "../../lib/types";
 import { DataTable, type Column } from "../../components/DataTable";
 import { ConfirmDialog, Modal } from "../../components/Dialog";
 import { TargetPicker, type Targets } from "../../components/TargetPicker";
@@ -79,10 +79,13 @@ function ParsedSummary({ q, text }: { q: ReturnType<typeof useParsed>; text: str
   );
 }
 
-export function NewIndicatorHunt({ initialList }: { initialList?: string }) {
+export function NewIndicatorHunt({ initialList, initialYara }: { initialList?: string; initialYara?: string }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const lists = useQuery({ queryKey: ["ioc-lists"], queryFn: ({ signal }) => get<{ lists: IOCList[] }>("/api/v1/ioc-lists", signal) });
+  const sets = useQuery({ queryKey: ["yara-rule-sets"], queryFn: ({ signal }) => get<{ sets: YaraRuleSet[] }>("/api/v1/yara-rule-sets", signal) });
+  const [yaraSet, setYaraSet] = useState(initialYara ?? "");
+  const [yaraMemory, setYaraMemory] = useState(true);
   const [targets, setTargets] = useState<Targets>({ devices: [], groups: [] });
   const [text, setText] = useState("");
   const [files, setFiles] = useState(true);
@@ -92,7 +95,9 @@ export function NewIndicatorHunt({ initialList }: { initialList?: string }) {
   const [saving, setSaving] = useState(false);
   const c = useCaseChoice("none");
   const parsed = useParsed(text);
-  const ready = parsed.data && text.trim() !== "" && parsed.data.indicators.length > 0 && parsed.settled;
+  // Indicators, YARA rules, or both; typed indicators must have been read.
+  const indicatorsReady = !!parsed.data && text.trim() !== "" && parsed.data.indicators.length > 0 && parsed.settled;
+  const ready = text.trim() === "" ? yaraSet !== "" : indicatorsReady;
 
   // A list chosen on the Saved lists tab arrives as ?list=; it is loaded
   // once, so a later refresh of the lists never replaces edits.
@@ -106,7 +111,7 @@ export function NewIndicatorHunt({ initialList }: { initialList?: string }) {
   }, [initialList, lists.data]);
 
   const submit = async () => {
-    if (!c.body || !parsed.data) return;
+    if (!c.body) return;
     setBusy(true);
     setError(null);
     setProblems([]);
@@ -115,7 +120,7 @@ export function NewIndicatorHunt({ initialList }: { initialList?: string }) {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json", ...csrfHeader() },
         credentials: "same-origin",
-        body: JSON.stringify({ ...c.body, ...targets, indicators: parsed.data.indicators, files }),
+        body: JSON.stringify({ ...c.body, ...targets, indicators: text.trim() ? (parsed.data?.indicators ?? []) : [], files, ...(yaraSet ? { yara: { set: yaraSet, memory: yaraMemory } } : {}) }),
       });
       const body = (await r.json().catch(() => ({}))) as Hunt & { error?: string; problems?: HuntProblem[] };
       if (!r.ok) {
@@ -173,6 +178,31 @@ export function NewIndicatorHunt({ initialList }: { initialList?: string }) {
               </span>
             </span>
           </label>
+          <div className="space-y-2 rounded-md border border-border p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[12.5px] font-medium text-fg">YARA rules</span>
+              <span className="flex-1" />
+              <Select value={yaraSet} onChange={(e) => setYaraSet(e.target.value)} aria-label="YARA rule set" disabled={!sets.data?.sets.length}>
+                <option value="">{sets.data?.sets.length ? "None" : "No rule sets (Hunting → YARA rules)"}</option>
+                {(sets.data?.sets ?? []).map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name} ({s.rules} {s.rules === 1 ? "rule" : "rules"}, v{s.version})
+                  </option>
+                ))}
+              </Select>
+            </div>
+            {yaraSet ? (
+              <label className="flex items-start gap-2 text-[12.5px] text-fg">
+                <input type="checkbox" className="mt-0.5 accent-[var(--accent)]" checked={yaraMemory} onChange={(e) => setYaraMemory(e.target.checked)} />
+                <span>
+                  Also scan process memory
+                  <span className="block text-[12px] text-muted">
+                    Read only, up to 1 GiB per process. LSASS, security products and the agent are never read. With Search files, files up to 64 MB in the locations above are scanned too.
+                  </span>
+                </span>
+              </label>
+            ) : null}
+          </div>
           <CaseChoice open allowNone {...c.props} noneNote="The search is recorded in the audit log only. Each device's result is kept for 24 hours after it answers." note="Each device's result is stored in the case as hashed evidence, recorded in its custody log." />
           {error ? <ErrorNotice error={error} /> : null}
           {problems.length ? (
@@ -187,7 +217,7 @@ export function NewIndicatorHunt({ initialList }: { initialList?: string }) {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <span className="text-[12px] text-faint">Up to 1,000 matches per device. Devices that are offline answer when they come back, for up to 7 days.</span>
             <span className="flex gap-2">
-              <Button icon={<ListPlus className="size-4" />} disabled={!ready} onClick={() => setSaving(true)}>
+              <Button icon={<ListPlus className="size-4" />} disabled={!indicatorsReady} onClick={() => setSaving(true)}>
                 Save as list
               </Button>
               <Button variant="primary" icon={<Radar className="size-4" />} loading={busy} disabled={!c.body || !ready || targets.devices.length + targets.groups.length === 0} onClick={() => void submit()}>

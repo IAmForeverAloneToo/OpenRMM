@@ -174,7 +174,7 @@ export function HuntPage() {
         <ArrowLeft className="size-3.5" /> Hunting
       </Link>
       <PageHeader
-        title={indicators ? `Indicator hunt · ${indicators.length} ${indicators.length === 1 ? "indicator" : "indicators"}` : `Log search · ${f.channel}`}
+        title={indicators ? (indicators.length === 0 && h.spec?.yara ? `YARA scan · ${h.spec.yara.name}` : `Indicator hunt · ${indicators.length} ${indicators.length === 1 ? "indicator" : "indicators"}`) : `Log search · ${f.channel}`}
         subtitle={
           indicators ? (
             <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -183,6 +183,7 @@ export function HuntPage() {
               ))}
               {indicators.length > 6 ? <span className="text-faint">and {indicators.length - 6} more</span> : null}
               <span className="text-muted">{h.spec?.files ? "· files searched" : "· files not searched"}</span>
+              {h.spec?.yara ? <span className="text-muted">· YARA {h.spec.yara.name}{h.spec.yara.memory ? " with process memory" : ""}</span> : null}
             </span>
           ) : (
           <span>

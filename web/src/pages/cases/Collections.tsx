@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarClock, Cog, Cpu, Download, Eye, FileSearch, KeyRound, ListStart, Network, SquareTerminal } from "lucide-react";
+import { CalendarClock, Cog, Cpu, Download, Eye, FileSearch, KeyRound, ListStart, Network, ScanSearch, SquareTerminal } from "lucide-react";
 import { get, post } from "../../lib/api";
 import { absoluteTime, bytes, relativeTime } from "../../lib/format";
-import type { DevicesResponse, EvidenceCollection, ResponseAction } from "../../lib/types";
+import type { DevicesResponse, EvidenceCollection, ResponseAction, YaraRuleSet } from "../../lib/types";
 import { ActionViewer } from "./ActionViewer";
 import { NtfsViewer } from "./NtfsViewer";
 import { ArtefactsViewer, ParseStatus } from "./ArtefactsViewer";
@@ -112,6 +112,15 @@ export function Collections({ caseId, open }: { caseId: string; open: boolean })
   const [parsed, setParsed] = useState<EvidenceCollection | null>(null);
   const action = useMutation({
     mutationFn: (a: ResponseAction) => post(`/api/v1/cases/${caseId}/actions`, { device_id: device, action: a }),
+    onSuccess: refresh,
+  });
+  // A YARA scan with a saved rule set: files in the common locations, process
+  // memory, or both.
+  const sets = useQuery({ queryKey: ["yara-rule-sets"], queryFn: ({ signal }) => get<{ sets: YaraRuleSet[] }>("/api/v1/yara-rule-sets", signal), enabled: open });
+  const [yaraSet, setYaraSet] = useState("");
+  const [yaraScope, setYaraScope] = useState<"both" | "files" | "memory">("both");
+  const yara = useMutation({
+    mutationFn: () => post(`/api/v1/cases/${caseId}/actions`, { device_id: device, yara: { set: yaraSet, memory: yaraScope !== "files" }, files: yaraScope !== "memory" }),
     onSuccess: refresh,
   });
   const list = q.data?.collections ?? [];
@@ -230,6 +239,25 @@ export function Collections({ caseId, open }: { caseId: string; open: boolean })
                 Read registry key
               </Button>
             </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Select value={yaraSet} onChange={(e) => setYaraSet(e.target.value)} aria-label="YARA rule set" disabled={!sets.data?.sets.length}>
+                <option value="">{sets.data?.sets.length ? "YARA rule set…" : "No YARA rule sets (Hunting → YARA rules)"}</option>
+                {(sets.data?.sets ?? []).map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name} (v{s.version})
+                  </option>
+                ))}
+              </Select>
+              <Select value={yaraScope} onChange={(e) => setYaraScope(e.target.value as "both" | "files" | "memory")} aria-label="What to scan">
+                <option value="both">Files and process memory</option>
+                <option value="files">Files only</option>
+                <option value="memory">Process memory only</option>
+              </Select>
+              <Button size="sm" icon={<ScanSearch className="size-4" />} disabled={!device || !yaraSet} loading={yara.isPending} onClick={() => yara.mutate()}>
+                YARA scan
+              </Button>
+            </div>
+            {yara.isError ? <ErrorNotice error={yara.error} /> : null}
             <p className="text-[12px] text-faint">
               Process lists include command lines, users and image hashes; services include binaries and service DLLs with hashes. Registry keys under HKLM, HKU or HKCR are read only. Results are stored as hashed evidence; open one with View to filter it, read subkeys or kill a process.
             </p>

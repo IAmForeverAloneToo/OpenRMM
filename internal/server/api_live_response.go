@@ -168,6 +168,21 @@ func registerLiveResponseAPI(mux *http.ServeMux, a *api, h *terminal.Hub) {
 				list = l.Indicators
 			}
 			action = &protocol.ResponseAction{Kind: "hunt", Hunt: &protocol.HuntSpec{Indicators: list, Files: c.Files}}
+		case "yara":
+			set, e := a.store.YaraRuleSetNamed(r.Context(), c.List)
+			if errors.Is(e, storage.ErrYaraSet) {
+				apiError(w, http.StatusBadRequest, "usage", "No YARA rule set with that name (Hunting → YARA rules).")
+				return
+			}
+			if e != nil {
+				apiError(w, http.StatusServiceUnavailable, "unavailable", "Rule sets are temporarily unavailable.")
+				return
+			}
+			y, ok := a.yaraSpec(w, r, yaraInput{Set: set.ID, Memory: c.YaraMemory, Path: c.YaraPath, PID: c.YaraPID})
+			if !ok {
+				return
+			}
+			action = &protocol.ResponseAction{Kind: "hunt", Hunt: &protocol.HuntSpec{Files: c.Files, Yara: y}}
 		}
 		// A case attached while the command was resolved takes it instead.
 		if _, current, ok := session(w, r, s); !ok {

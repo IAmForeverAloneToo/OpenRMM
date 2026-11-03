@@ -15,6 +15,7 @@ export const indicatorTypes: Record<Indicator["type"], string> = {
   ip: "IP address",
   domain: "Domain",
   cmd: "Command line",
+  yara: "YARA rule",
 };
 
 export function IndicatorText({ i }: { i?: Indicator }) {

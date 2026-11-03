@@ -178,7 +178,14 @@ export function HuntingPage() {
       cell: (h) =>
         h.kind === "indicators" ? (
           <span className="font-medium text-fg">
-            {h.indicators} {h.indicators === 1 ? "indicator" : "indicators"}
+            {h.indicators || !h.yara ? `${h.indicators} ${h.indicators === 1 ? "indicator" : "indicators"}` : null}
+            {h.yara ? (
+              <>
+                {h.indicators ? " · " : ""}
+                <span className="font-normal text-muted">YARA </span>
+                {h.yara}
+              </>
+            ) : null}
             <span className="font-normal text-muted">{h.files ? " · with files" : ""}</span>
           </span>
         ) : (
@@ -236,7 +243,7 @@ export function HuntingPage() {
         ))}
       </div>
       {tab === "logs" ? <NewLogSearch /> : null}
-      {tab === "indicators" ? <NewIndicatorHunt initialList={params.get("list") ?? undefined} /> : null}
+      {tab === "indicators" ? <NewIndicatorHunt initialList={params.get("list") ?? undefined} initialYara={params.get("yara") ?? undefined} /> : null}
       {tab === "lists" ? (
         <div className="mb-5">
           <SavedLists onUse={(id) => setTab("indicators", { list: id })} />
