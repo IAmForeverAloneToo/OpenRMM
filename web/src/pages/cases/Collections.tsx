@@ -127,10 +127,11 @@ export function Collections({ caseId, open }: { caseId: string; open: boolean })
   return (
     <Panel title="Evidence" className="mb-4" bodyClassName="p-0">
       {open ? (
-        <div className="border-b border-border p-4">
+        <div className="@container border-b border-border p-4">
           {collect.isError ? <ErrorNotice error={collect.error} /> : null}
           {terminal.isError ? <ErrorNotice error={terminal.error} /> : null}
-          <div className="grid gap-3 sm:grid-cols-[minmax(0,220px)_minmax(0,150px)_1fr_auto] sm:items-end">
+          {/* One row when the panel is wide enough for a usable path field. */}
+          <div className="grid gap-3 @3xl:grid-cols-[minmax(0,220px)_minmax(0,150px)_1fr_auto] @3xl:items-end">
             <Field label="Device">
               <Select className="w-full" value={device} onChange={(e) => setDevice(e.target.value)} aria-label="Device">
                 <option value="">Choose a device</option>

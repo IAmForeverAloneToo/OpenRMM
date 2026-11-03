@@ -53,17 +53,17 @@ function Entry({ e, actors }: { e: CustodyEntry; actors: Record<string, string> 
           ) : null}
           {e.outcome !== "success" ? <Badge tone="danger">{e.outcome}</Badge> : null}
         </div>
-        {e.action === "note" ? <p className="text-[13px] whitespace-pre-wrap text-fg">{e.details.text}</p> : null}
+        {e.action === "note" ? <p className="text-[13px] wrap-anywhere whitespace-pre-wrap text-fg">{e.details.text}</p> : null}
         {e.action === "case_opened" ? <p className="text-[13px] text-fg">{e.details.title}</p> : null}
         {details.map(([k, v]) => (
-          <p key={k} className="text-[12.5px] whitespace-pre-wrap text-muted">
+          <p key={k} className="text-[12.5px] wrap-anywhere whitespace-pre-wrap text-muted">
             <span className="text-faint">{k}: </span>
             {v}
           </p>
         ))}
         {e.evidence.map((x) => (
           <p key={x.sha256} className="text-[12px] text-muted">
-            {x.name} · {x.size} bytes · <Mono className="text-[11px]">{x.sha256}</Mono>
+            {x.name} · {x.size} bytes · <Mono className="text-[11px] break-all">{x.sha256}</Mono>
           </p>
         ))}
         <Mono className="block truncate text-[10.5px] text-faint">{e.hash}</Mono>
@@ -127,7 +127,7 @@ export function CasePage() {
         <div className="mb-4 flex items-start gap-2 rounded-md border border-border bg-surface-2 px-3 py-2 text-[12.5px] text-muted">
           <CircleCheck className="mt-0.5 size-4 shrink-0 text-ok" />
           <span>
-            Custody chain verified: {c.entries.length} entries, head <Mono className="text-fg">{c.head}</Mono>. Record the head hash outside OpenRMM to detect later changes; check an export with <Mono>openrmm-custody verify</Mono>.
+            Custody chain verified: {c.entries.length} entries, head <Mono className="text-fg break-all">{c.head}</Mono>. Record the head hash outside OpenRMM to detect later changes; check an export with <Mono>openrmm-custody verify</Mono>.
           </span>
         </div>
       ) : (
