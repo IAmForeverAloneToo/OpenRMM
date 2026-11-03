@@ -180,7 +180,7 @@ export function ArtefactsViewer({ base, job, open, onClose, recordedIn }: { base
             Times are UTC{current?.times.length ? `; the time filter checks ${current.times.join(", ")}` : ""}. {current ? `${current.sources.toLocaleString()} ${current.sources === 1 ? "file" : "files"} parsed into this table. ` : ""}
             {m.errors.length ? (
               <button type="button" className="text-warn hover:underline" onClick={() => setErrors(!errors)}>
-                {(m.errors.length + (m.errors_more ?? 0)).toLocaleString()} files could not be parsed
+                {(m.errors.length + (m.errors_more ?? 0)).toLocaleString()} {m.errors.length + (m.errors_more ?? 0) === 1 ? "file" : "files"} could not be parsed
               </button>
             ) : null}
           </p>
