@@ -958,3 +958,16 @@ export type ArtefactsManifest = {
   errors: { path: string; table: string; error: string }[];
   errors_more?: number;
 };
+
+export type YaraRuleSet = {
+  id: string;
+  name: string;
+  version: number;
+  rules: number;
+  sha256: string;
+  created_by: string;
+  created_at: number;
+  updated_by: string;
+  updated_at: number;
+  source?: string;
+};

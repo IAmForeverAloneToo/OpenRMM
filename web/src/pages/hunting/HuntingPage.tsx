@@ -11,6 +11,7 @@ import { TargetPicker, type Targets } from "../../components/TargetPicker";
 import { Badge, Button, EmptyState, ErrorNotice, Field, Input, Panel, Select, Spinner, Tip } from "../../components/ui";
 import { CaseChoice, useCaseChoice } from "../LiveResponse";
 import { NewIndicatorHunt, SavedLists } from "./IndicatorHunt";
+import { YaraRules } from "./YaraRules";
 
 // Fleet log search. One search sends the same event log filter to
 // every chosen device; offline devices answer when they return (up to 7 days).
@@ -160,6 +161,7 @@ const tabs = [
   { value: "logs", label: "Log search" },
   { value: "indicators", label: "Indicators" },
   { value: "lists", label: "Saved lists" },
+  { value: "yara", label: "YARA rules" },
 ] as const;
 
 export function HuntingPage() {
@@ -238,6 +240,11 @@ export function HuntingPage() {
       {tab === "lists" ? (
         <div className="mb-5">
           <SavedLists onUse={(id) => setTab("indicators", { list: id })} />
+        </div>
+      ) : null}
+      {tab === "yara" ? (
+        <div className="mb-5">
+          <YaraRules onUse={(id) => setTab("indicators", { yara: id })} />
         </div>
       ) : null}
       <Panel title="Searches" bodyClassName="p-0">
