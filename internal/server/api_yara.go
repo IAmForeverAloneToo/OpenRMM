@@ -3,6 +3,7 @@ package server
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -93,6 +94,44 @@ func registerYaraAPI(mux *http.ServeMux, a *api) {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+}
+
+// yaraInput chooses the rules of a YARA scan: a saved set, or rules pasted
+// for this run; Memory, Path and PID say what to scan besides files.
+type yaraInput struct {
+	Set    string `json:"set"`
+	Rules  string `json:"rules"`
+	Memory bool   `json:"memory"`
+	Path   string `json:"path"`
+	PID    uint32 `json:"pid"`
+}
+
+// yaraSpec resolves the rules, checks them and keeps them by hash for the
+// jobs that run them.
+func (a *api) yaraSpec(w http.ResponseWriter, r *http.Request, in yaraInput) (*protocol.YaraSpec, bool) {
+	source, name := in.Rules, "pasted rules"
+	if in.Set != "" {
+		set, e := a.store.YaraRuleSet(r.Context(), in.Set)
+		if errors.Is(e, storage.ErrYaraSet) {
+			apiError(w, http.StatusBadRequest, "invalid_request", "No such rule set (it may have been withdrawn).")
+			return nil, false
+		}
+		if e != nil {
+			apiError(w, http.StatusServiceUnavailable, "unavailable", "Rule sets are temporarily unavailable.")
+			return nil, false
+		}
+		source, name = set.Source, set.Name+" v"+strconv.Itoa(set.Version)
+	}
+	hash, _, e := a.store.KeepYaraSource(r.Context(), source, time.Now())
+	if errors.Is(e, storage.ErrYaraRules) {
+		apiError(w, http.StatusBadRequest, "rules", yaraReason(e))
+		return nil, false
+	}
+	if e != nil {
+		apiError(w, http.StatusServiceUnavailable, "unavailable", "The rules could not be stored.")
+		return nil, false
+	}
+	return &protocol.YaraSpec{Name: name, SHA256: hash, Memory: in.Memory, Path: in.Path, PID: in.PID}, true
 }
 
 // yaraReason is a compile error as shown to the user ("line 3: ...").

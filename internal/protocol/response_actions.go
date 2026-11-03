@@ -210,6 +210,9 @@ func (a ResponseAction) Label() string {
 	case "release":
 		return "Release network isolation"
 	case "hunt":
+		if a.Hunt != nil && a.Hunt.Yara != nil && len(a.Hunt.Indicators) == 0 {
+			return "YARA scan (" + a.Hunt.Yara.Name + ")"
+		}
 		if a.Hunt != nil {
 			n := len(a.Hunt.Indicators)
 			label := "Indicator hunt (" + strconv.Itoa(n) + " indicator"

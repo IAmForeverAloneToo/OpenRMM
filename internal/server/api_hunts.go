@@ -92,15 +92,24 @@ func registerHuntsAPI(mux *http.ServeMux, a *api) {
 			Groups     []string             `json:"groups"`
 			Indicators []protocol.Indicator `json:"indicators"`
 			Files      bool                 `json:"files"`
-			CaseID     string               `json:"case_id"`
-			CaseTitle  string               `json:"case_title"`
+			// Yara runs a saved rule set (Set) or pasted rules.
+			Yara      *yaraInput `json:"yara"`
+			CaseID    string     `json:"case_id"`
+			CaseTitle string     `json:"case_title"`
 		}
-		if !decodeJSON(w, r, &in, 512*1024) {
+		if !decodeJSON(w, r, &in, storage.MaxYaraSource+512*1024) {
 			return
 		}
 		spec := protocol.HuntSpec{Indicators: in.Indicators, Files: in.Files}
+		if in.Yara != nil {
+			y, ok := a.yaraSpec(w, r, *in.Yara)
+			if !ok {
+				return
+			}
+			spec.Yara = y
+		}
 		if !spec.Valid() {
-			apiError(w, http.StatusBadRequest, "invalid_request", "Use 1 to 1,000 distinct valid indicators.")
+			apiError(w, http.StatusBadRequest, "invalid_request", "Use up to 1,000 distinct valid indicators, or YARA rules with files or memory to scan.")
 			return
 		}
 		caseID, ok := caseFor(w, r, s, in.CaseID, in.CaseTitle)

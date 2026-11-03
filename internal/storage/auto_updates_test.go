@@ -26,6 +26,7 @@ func TestAutomaticAgentUpdatesDefault(t *testing.T) {
 		"DROP TABLE backup_settings",
 		"DROP INDEX audit_events_time",
 		"DROP TABLE artefact_parses",
+		"DROP TABLE yara_sources",
 		"DROP TABLE yara_rule_versions",
 		"DROP TABLE yara_rule_sets",
 		"UPDATE agent_ring_policy SET enabled=0 WHERE id=1",

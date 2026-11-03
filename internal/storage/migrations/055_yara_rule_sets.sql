@@ -22,3 +22,10 @@ CREATE TABLE yara_rule_versions (
  created_at INTEGER NOT NULL,
  PRIMARY KEY (set_id, version)
 ) WITHOUT ROWID;
+-- The rules a hunt or scan runs, stored once by hash: each device's job
+-- names the hash, and the rules are added when the job is handed out.
+CREATE TABLE yara_sources (
+ sha256 TEXT PRIMARY KEY,
+ source TEXT NOT NULL,
+ created_at INTEGER NOT NULL
+) WITHOUT ROWID;

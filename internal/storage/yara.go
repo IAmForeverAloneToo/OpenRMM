@@ -182,6 +182,35 @@ func (s *Store) SaveYaraRuleSet(ctx context.Context, id, name, source, actor str
 	return s.YaraRuleSet(ctx, id)
 }
 
+// KeepYaraSource checks rules and stores them once by hash for the jobs
+// that run them; it returns the hash and the number of rules.
+func (s *Store) KeepYaraSource(ctx context.Context, source string, now time.Time) (string, int, error) {
+	n, err := CheckYara(source)
+	if err != nil {
+		return "", 0, err
+	}
+	sum := sha256.Sum256([]byte(source))
+	hash := hex.EncodeToString(sum[:])
+	if _, e := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO yara_sources(sha256,source,created_at) VALUES(?,?,?)`, hash, source, now.Unix()); e != nil {
+		return "", 0, e
+	}
+	return hash, n, nil
+}
+
+// withRules adds a YARA hunt's rules to an action handed to a device.
+func withRules(ctx context.Context, tx *sql.Tx, a protocol.ResponseAction) (protocol.ResponseAction, error) {
+	if a.Hunt == nil || a.Hunt.Yara == nil {
+		return a, nil
+	}
+	h, y := *a.Hunt, *a.Hunt.Yara
+	if e := tx.QueryRowContext(ctx, `SELECT source FROM yara_sources WHERE sha256=?`, y.SHA256).Scan(&y.Rules); e != nil {
+		return a, errors.New("the rules of a YARA scan are missing")
+	}
+	h.Yara = &y
+	a.Hunt = &h
+	return a, nil
+}
+
 // WithdrawYaraRuleSet takes a set out of use; its versions are kept.
 func (s *Store) WithdrawYaraRuleSet(ctx context.Context, id, actor string, now time.Time) error {
 	tx, e := s.db.BeginTx(ctx, nil)

@@ -116,15 +116,19 @@ func (s *Store) StartIndicatorHunt(ctx context.Context, caseID string, devices, 
 	h := Hunt{Kind: "indicators", Spec: &spec}
 	text, _ := json.Marshal(spec)
 	// Abilities are read before the write transaction (single connection).
+	need, reason := protocol.AbilityHunt, "The device's agent cannot run indicator hunts; update it."
+	if spec.Yara != nil {
+		need, reason = protocol.AbilityYara, "The device's agent cannot run YARA rules; update it."
+	}
 	able := map[string]bool{}
 	if targets, e := s.huntTargets(ctx, devices, groups); e == nil {
 		for _, t := range targets {
-			able[t.ID] = s.HasAbility(ctx, t.ID, protocol.AbilityHunt)
+			able[t.ID] = s.HasAbility(ctx, t.ID, need)
 		}
 	}
 	return s.startHunt(ctx, h, string(text), protocol.ResponseAction{Kind: "hunt", Hunt: &spec}, caseID, devices, groups, actor, now, func(_ *sql.Tx, device string) string {
 		if !able[device] {
-			return "The device's agent cannot run indicator hunts; update it."
+			return reason
 		}
 		return ""
 	})

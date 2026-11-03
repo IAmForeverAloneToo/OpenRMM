@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"hash"
 	"io"
 	"io/fs"
@@ -21,6 +22,7 @@ import (
 
 	"github.com/IAmForeverAloneToo/OpenRMM/internal/filetransfer"
 	"github.com/IAmForeverAloneToo/OpenRMM/internal/protocol"
+	"github.com/IAmForeverAloneToo/OpenRMM/internal/yara"
 )
 
 // Indicator hunts. The matcher is platform neutral; the sources
@@ -44,6 +46,8 @@ type matcher struct {
 	nets    []netip.Prefix
 	netOf   []protocol.Indicator
 	want    hashSet
+	// yara are the hunt's compiled YARA rules, if any.
+	yara *yara.Rules
 }
 
 // glob is a name or path indicator: tail is the lower-case literal text
@@ -218,6 +222,9 @@ type huntSources struct {
 	// mft lists every file on fixed NTFS drives from their MFT, for names
 	// and paths; it returns the drives read.
 	mft func(ctx context.Context, fn func(filetransfer.NTFSEntry) bool) ([]string, error)
+	// memory reads a process's committed, readable memory in batches of
+	// blocks for fn; an error means the process could not be read.
+	memory func(ctx context.Context, pid uint32, fn func([]yara.Block) error) error
 }
 
 type huntRoot struct {
@@ -233,6 +240,21 @@ func hunt(ctx context.Context, spec protocol.HuntSpec, src huntSources, n *notes
 	defer cancel()
 	m := newMatcher(spec)
 	r := protocol.HuntResult{Outcome: "ok", Matches: []protocol.HuntMatch{}}
+	if spec.Yara != nil {
+		rules, e := yara.Compile(spec.Yara.Rules)
+		if e != nil {
+			n.add("the YARA rules could not be compiled: " + e.Error())
+		} else {
+			m.yara = rules
+		}
+	}
+	yaraMemory := m.yara != nil && (spec.Yara.Memory || spec.Yara.PID != 0) && src.memory != nil
+	yaraFiles := m.yara != nil && (spec.Files || spec.Yara.Path != "")
+	if yaraFiles && spec.Yara.Path != "" {
+		// Only the named file or folder.
+		path := spec.Yara.Path
+		src.roots = func() []huntRoot { return []huntRoot{{dir: path}} }
+	}
 	// A file matched through the MFT and again in the common locations is
 	// listed once per indicator.
 	reported := map[string]bool{}
@@ -266,13 +288,23 @@ func hunt(ctx context.Context, spec protocol.HuntSpec, src huntSources, n *notes
 	}
 	objectFile := spec.Needs("name", "path", "sha256", "sha1", "md5")
 	// Running processes.
-	if objectFile || spec.Needs("cmd") {
+	if objectFile || spec.Needs("cmd") || yaraMemory {
 		if src.processes != nil {
 			list, e := src.processes(ctx)
 			if e != nil {
 				n.add("processes could not be listed")
 			}
 			r.Scanned.Processes = len(list)
+			if yaraMemory && !partial() {
+				scanned, skipped := m.memory(ctx, src, spec.Yara, list, add)
+				r.Scanned.YaraProcesses = scanned
+				if skipped > 0 {
+					n.add(fmt.Sprintf("the memory of %d processes was not scanned (LSASS, security products, the agent, or processes that cannot be read)", skipped))
+				}
+				if spec.Yara.PID != 0 && scanned == 0 {
+					n.add("the process to scan is not running or cannot be read")
+				}
+			}
 			for _, p := range list {
 				if partial() {
 					break
@@ -344,8 +376,8 @@ func hunt(ctx context.Context, spec protocol.HuntSpec, src huntSources, n *notes
 			n.add("the MFT of a drive could not be read; its names and paths were searched in the common locations only")
 		}
 	}
-	// Files in the common locations.
-	if spec.Files && objectFile && src.roots != nil && !partial() {
+	// Files in the common locations (or the YARA scan's own path).
+	if (spec.Files && objectFile || yaraFiles) && src.roots != nil && !partial() {
 		skipped, capped := m.files(ctx, src, &r, add)
 		r.Skipped += skipped
 		if capped {
@@ -406,11 +438,11 @@ func (m *matcher) files(ctx context.Context, src huntSources, r *protocol.HuntRe
 			f()
 		}
 	}
-	report := func(path string, d fs.DirEntry, h fileHashes, found []protocol.Indicator) {
+	report := func(path string, d fs.DirEntry, h fileHashes, found []protocol.Indicator, detail string) {
 		if len(found) == 0 {
 			return
 		}
-		match := protocol.HuntMatch{Area: "file", Path: path, Name: d.Name(), SHA256: h.sha256}
+		match := protocol.HuntMatch{Area: "file", Path: path, Name: d.Name(), SHA256: h.sha256, Detail: detail}
 		if info, _ := d.Info(); info != nil {
 			match.Size, match.Modified = info.Size(), stamp(info.ModTime())
 		}
@@ -425,7 +457,10 @@ func (m *matcher) files(ctx context.Context, src huntSources, r *protocol.HuntRe
 		d     fs.DirEntry
 		found []protocol.Indicator
 	}
-	hashing := m.want.any() && src.hash != nil
+	// Files go to the workers to be hashed, scanned with YARA rules, or
+	// both.
+	hashing := m.want.any() && src.hash != nil || m.yara != nil
+	yaraScanned := 0
 	jobs := make(chan job, 256)
 	if hashing {
 		for range hashWorkers {
@@ -436,19 +471,37 @@ func (m *matcher) files(ctx context.Context, src huntSources, r *protocol.HuntRe
 					if ctx.Err() != nil || full.Load() {
 						continue
 					}
-					h, note := src.hash(ctx, j.path, m.want)
-					locked(func() {
-						if note == "" {
-							hashed++
-						} else if ctx.Err() == nil {
-							skipped++
-						}
-					})
+					var h fileHashes
 					found := j.found
-					if note == "" {
-						found = append(found, m.byHash(h)...)
+					if m.want.any() && src.hash != nil {
+						var note string
+						h, note = src.hash(ctx, j.path, m.want)
+						locked(func() {
+							if note == "" {
+								hashed++
+							} else if ctx.Err() == nil {
+								skipped++
+							}
+						})
+						if note == "" {
+							found = append(found, m.byHash(h)...)
+						}
 					}
-					report(j.path, j.d, h, found)
+					report(j.path, j.d, h, found, "")
+					if m.yara != nil {
+						ms, note := yaraFile(ctx, m.yara, j.path)
+						locked(func() {
+							if note == "" {
+								yaraScanned++
+							} else if ctx.Err() == nil {
+								skipped++
+							}
+						})
+						inds, details := yaraHits(ms)
+						for i, ind := range inds {
+							report(j.path, j.d, h, []protocol.Indicator{ind}, details[i])
+						}
+					}
 				}
 			}()
 		}
@@ -516,7 +569,7 @@ func (m *matcher) files(ctx context.Context, src huntSources, r *protocol.HuntRe
 					}
 					return nil
 				}
-				report(path, d, fileHashes{}, found)
+				report(path, d, fileHashes{}, found, "")
 				return nil
 			})
 			if e == stop {
@@ -540,7 +593,7 @@ func (m *matcher) files(ctx context.Context, src huntSources, r *protocol.HuntRe
 	mu.Lock()
 	defer mu.Unlock()
 	closed = true
-	r.Scanned.Files, r.Scanned.Hashed = files, hashed
+	r.Scanned.Files, r.Scanned.Hashed, r.Scanned.YaraFiles = files, hashed, yaraScanned
 	return skipped, capped
 }
 

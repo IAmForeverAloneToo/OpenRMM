@@ -36,7 +36,7 @@ const ActionTime = 20 * time.Minute
 func Run(ctx context.Context, a protocol.ResponseAction, cache *HashCache) (protocol.ActionResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, ActionTime)
 	defer cancel()
-	r := protocol.ActionResult{Format: protocol.ActionFormat, Version: 1, Action: a, DeviceTime: stamp(time.Now())}
+	r := protocol.ActionResult{Format: protocol.ActionFormat, Version: 1, Action: a.WithoutRules(), DeviceTime: stamp(time.Now())}
 	if !a.Valid() {
 		return r, errors.New("invalid action")
 	}

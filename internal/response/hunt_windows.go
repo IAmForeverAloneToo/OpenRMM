@@ -26,7 +26,8 @@ func huntSourcesFor(cache *HashCache, n *notes) huntSources {
 		hash: func(ctx context.Context, path string, want hashSet) (fileHashes, string) {
 			return hashFile(ctx, huntFiles, path, want)
 		},
-		mft: filetransfer.NTFSFiles,
+		mft:    filetransfer.NTFSFiles,
+		memory: processMemory,
 	}
 }
 

@@ -342,7 +342,7 @@ func runOnce(ctx context.Context, local config.Agent, disabled []string, logger 
 	c := withFeatures(local, locked, disabled)
 	metadata := protocol.Heartbeat{Hostname: hostname, OS: runtime.GOOS, Architecture: runtime.GOARCH, AgentVersion: Version, Locked: locked, Features: protocol.AgentFeatures}
 	if runtime.GOOS == "windows" {
-		metadata.Abilities = []string{protocol.AbilityHunt, protocol.AbilityIsolation, protocol.AbilityPersistence, protocol.AbilityTriage, protocol.AbilityNTFS}
+		metadata.Abilities = []string{protocol.AbilityHunt, protocol.AbilityIsolation, protocol.AbilityPersistence, protocol.AbilityTriage, protocol.AbilityNTFS, protocol.AbilityYara}
 	}
 	session, err := newHeartbeatSession(c, metadata)
 	if err != nil {

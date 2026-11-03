@@ -271,6 +271,9 @@ var ErrActionUnsupported = errors.New("the device's agent cannot run this action
 // (such as the persistence report or an indicator hunt).
 func (s *Store) actionAbility(ctx context.Context, device string, a protocol.ResponseAction) error {
 	need := map[string]string{"persistence": protocol.AbilityPersistence, "hunt": protocol.AbilityHunt, "isolate": protocol.AbilityIsolation, "release": protocol.AbilityIsolation}[a.Kind]
+	if need == protocol.AbilityHunt && a.Hunt != nil && a.Hunt.Yara != nil {
+		need = protocol.AbilityYara
+	}
 	if need != "" && !s.HasAbility(ctx, device, need) {
 		var active int
 		if e := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM devices WHERE id=? AND revoked_at IS NULL`, device).Scan(&active); e != nil || active != 1 {
@@ -456,6 +459,9 @@ func (s *Store) DispatchEvidence(ctx context.Context, device, fp string, now tim
 		q.Source, q.Query = j.Source, j.Query
 	}
 	if j.Action != "" {
+		if a, e = withRules(ctx, tx, a); e != nil {
+			return out, e
+		}
 		q.Source, q.Action = "action", &a
 	}
 	q.MaxSize, q.ExpiresAt = EvidenceMaxFile, now.Add(window).Unix()

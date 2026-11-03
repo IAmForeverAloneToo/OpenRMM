@@ -47,6 +47,55 @@ type Indicator struct {
 type HuntSpec struct {
 	Indicators []Indicator `json:"indicators"`
 	Files      bool        `json:"files"`
+	// Yara runs YARA rules: over the files searched (with Files, or a
+	// path of its own) and process memory.
+	Yara *YaraSpec `json:"yara,omitempty"`
+}
+
+// AbilityYara is reported by agents that run YARA rules.
+const AbilityYara = "yara"
+
+// YaraSpec is the YARA part of a hunt. The job stores the rules' hash; the
+// server adds the rules themselves when it hands the job to the device.
+// Path narrows the file scan to one file or folder (with its subfolders),
+// PID the memory scan to one process.
+type YaraSpec struct {
+	Name   string `json:"name"`
+	SHA256 string `json:"sha256"`
+	Rules  string `json:"rules,omitempty"`
+	Memory bool   `json:"memory,omitempty"`
+	Path   string `json:"path,omitempty"`
+	PID    uint32 `json:"pid,omitempty"`
+}
+
+// WithoutRules returns the action as the server stored it: the rules of a
+// YARA hunt travel only to the device and are not echoed in its result.
+func (a ResponseAction) WithoutRules() ResponseAction {
+	if a.Hunt == nil || a.Hunt.Yara == nil {
+		return a
+	}
+	h, y := *a.Hunt, *a.Hunt.Yara
+	y.Rules = ""
+	h.Yara = &y
+	a.Hunt = &h
+	return a
+}
+
+// MaxYaraFileBytes: larger files are not scanned with YARA rules (they are
+// read into memory whole).
+const MaxYaraFileBytes = 64 << 20
+
+// ValidScanPath accepts a local file or folder (C:\Users\x) or a drive root
+// (C:\).
+func ValidScanPath(p string) bool {
+	return ValidDropPath(p) || len(p) == 3 && p[1:] == `:\` && (p[0]|0x20 >= 'a' && p[0]|0x20 <= 'z')
+}
+
+// Valid checks the YARA part: a name, the rules' hash, and something to
+// scan. Rules travel only in a dispatched job.
+func (y YaraSpec) Valid(files bool) bool {
+	return indicatorText(y.Name) && len(y.Name) <= 200 && sha256Text(y.SHA256) && len(y.Rules) <= 1<<20 &&
+		(y.Path == "" || ValidScanPath(y.Path)) && (files || y.Memory || y.Path != "" || y.PID != 0) && (y.PID == 0 || y.PID > 4)
 }
 
 // HuntResult is one device's hunt. Outcome is ok, or partial when the time
@@ -70,6 +119,9 @@ type HuntScanned struct {
 	// MFTFiles are the files on fixed NTFS drives whose names and paths
 	// were matched through the drives' MFT.
 	MFTFiles int `json:"mft_files,omitempty"`
+	// YaraFiles and YaraProcesses were scanned with YARA rules.
+	YaraFiles     int `json:"yara_files,omitempty"`
+	YaraProcesses int `json:"yara_processes,omitempty"`
 }
 
 // HuntMatch is one object that matched one indicator. Area is file,
@@ -151,9 +203,13 @@ func (i Indicator) Valid() bool {
 	return false
 }
 
-// Valid checks a hunt spec: 1 to MaxIndicators distinct indicators.
+// Valid checks a hunt spec: up to MaxIndicators distinct indicators, at
+// least one unless it runs YARA rules.
 func (h HuntSpec) Valid() bool {
-	if len(h.Indicators) == 0 || len(h.Indicators) > MaxIndicators {
+	if h.Yara != nil && !h.Yara.Valid(h.Files) {
+		return false
+	}
+	if len(h.Indicators) == 0 && h.Yara == nil || len(h.Indicators) > MaxIndicators {
 		return false
 	}
 	seen := make(map[Indicator]bool, len(h.Indicators))
