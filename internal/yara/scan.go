@@ -219,7 +219,15 @@ type automaton struct {
 	next []map[byte]int32
 	fail []int32
 	out  [][]acLit
+	// delta is the full transition table (failure links folded in, case
+	// folded) when the automaton is small enough: one lookup per byte.
+	delta [][256]int32
+	// hasOut marks states with matches.
+	hasOut []bool
 }
+
+// maxDense bounds the states given a full transition table (1 KiB each).
+const maxDense = 1 << 16
 
 type acLit struct {
 	bytes   []byte
@@ -270,10 +278,61 @@ func buildAutomaton(lits []acLit) *automaton {
 			a.out[n] = append(a.out[n], a.out[a.fail[n]]...)
 		}
 	}
+	if len(a.next) <= maxDense {
+		a.dense()
+	}
 	return a
 }
 
+// dense computes the full transition table in breadth-first order: a
+// state's missing transitions are its failure state's. Upper-case letters
+// go where their lower-case forms go.
+func (a *automaton) dense() {
+	a.delta = make([][256]int32, len(a.next))
+	a.hasOut = make([]bool, len(a.next))
+	queue := []int32{0}
+	for len(queue) > 0 {
+		s := queue[0]
+		queue = queue[1:]
+		a.hasOut[s] = len(a.out[s]) > 0
+		for c := range 256 {
+			lc := lower(byte(c))
+			if n, ok := a.next[s][lc]; ok {
+				a.delta[s][c] = n
+				if byte(c) == lc {
+					queue = append(queue, n)
+				}
+			} else if s != 0 {
+				a.delta[s][c] = a.delta[a.fail[s]][c]
+			}
+		}
+	}
+}
+
+func (a *automaton) scanDense(ctx context.Context, data []byte, found func(end int, l acLit)) error {
+	s := int32(0)
+	delta, hasOut := a.delta, a.hasOut
+	for start := 0; start < len(data); start += 1 << 20 {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		end := min(start+1<<20, len(data))
+		for i := start; i < end; i++ {
+			s = delta[s][data[i]]
+			if hasOut[s] {
+				for _, l := range a.out[s] {
+					found(i, l)
+				}
+			}
+		}
+	}
+	return nil
+}
+
 func (a *automaton) scan(ctx context.Context, data []byte, found func(end int, l acLit)) error {
+	if a.delta != nil {
+		return a.scanDense(ctx, data, found)
+	}
 	s := int32(0)
 	for i, c := range data {
 		if i%(1<<20) == 0 && ctx.Err() != nil {

@@ -287,6 +287,9 @@ func hunt(ctx context.Context, spec protocol.HuntSpec, src huntSources, n *notes
 		return false
 	}
 	objectFile := spec.Needs("name", "path", "sha256", "sha1", "md5")
+	// The process list, kept for the memory scan, which runs last: it is the
+	// slowest part and must not starve the rest.
+	var processes []protocol.ProcessDetail
 	// Running processes.
 	if objectFile || spec.Needs("cmd") || yaraMemory {
 		if src.processes != nil {
@@ -295,16 +298,7 @@ func hunt(ctx context.Context, spec protocol.HuntSpec, src huntSources, n *notes
 				n.add("processes could not be listed")
 			}
 			r.Scanned.Processes = len(list)
-			if yaraMemory && !partial() {
-				scanned, skipped := m.memory(ctx, src, spec.Yara, list, add)
-				r.Scanned.YaraProcesses = scanned
-				if skipped > 0 {
-					n.add(fmt.Sprintf("the memory of %d processes was not scanned (LSASS, security products, the agent, or processes that cannot be read)", skipped))
-				}
-				if spec.Yara.PID != 0 && scanned == 0 {
-					n.add("the process to scan is not running or cannot be read")
-				}
-			}
+			processes = list
 			for _, p := range list {
 				if partial() {
 					break
@@ -383,6 +377,18 @@ func hunt(ctx context.Context, spec protocol.HuntSpec, src huntSources, n *notes
 		if capped {
 			r.Outcome = "partial"
 			n.add("more than 500,000 files in the searched locations; the rest were not searched")
+		}
+		partial()
+	}
+	// Process memory with YARA rules.
+	if yaraMemory && !partial() {
+		scanned, skipped := m.memory(ctx, src, spec.Yara, processes, add)
+		r.Scanned.YaraProcesses = scanned
+		if skipped > 0 {
+			n.add(fmt.Sprintf("the memory of %d processes was not scanned (LSASS, security products, the agent, or processes that cannot be read)", skipped))
+		}
+		if spec.Yara.PID != 0 && scanned == 0 {
+			n.add("the process to scan is not running or cannot be read")
 		}
 		partial()
 	}
