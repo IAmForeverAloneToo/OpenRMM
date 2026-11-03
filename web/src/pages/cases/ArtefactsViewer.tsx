@@ -95,15 +95,23 @@ export function ArtefactsViewer({ base, job, open, onClose, recordedIn }: { base
   const [text, setText] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const [column, setColumn] = useState("");
+  const [equals, setEquals] = useState("");
   const [offset, setOffset] = useState(0);
   const [errors, setErrors] = useState(false);
   const limit = 100;
-  // A changed filter starts again at the first page.
-  useEffect(() => setOffset(0), [table, text, from, to]);
+  // A changed filter starts again at the first page; another table has
+  // other columns.
+  useEffect(() => setOffset(0), [table, text, from, to, column, equals]);
+  useEffect(() => setColumn(""), [table]);
   const params = new URLSearchParams({ offset: String(offset), limit: String(limit) });
   if (text) params.set("q", text);
   if (instant(from)) params.set("from", instant(from));
   if (instant(to)) params.set("to", instant(to));
+  if (column && equals.trim()) {
+    params.set("column", column);
+    params.set("equals", equals.trim());
+  }
   const url = `${base}/parsed/${table}`;
   const page = useQuery({
     queryKey: ["parsed-page", url, params.toString()],
@@ -134,6 +142,21 @@ export function ArtefactsViewer({ base, job, open, onClose, recordedIn }: { base
             <Field label="Contains">
               <Input value={text} onChange={(e) => setText(e.target.value)} placeholder="Any column" maxLength={400} spellCheck={false} aria-label="Contains" />
             </Field>
+            <Field label="Column">
+              <Select value={column} onChange={(e) => setColumn(e.target.value)} aria-label="Column">
+                <option value="">Any</option>
+                {(current?.columns ?? []).map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            {column ? (
+              <Field label="Equals">
+                <Input value={equals} onChange={(e) => setEquals(e.target.value)} placeholder="4624" maxLength={400} spellCheck={false} aria-label="Equals" />
+              </Field>
+            ) : null}
             {current?.times.length ? (
               <>
                 <Field label="From (local time)">

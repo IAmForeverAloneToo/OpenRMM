@@ -48,7 +48,7 @@ type parser struct {
 	parse func(ctx context.Context, o *Output, f file) error
 }
 
-var parsers = []parser{prefetchParser, registryParser}
+var parsers = []parser{prefetchParser, registryParser, eventLogParser}
 
 // Parse reads a collection and writes the parsed results to req.Output.
 func Parse(ctx context.Context, req Request) (Manifest, error) {

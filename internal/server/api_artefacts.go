@@ -130,7 +130,7 @@ func registerArtefactsAPI(mux *http.ServeMux, a *api) {
 				return
 			}
 			q := r.URL.Query()
-			filter := artefacts.Filter{Contains: q.Get("q")}
+			filter := artefacts.Filter{Contains: q.Get("q"), Column: q.Get("column"), Equals: q.Get("equals")}
 			for _, b := range []struct {
 				name string
 				to   *string
@@ -149,12 +149,16 @@ func registerArtefactsAPI(mux *http.ServeMux, a *api) {
 			if e != nil {
 				limit = 100
 			}
-			if len(filter.Contains) > 400 || offset < 0 || offset > 10_000_000 || limit < 1 || limit > artefacts.MaxPage {
+			if len(filter.Contains) > 400 || len(filter.Equals) > 400 || len(filter.Column) > 100 || offset < 0 || offset > 10_000_000 || limit < 1 || limit > artefacts.MaxPage {
 				apiError(w, http.StatusBadRequest, "invalid_request", "The filter is too long or the page is out of range (up to 500 rows).")
 				return
 			}
 			_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(5 * time.Minute))
 			p, e := artefacts.Query(rc, m.Tables[i].Times, filter, offset, limit)
+			if errors.Is(e, artefacts.ErrNoColumn) {
+				apiError(w, http.StatusBadRequest, "invalid_request", "The table has no such column.")
+				return
+			}
 			if e != nil {
 				apiError(w, http.StatusUnprocessableEntity, "package", "The table cannot be read.")
 				return

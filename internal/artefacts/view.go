@@ -8,8 +8,12 @@ import (
 	"strings"
 )
 
-// ErrCorrupt reports a table that does not read as CSV.
-var ErrCorrupt = errors.New("the table cannot be read")
+// ErrCorrupt reports a table that does not read as CSV; ErrNoColumn a
+// filter on a column the table does not have.
+var (
+	ErrCorrupt  = errors.New("the table cannot be read")
+	ErrNoColumn = errors.New("the table has no such column")
+)
 
 // Filter selects rows. Times are in TimeLayout and bound (inclusively) any
 // time in the table's time columns.
@@ -17,6 +21,9 @@ type Filter struct {
 	// Contains matches any cell, case-insensitively.
 	Contains string
 	From, To string
+	// Column and Equals keep rows whose cell in that column equals the
+	// text, ignoring case (or one of its values separated by "|").
+	Column, Equals string
 }
 
 // Page is one page of matching rows.
@@ -51,8 +58,17 @@ func Query(r io.Reader, times []string, f Filter, offset, limit int) (Page, erro
 		}
 	}
 	contains := strings.ToLower(f.Contains)
+	column := -1
+	if f.Column != "" {
+		if column = slices.Index(header, f.Column); column < 0 {
+			return Page{}, ErrNoColumn
+		}
+	}
 	match := func(row []string) bool {
 		if contains != "" && !slices.ContainsFunc(row, func(cell string) bool { return strings.Contains(strings.ToLower(cell), contains) }) {
+			return false
+		}
+		if column >= 0 && !strings.EqualFold(row[column], f.Equals) && !slices.ContainsFunc(strings.Split(row[column], "|"), func(v string) bool { return strings.EqualFold(strings.TrimSpace(v), f.Equals) }) {
 			return false
 		}
 		if f.From == "" && f.To == "" {
