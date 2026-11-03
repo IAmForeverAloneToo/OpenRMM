@@ -7,6 +7,7 @@ OpenRMM scans files and process memory with YARA rules: across many devices in a
 - [Overview](#overview)
 - [Rule sets](#rule-sets)
 - [What the rules can use](#what-the-rules-can-use)
+- [Modules](#modules)
 - [Running a scan](#running-a-scan)
 - [What is scanned](#what-is-scanned)
 - [Results](#results)
@@ -16,9 +17,9 @@ OpenRMM scans files and process memory with YARA rules: across many devices in a
 
 ## Overview
 
-- Rules are written in the YARA language: strings (text, hex, regular expressions) and a condition. Rules that need YARA modules are not supported yet (see [below](#what-the-rules-can-use)).
+- Rules are written in the YARA language: strings (text, hex, regular expressions) and a condition, with the modules `pe`, `dotnet`, `hash`, `math` and `time` (see [below](#modules)).
 - A scan reads files in the hunt's file locations (or one file or folder) and the memory of running processes (or one process), and reports every rule that matched with the strings it found.
-- Scans need agents from 0.4.0 on; older agents are listed as not searched.
+- Scans need agents from 0.4.0 on; older agents are listed as not searched. Rules that use modules need agents from 0.5.0 on; an older agent reports that the rules could not be compiled.
 
 ## Rule sets
 
@@ -38,15 +39,35 @@ At most 200 sets, each up to 1 MiB of rules.
 | Text strings with `ascii`, `wide`, `nocase`, `fullword`, `private` | `\"`, `\\`, `\n`, `\r`, `\t` and `\xNN` escapes |
 | Hex strings with `??`, nibble wildcards (`4?`), jumps (`[2-4]`, `[4-]`, `[-]`) and alternatives (`( 01 02 \| 03 )`) | Open jumps reach at most 64 KiB |
 | Regular expressions with `i` and `s` flags and `nocase`, `fullword`, `private` | Go's regular expression syntax (no back-references); matches up to 4 KiB |
-| Conditions: `and`, `or`, `not`, comparisons, arithmetic and bitwise operators | Integers are 64-bit |
+| Conditions: `and`, `or`, `not`, comparisons, arithmetic and bitwise operators | Integers are 64-bit; decimal numbers (`7.2`) where a module uses them |
 | `$a`, `#a`, `@a[i]`, `!a[i]`, `$a at x`, `$a in (x..y)`, `#a in (x..y)` | |
 | `filesize`, `uint8`…`int32be(x)` | `filesize` is undefined in memory, so conditions using it do not match there |
 | `any`, `all`, `none`, `N`, `N%` `of` (strings or rules), `them`, `$a*` | |
-| `for … of … : (…)` with `$`, `#`, `@`, `!`; `for … i in (x..y)` or `(a, b, c)` | At most 100,000 iterations |
+| `for … of … : (…)` with `$`, `#`, `@`, `!`; `for … i in (x..y)` or `(a, b, c)`; `for any s in pe.sections : (…)`, `for any k, v in pe.version_info : (…)` | At most 100,000 iterations |
+| `import "pe"`, `"dotnet"`, `"hash"`, `"math"`, `"time"`; `entrypoint` | See [Modules](#modules) |
 | `contains`, `icontains`, `startswith`, `endswith` (and `i`-variants), `iequals`, `matches` | On text values |
 | `global` and `private` rules, tags, meta, references to earlier rules | |
 
-Not supported: `import` (modules such as `pe`, `math`, `hash`, `dotnet`), `include`, `entrypoint`, external variables, and the `xor`, `base64` and `base64wide` modifiers. Rules using them are refused when saved, with the reason. Strings must be used in the condition, as in YARA.
+Not supported: other modules (`elf`, `macho`, `magic`, `cuckoo`, `dex`, `lnk`, `console`, `string`), `include`, external variables, and the `xor`, `base64` and `base64wide` modifiers. Rules using them are refused when saved, with the reason. Every module field and function call is checked when a rule is saved: an unknown field or wrong arguments are refused with the line. Strings must be used in the condition, as in YARA.
+
+## Modules
+
+The modules follow YARA's: the same field names, functions, constants and meanings, so public rule sets that use them work unchanged. Fields that do not apply are undefined, and conditions on them do not match.
+
+| Module | What it describes |
+| --- | --- |
+| `pe` | A Windows program or DLL: headers (`machine`, `timestamp`, `characteristics`, `subsystem`, `entry_point`, versions, sizes, `data_directories`), `sections`, `imports` and `delayed_import_details`, `exports`, `imphash()`, `resources`, `version_info`, `rich_signature`, `pdb_path`, `overlay`, `is_dll()`, `is_32bit()`, `is_64bit()`, `section_index()`, `rva_to_offset()`, `calculate_checksum()`, `language()`, `locale()`, Authenticode `signatures` and `is_signed`, and YARA's constants (`pe.MACHINE_AMD64`, `pe.DLL`, `pe.IMPORT_DELAYED` …) |
+| `dotnet` | .NET metadata: `version`, `module_name`, `assembly`, `assembly_refs`, `streams`, `guids`, `resources`, `modulerefs`, `user_strings`, `constants`, `field_offsets`, `typelib`, and `classes` with their `methods`, `parameters`, base types and generic parameters |
+| `hash` | `md5`, `sha1`, `sha256`, `crc32`, `checksum32` of a range of the scanned data or of text |
+| `math` | `entropy`, `mean`, `deviation`, `serial_correlation`, `monte_carlo_pi`, `count`, `percentage`, `mode` of a range or of text, and `in_range`, `min`, `max`, `abs`, `to_number`, `to_string` |
+| `time` | `now()` |
+
+How OpenRMM applies them:
+
+- **Files:** `pe` and `dotnet` describe the file scanned. `entrypoint` is the entry point's file offset, as `pe.entry_point`.
+- **Process memory:** `pe` and `dotnet` describe the process's main executable as it is mapped in memory (read once per process, only when the rules use these modules); `pe.entry_point` and other offsets are virtual addresses, matching the addresses of the memory scanned. A program's signature is not loaded into memory, so for `pe.signatures` the agent reads the program's file (up to 64 MB), only when the rules use the signatures.
+- **Signatures:** every embedded Authenticode signature (nested ones too) is checked in full: the file's hash against the signed hash, the signer's signature, and the certificate chain to the device's trusted roots for code signing, at the time of a countersignature that verifies (or now). `verified` is set only when all of these pass, and `is_signed` when one signature verified. Signatures in Windows' catalog files are not embedded in the program and are not seen, as in YARA. Revocation is not checked.
+- **Parsing:** PE files and .NET metadata are read by a parser written for OpenRMM that checks every read and bounds every table, so damaged or hostile files cannot crash or stall a scan. `pe.imphash()` names imports by ordinal from Windows' own `ws2_32`, `wsock32` and `oleaut32` export tables.
 
 ## Running a scan
 
@@ -73,6 +94,9 @@ A rule that matched is listed as a match with the indicator type **YARA rule** a
 | Rule set | 1 MiB, 200 sets, 20 versions kept each |
 | File scanned | 64 MB |
 | Memory per process | 1 GiB (in batches of up to 64 MiB) |
+| Process image for `pe` and `dotnet` | 64 MiB of the main executable as mapped; its file up to 64 MB for signatures |
+| PE parsing | 96 sections, 4,096 imported DLLs, 65,536 imported functions, 65,536 exports and resources, 16 signatures with 64 certificates each |
+| .NET parsing | 20,000 classes, 200,000 methods, 256 parameters per method, 100,000 user strings and other lists |
 | Matches kept per string | 10,000 per scan of a file or batch |
 | Strings shown per match | 8 (all are counted in the condition) |
 | Search time per device | 60 minutes: process memory first (usually a few minutes), then files, which are limited by the disk; a search stopped at the limit names the part it stopped |

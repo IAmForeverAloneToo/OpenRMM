@@ -111,7 +111,7 @@ export function YaraRules({ onUse }: { onUse: (id: string) => void }) {
         />
       )}
       <p className="border-t border-border px-4 py-2 text-[12px] text-faint">
-        Rules with text, hex and regular expression strings and plain conditions are supported; modules (pe, math, hash and others) are not yet. Every change is a new version, in the audit log.
+        Rules with text, hex and regular expression strings, conditions and the pe, dotnet, hash, math and time modules are supported. Every change is a new version, in the audit log.
       </p>
       {editing ? <RuleEditor initial={editing} onClose={() => setEditing(null)} /> : null}
       {viewing ? <RuleEditor initial={{ id: viewing, name: "" }} readOnly onClose={() => setViewing(null)} /> : null}

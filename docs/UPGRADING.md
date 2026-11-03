@@ -80,6 +80,15 @@ Only the latest release receives fixes, including security fixes. Pre-releases a
 
 ## Version notes
 
+### 0.5.0
+
+YARA modules; nothing to do when updating.
+
+- **YARA rules can use the `pe`, `dotnet`, `hash`, `math` and `time` modules** with YARA's fields, functions and constants, so public rule sets that use them work unchanged ([YARA.md](YARA.md#modules)). In memory scans, `pe` and `dotnet` describe each process's main executable.
+- **Authenticode signatures are verified in full** for `pe.signatures` and `pe.is_signed`: the file's hash, the signer's signature and the chain to the device's trusted roots.
+- `entrypoint` and decimal numbers are accepted; `for` loops run over module arrays and dictionaries.
+- Rules that use modules need agents from 0.5.0 on; an older agent reports that the rules could not be compiled. Update agents after the server.
+
 ### 0.4.1
 
 Agent fixes; nothing to do when updating.
