@@ -14,40 +14,38 @@ import (
 // or superseding renewal cannot turn an earlier successful check into a write.
 // Only server receipt time is stored; a clock correction cannot move it back.
 func (s *Store) RecordHeartbeat(ctx context.Context, id, fingerprint string, input protocol.Heartbeat, now time.Time) error {
-	tx, err := s.tdb.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	locks := input.Locked
-	if locks == nil {
-		locks = []string{}
-	}
-	rawLocks, _ := json.Marshal(locks)
-	abilities := input.Abilities
-	if abilities == nil {
-		abilities = []string{}
-	}
-	rawAbilities, _ := json.Marshal(abilities)
-	result, err := tx.ExecContext(ctx, `UPDATE devices SET hostname=?,os=?,architecture=?,agent_version=?,feature_locks_json=?,abilities_json=?,
+	return s.telemetry(ctx, func(ctx context.Context, tx *telemetryTx) error {
+		var err error
+		locks := input.Locked
+		if locks == nil {
+			locks = []string{}
+		}
+		rawLocks, _ := json.Marshal(locks)
+		abilities := input.Abilities
+		if abilities == nil {
+			abilities = []string{}
+		}
+		rawAbilities, _ := json.Marshal(abilities)
+		result, err := tx.ExecContext(ctx, `UPDATE devices SET hostname=?,os=?,architecture=?,agent_version=?,feature_locks_json=?,abilities_json=?,
         last_contact_at=MAX(COALESCE(last_contact_at,0),?)
         WHERE id=? AND revoked_at IS NULL AND (fingerprint=? OR (previous_fingerprint=? AND previous_until>?))`, input.Hostname, input.OS, input.Architecture, input.AgentVersion, string(rawLocks), string(rawAbilities), now.Unix(), id, fingerprint, fingerprint, now.Unix())
-	if err != nil {
-		return errors.New("cannot record device heartbeat")
-	}
-	count, err := result.RowsAffected()
-	if err != nil || count != 1 {
-		return ErrAuthentication
-	}
-	if err = captureAlert(ctx, tx, id, "offline", "ok", nil, now); err != nil {
-		return err
-	}
-	if input.Isolation != nil {
-		if err = recordIsolation(ctx, tx, id, *input.Isolation, now); err != nil {
-			return errors.New("cannot record device isolation")
+		if err != nil {
+			return errors.New("cannot record device heartbeat")
 		}
-	}
-	return tx.Commit()
+		count, err := result.RowsAffected()
+		if err != nil || count != 1 {
+			return ErrAuthentication
+		}
+		if err = captureAlert(ctx, tx, id, "offline", "ok", nil, now); err != nil {
+			return err
+		}
+		if input.Isolation != nil {
+			if err = recordIsolation(ctx, tx, id, *input.Isolation, now); err != nil {
+				return errors.New("cannot record device isolation")
+			}
+		}
+		return nil
+	})
 }
 
 // FeatureLocks are the features the device's agent last reported as locked

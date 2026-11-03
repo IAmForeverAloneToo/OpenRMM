@@ -37,56 +37,50 @@ func (s *Store) RecordLogons(ctx context.Context, id, fingerprint string, report
 	if e != nil {
 		return e
 	}
-	tx, e := s.tdb.BeginTx(ctx, nil)
-	if e != nil {
-		return logonsError()
-	}
-	defer tx.Rollback()
-	var allowed int
-	if e = tx.QueryRowContext(ctx, `SELECT 1 FROM devices WHERE id=? AND revoked_at IS NULL AND (fingerprint=? OR (previous_fingerprint=? AND previous_until>?))`, id, fingerprint, fingerprint, now.Unix()).Scan(&allowed); errors.Is(e, sql.ErrNoRows) {
-		return ErrAuthentication
-	} else if e != nil {
-		return logonsError()
-	}
-	var collected any
-	more := false
-	if report.Status == "ok" {
-		collected = now.Unix()
-		var v protocol.Logons
-		if json.Unmarshal(report.Data, &v) != nil {
+	return s.telemetry(ctx, func(ctx context.Context, tx *telemetryTx) error {
+		var allowed int
+		if e = tx.QueryRowContext(ctx, `SELECT 1 FROM devices WHERE id=? AND revoked_at IS NULL AND (fingerprint=? OR (previous_fingerprint=? AND previous_until>?))`, id, fingerprint, fingerprint, now.Unix()).Scan(&allowed); errors.Is(e, sql.ErrNoRows) {
+			return ErrAuthentication
+		} else if e != nil {
 			return logonsError()
 		}
-		more = v.More
-		oldest, newest := now.Add(-LogonHistoryDays*24*time.Hour).Unix(), now.Add(24*time.Hour).Unix()
-		for _, l := range v.Logons {
-			if l.Time <= oldest || l.Time > newest {
-				continue
-			}
-			if _, e = tx.ExecContext(ctx, `INSERT OR IGNORE INTO logon_history(device_id,logon_at,record_id,user_name,domain,sid,logon_type,source_ip,source_port,workstation,auth_package,logon_process,logon_id,elevated)
- VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, l.Time, int64(l.RecordID), l.User, l.Domain, l.SID, l.Type, l.SourceIP, l.SourcePort, l.Workstation, l.AuthPackage, l.LogonProcess, l.LogonID, l.Elevated); e != nil {
+		var collected any
+		more := false
+		if report.Status == "ok" {
+			collected = now.Unix()
+			var v protocol.Logons
+			if json.Unmarshal(report.Data, &v) != nil {
 				return logonsError()
 			}
-		}
-		// Network logons have their own cap, so on a busy server they never
-		// push out the interactive and Remote Desktop history.
-		if len(v.Logons) > 0 {
-			for _, network := range []bool{false, true} {
-				if _, e = tx.ExecContext(ctx, `DELETE FROM logon_history WHERE device_id=? AND (logon_type IN ('network','network_cleartext'))=? AND logon_at<(SELECT logon_at FROM logon_history WHERE device_id=? AND (logon_type IN ('network','network_cleartext'))=? ORDER BY logon_at DESC LIMIT 1 OFFSET ?)`, id, network, id, network, LogonHistoryLimit-1); e != nil {
+			more = v.More
+			oldest, newest := now.Add(-LogonHistoryDays*24*time.Hour).Unix(), now.Add(24*time.Hour).Unix()
+			for _, l := range v.Logons {
+				if l.Time <= oldest || l.Time > newest {
+					continue
+				}
+				if _, e = tx.ExecContext(ctx, `INSERT OR IGNORE INTO logon_history(device_id,logon_at,record_id,user_name,domain,sid,logon_type,source_ip,source_port,workstation,auth_package,logon_process,logon_id,elevated)
+ VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, l.Time, int64(l.RecordID), l.User, l.Domain, l.SID, l.Type, l.SourceIP, l.SourcePort, l.Workstation, l.AuthPackage, l.LogonProcess, l.LogonID, l.Elevated); e != nil {
 					return logonsError()
 				}
 			}
+			// Network logons have their own cap, so on a busy server they never
+			// push out the interactive and Remote Desktop history.
+			if len(v.Logons) > 0 {
+				for _, network := range []bool{false, true} {
+					if _, e = tx.ExecContext(ctx, `DELETE FROM logon_history WHERE device_id=? AND (logon_type IN ('network','network_cleartext'))=? AND logon_at<(SELECT logon_at FROM logon_history WHERE device_id=? AND (logon_type IN ('network','network_cleartext'))=? ORDER BY logon_at DESC LIMIT 1 OFFSET ?)`, id, network, id, network, LogonHistoryLimit-1); e != nil {
+						return logonsError()
+					}
+				}
+			}
 		}
-	}
-	if _, e = tx.ExecContext(ctx, `INSERT INTO device_logons(device_id,capability_version,last_status,reported_at,collected_at,more) VALUES(?,?,?,?,?,?)
+		if _, e = tx.ExecContext(ctx, `INSERT INTO device_logons(device_id,capability_version,last_status,reported_at,collected_at,more) VALUES(?,?,?,?,?,?)
  ON CONFLICT(device_id) DO UPDATE SET capability_version=excluded.capability_version,last_status=excluded.last_status,reported_at=excluded.reported_at,
  collected_at=coalesce(excluded.collected_at,device_logons.collected_at),more=CASE WHEN excluded.last_status='ok' THEN excluded.more ELSE device_logons.more END
  WHERE excluded.reported_at>=device_logons.reported_at`, id, report.Capability.Version, report.Status, now.Unix(), collected, more); e != nil {
-		return logonsError()
-	}
-	if tx.Commit() != nil {
-		return logonsError()
-	}
-	return nil
+			return logonsError()
+		}
+		return nil
+	})
 }
 
 func (s *Store) LogonStatus(ctx context.Context, id string) (LogonStatus, error) {

@@ -31,33 +31,35 @@ func (s *Store) RecordProcesses(ctx context.Context, id, fingerprint string, rep
 	if report.Status == "ok" {
 		snapshotAt = now.Unix()
 	}
-	result, err := s.tdb.ExecContext(ctx, `INSERT INTO device_processes(device_id,capability_version,last_status,reported_at,snapshot_json,snapshot_at)
+	return s.telemetry(ctx, func(ctx context.Context, tx *telemetryTx) error {
+		result, err := tx.ExecContext(ctx, `INSERT INTO device_processes(device_id,capability_version,last_status,reported_at,snapshot_json,snapshot_at)
         SELECT id,?,?,?,?,? FROM devices WHERE id=? AND revoked_at IS NULL
         AND (fingerprint=? OR (previous_fingerprint=? AND previous_until>?))
         ON CONFLICT(device_id) DO UPDATE SET capability_version=excluded.capability_version,last_status=excluded.last_status,
         reported_at=MAX(device_processes.reported_at,excluded.reported_at),
         snapshot_json=CASE WHEN excluded.last_status='ok' THEN excluded.snapshot_json ELSE device_processes.snapshot_json END,
         snapshot_at=CASE WHEN excluded.last_status='ok' THEN MAX(COALESCE(device_processes.snapshot_at,0),excluded.snapshot_at) ELSE device_processes.snapshot_at END WHERE excluded.reported_at>=device_processes.reported_at`,
-		report.Capability.Version, report.Status, now.Unix(), string(report.Data), snapshotAt, id, fingerprint, fingerprint, now.Unix())
-	if err != nil {
-		return errors.New("cannot record device processes")
-	}
-	count, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if count == 0 {
-		var valid string
-		err = s.tdb.QueryRowContext(ctx, `SELECT id FROM devices WHERE id=? AND revoked_at IS NULL AND (fingerprint=? OR (previous_fingerprint=? AND previous_until>?))`, id, fingerprint, fingerprint, now.Unix()).Scan(&valid)
-		if errors.Is(err, sql.ErrNoRows) {
+			report.Capability.Version, report.Status, now.Unix(), string(report.Data), snapshotAt, id, fingerprint, fingerprint, now.Unix())
+		if err != nil {
+			return errors.New("cannot record device processes")
+		}
+		count, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if count == 0 {
+			var valid string
+			err = tx.QueryRowContext(ctx, `SELECT id FROM devices WHERE id=? AND revoked_at IS NULL AND (fingerprint=? OR (previous_fingerprint=? AND previous_until>?))`, id, fingerprint, fingerprint, now.Unix()).Scan(&valid)
+			if errors.Is(err, sql.ErrNoRows) {
+				return ErrAuthentication
+			}
+			return err
+		}
+		if count != 1 {
 			return ErrAuthentication
 		}
-		return err
-	}
-	if count != 1 {
-		return ErrAuthentication
-	}
-	return nil
+		return nil
+	})
 }
 
 func (s *Store) Processes(ctx context.Context, id string) (Processes, error) {

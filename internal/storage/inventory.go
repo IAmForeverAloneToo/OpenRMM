@@ -25,22 +25,24 @@ func (s *Store) RecordInventory(ctx context.Context, id, fingerprint string, rep
 	if report.Status == "ok" {
 		snapshotAt = now.Unix()
 	}
-	result, err := s.tdb.ExecContext(ctx, `INSERT INTO device_inventory(device_id,capability_version,last_status,reported_at,snapshot_json,snapshot_at)
+	return s.telemetry(ctx, func(ctx context.Context, tx *telemetryTx) error {
+		result, err := tx.ExecContext(ctx, `INSERT INTO device_inventory(device_id,capability_version,last_status,reported_at,snapshot_json,snapshot_at)
         SELECT id,?,?,?,?,? FROM devices WHERE id=? AND revoked_at IS NULL
         AND (fingerprint=? OR (previous_fingerprint=? AND previous_until>?))
         ON CONFLICT(device_id) DO UPDATE SET capability_version=excluded.capability_version,last_status=excluded.last_status,
         reported_at=MAX(device_inventory.reported_at,excluded.reported_at),
         snapshot_json=CASE WHEN excluded.last_status='ok' THEN excluded.snapshot_json ELSE device_inventory.snapshot_json END,
         snapshot_at=CASE WHEN excluded.last_status='ok' THEN MAX(COALESCE(device_inventory.snapshot_at,0),excluded.snapshot_at) ELSE device_inventory.snapshot_at END`,
-		report.Capability.Version, report.Status, now.Unix(), string(report.Data), snapshotAt, id, fingerprint, fingerprint, now.Unix())
-	if err != nil {
-		return errors.New("cannot record device inventory")
-	}
-	count, err := result.RowsAffected()
-	if err != nil || count != 1 {
-		return ErrAuthentication
-	}
-	return nil
+			report.Capability.Version, report.Status, now.Unix(), string(report.Data), snapshotAt, id, fingerprint, fingerprint, now.Unix())
+		if err != nil {
+			return errors.New("cannot record device inventory")
+		}
+		count, err := result.RowsAffected()
+		if err != nil || count != 1 {
+			return ErrAuthentication
+		}
+		return nil
+	})
 }
 
 func (s *Store) Inventory(ctx context.Context, id string) (Inventory, error) {

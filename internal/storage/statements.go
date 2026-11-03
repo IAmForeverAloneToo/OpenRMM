@@ -48,6 +48,13 @@ func (c *statements) prepared(ctx context.Context, pool *sql.DB, query string) (
 	return st, nil
 }
 
+// lookup returns the cached statement for query on pool, or nil.
+func (c *statements) lookup(pool *sql.DB, query string) *sql.Stmt {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.list[pool][query]
+}
+
 func (c *statements) close() {
 	c.mu.Lock()
 	defer c.mu.Unlock()

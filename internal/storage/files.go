@@ -34,19 +34,16 @@ func (s *Store) RecordFileSupport(ctx context.Context, id, fp string, r protocol
 	if e != nil {
 		return e
 	}
-	tx, e := s.tdb.BeginTx(ctx, nil)
-	if e != nil {
-		return e
-	}
-	defer tx.Rollback()
-	if e = authorizedActionDevice(ctx, tx, id, fp, now); e != nil {
-		return e
-	}
-	_, e = tx.ExecContext(ctx, `INSERT INTO device_file_support VALUES(?,?,?,?,?) ON CONFLICT(device_id) DO UPDATE SET capability_version=excluded.capability_version,last_status=excluded.last_status,reported_at=excluded.reported_at,support_json=excluded.support_json WHERE excluded.reported_at>=device_file_support.reported_at`, id, 1, r.Status, now.Unix(), string(r.Data))
-	if e != nil {
-		return e
-	}
-	return tx.Commit()
+	return s.telemetry(ctx, func(ctx context.Context, tx *telemetryTx) error {
+		if e = authorizedActionDevice(ctx, tx, id, fp, now); e != nil {
+			return e
+		}
+		_, e = tx.ExecContext(ctx, `INSERT INTO device_file_support VALUES(?,?,?,?,?) ON CONFLICT(device_id) DO UPDATE SET capability_version=excluded.capability_version,last_status=excluded.last_status,reported_at=excluded.reported_at,support_json=excluded.support_json WHERE excluded.reported_at>=device_file_support.reported_at`, id, 1, r.Status, now.Unix(), string(r.Data))
+		if e != nil {
+			return e
+		}
+		return nil
+	})
 }
 func (s *Store) FileSupport(ctx context.Context, id string) (FileSupport, error) {
 	v := FileSupport{Status: "not_reported", Support: protocol.FileSupport{Roots: []protocol.FileRoot{}}}

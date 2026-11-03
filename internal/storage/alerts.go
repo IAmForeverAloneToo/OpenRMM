@@ -20,7 +20,7 @@ var ErrAlert = errors.New("alert or settings unavailable; reload and try again")
 
 // Capture is part of the authorized telemetry transaction. The short queue
 // preserves intervening healthy readings even between evaluator sweeps.
-func captureAlert(ctx context.Context, tx *sql.Tx, id, kind, status string, data []byte, now time.Time) error {
+func captureAlert(ctx context.Context, tx execer, id, kind, status string, data []byte, now time.Time) error {
 	if len(data) > 1024 {
 		status = "failed"
 		data = nil

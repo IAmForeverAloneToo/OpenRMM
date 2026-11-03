@@ -22,7 +22,7 @@ type Device struct {
 	PreviousUntil       int64  `json:"-"`
 }
 
-func auditDevice(ctx context.Context, tx *sql.Tx, now time.Time, actor, action, target, outcome string) error {
+func auditDevice(ctx context.Context, tx execer, now time.Time, actor, action, target, outcome string) error {
 	if err := audit(ctx, tx, now, actor, action, outcome); err != nil {
 		return err
 	}

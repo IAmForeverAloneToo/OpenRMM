@@ -118,75 +118,69 @@ func (s *Store) RecordSoftware(ctx context.Context, id, fingerprint string, repo
 	if e != nil {
 		return e
 	}
-	tx, e := s.tdb.BeginTx(ctx, nil)
-	if e != nil {
-		return errors.New("cannot begin software report")
-	}
-	defer tx.Rollback()
-	var allowed int
-	if e = tx.QueryRowContext(ctx, `SELECT 1 FROM devices WHERE id=? AND revoked_at IS NULL AND (fingerprint=? OR (previous_fingerprint=? AND previous_until>?))`, id, fingerprint, fingerprint, now.Unix()).Scan(&allowed); errors.Is(e, sql.ErrNoRows) {
-		return ErrAuthentication
-	} else if e != nil {
-		return errors.New("cannot authenticate software report")
-	}
-	var previous string
-	var stamp sql.NullInt64
-	var ready bool
-	var last int64
-	e = tx.QueryRowContext(ctx, `SELECT snapshot_json,snapshot_at,baseline_ready,reported_at FROM device_software WHERE device_id=?`, id).Scan(&previous, &stamp, &ready, &last)
-	if e != nil && !errors.Is(e, sql.ErrNoRows) {
-		return errors.New("cannot read software baseline")
-	}
-	if now.Unix() < last {
-		return nil
-	}
-	var next protocol.Software
-	if report.Status == "ok" {
-		if json.Unmarshal(report.Data, &next) != nil {
-			return softwareError()
+	return s.telemetry(ctx, func(ctx context.Context, tx *telemetryTx) error {
+		var allowed int
+		if e = tx.QueryRowContext(ctx, `SELECT 1 FROM devices WHERE id=? AND revoked_at IS NULL AND (fingerprint=? OR (previous_fingerprint=? AND previous_until>?))`, id, fingerprint, fingerprint, now.Unix()).Scan(&allowed); errors.Is(e, sql.ErrNoRows) {
+			return ErrAuthentication
+		} else if e != nil {
+			return errors.New("cannot authenticate software report")
 		}
-		if ready && stamp.Valid {
-			var old protocol.Software
-			if json.Unmarshal([]byte(previous), &old) != nil || !software.Valid(old) {
+		var previous string
+		var stamp sql.NullInt64
+		var ready bool
+		var last int64
+		e = tx.QueryRowContext(ctx, `SELECT snapshot_json,snapshot_at,baseline_ready,reported_at FROM device_software WHERE device_id=?`, id).Scan(&previous, &stamp, &ready, &last)
+		if e != nil && !errors.Is(e, sql.ErrNoRows) {
+			return errors.New("cannot read software baseline")
+		}
+		if now.Unix() < last {
+			return nil
+		}
+		var next protocol.Software
+		if report.Status == "ok" {
+			if json.Unmarshal(report.Data, &next) != nil {
 				return softwareError()
 			}
-			changes := softwareDifferences(old, next, stamp.Int64, now.Unix())
-			// A large replacement is bounded too; retain only the deterministic newest
-			// tail, with the same advertised rolling-history limit as ordinary reports.
-			if len(changes) > SoftwareHistoryLimit {
-				changes = changes[len(changes)-SoftwareHistoryLimit:]
-			}
-			for _, c := range changes {
-				before, _ := json.Marshal(c.Before)
-				after, _ := json.Marshal(c.After)
-				if _, e = tx.ExecContext(ctx, `INSERT INTO software_changes(device_id,from_at,observed_at,kind,before_json,after_json) VALUES(?,?,?,?,?,?)`, id, c.FromAt, c.ObservedAt, c.Kind, string(before), string(after)); e != nil {
+			if ready && stamp.Valid {
+				var old protocol.Software
+				if json.Unmarshal([]byte(previous), &old) != nil || !software.Valid(old) {
 					return softwareError()
+				}
+				changes := softwareDifferences(old, next, stamp.Int64, now.Unix())
+				// A large replacement is bounded too; retain only the deterministic newest
+				// tail, with the same advertised rolling-history limit as ordinary reports.
+				if len(changes) > SoftwareHistoryLimit {
+					changes = changes[len(changes)-SoftwareHistoryLimit:]
+				}
+				for _, c := range changes {
+					before, _ := json.Marshal(c.Before)
+					after, _ := json.Marshal(c.After)
+					if _, e = tx.ExecContext(ctx, `INSERT INTO software_changes(device_id,from_at,observed_at,kind,before_json,after_json) VALUES(?,?,?,?,?,?)`, id, c.FromAt, c.ObservedAt, c.Kind, string(before), string(after)); e != nil {
+						return softwareError()
+					}
 				}
 			}
 		}
-	}
-	var snapshotAt any
-	if report.Status == "ok" {
-		snapshotAt = now.Unix()
-	}
-	_, e = tx.ExecContext(ctx, `INSERT INTO device_software(device_id,capability_version,last_status,reported_at,snapshot_json,snapshot_at,baseline_ready) VALUES(?,?,?,?,?,?,?)
+		var snapshotAt any
+		if report.Status == "ok" {
+			snapshotAt = now.Unix()
+		}
+		_, e = tx.ExecContext(ctx, `INSERT INTO device_software(device_id,capability_version,last_status,reported_at,snapshot_json,snapshot_at,baseline_ready) VALUES(?,?,?,?,?,?,?)
  ON CONFLICT(device_id) DO UPDATE SET capability_version=excluded.capability_version,last_status=excluded.last_status,reported_at=excluded.reported_at,
  snapshot_json=CASE WHEN excluded.last_status='ok' THEN excluded.snapshot_json ELSE device_software.snapshot_json END,
  snapshot_at=CASE WHEN excluded.last_status='ok' THEN excluded.snapshot_at ELSE device_software.snapshot_at END,
  baseline_ready=CASE WHEN excluded.last_status='ok' THEN 1 ELSE device_software.baseline_ready END`, id, report.Capability.Version, report.Status, now.Unix(), string(report.Data), snapshotAt, report.Status == "ok")
-	if e != nil {
-		return softwareError()
-	}
-	if _, e = tx.ExecContext(ctx, `DELETE FROM software_changes WHERE device_id=? AND id NOT IN (SELECT id FROM software_changes WHERE device_id=? ORDER BY id DESC LIMIT ?)`, id, id, SoftwareHistoryLimit); e != nil {
-		return softwareError()
-	}
-	if _, e = tx.ExecContext(ctx, `DELETE FROM software_changes WHERE observed_at<=? OR id NOT IN (SELECT id FROM software_changes ORDER BY id DESC LIMIT ?)`, now.Add(-SoftwareHistoryDays*24*time.Hour).Unix(), softwareGlobalHistoryLimit); e != nil {
-		return softwareError()
-	}
-	if tx.Commit() != nil {
-		return softwareError()
-	}
-	return nil
+		if e != nil {
+			return softwareError()
+		}
+		if _, e = tx.ExecContext(ctx, `DELETE FROM software_changes WHERE device_id=? AND id NOT IN (SELECT id FROM software_changes WHERE device_id=? ORDER BY id DESC LIMIT ?)`, id, id, SoftwareHistoryLimit); e != nil {
+			return softwareError()
+		}
+		if _, e = tx.ExecContext(ctx, `DELETE FROM software_changes WHERE observed_at<=? OR id NOT IN (SELECT id FROM software_changes ORDER BY id DESC LIMIT ?)`, now.Add(-SoftwareHistoryDays*24*time.Hour).Unix(), softwareGlobalHistoryLimit); e != nil {
+			return softwareError()
+		}
+		return nil
+	})
 }
 func softwareError() error { return errors.New("cannot persist software inventory") }
 func (s *Store) Software(ctx context.Context, id string) (Software, error) {

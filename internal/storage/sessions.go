@@ -52,57 +52,51 @@ func (s *Store) RecordSessions(ctx context.Context, id, fingerprint string, repo
 	if e != nil {
 		return e
 	}
-	tx, e := s.tdb.BeginTx(ctx, nil)
-	if e != nil {
-		return errors.New("cannot begin sessions report")
-	}
-	defer tx.Rollback()
-	var allowed int
-	if e = tx.QueryRowContext(ctx, `SELECT 1 FROM devices WHERE id=? AND revoked_at IS NULL AND (fingerprint=? OR (previous_fingerprint=? AND previous_until>?))`, id, fingerprint, fingerprint, now.Unix()).Scan(&allowed); errors.Is(e, sql.ErrNoRows) {
-		return ErrAuthentication
-	} else if e != nil {
-		return errors.New("cannot authenticate sessions report")
-	}
-	var last int64
-	if e = tx.QueryRowContext(ctx, `SELECT reported_at FROM device_sessions WHERE device_id=?`, id).Scan(&last); e != nil && !errors.Is(e, sql.ErrNoRows) {
-		return sessionsError()
-	}
-	if now.Unix() < last {
-		return nil
-	}
-	var snapshotAt any
-	if report.Status == "ok" {
-		snapshotAt = now.Unix()
-		var v protocol.Sessions
-		if json.Unmarshal(report.Data, &v) != nil {
+	return s.telemetry(ctx, func(ctx context.Context, tx *telemetryTx) error {
+		var allowed int
+		if e = tx.QueryRowContext(ctx, `SELECT 1 FROM devices WHERE id=? AND revoked_at IS NULL AND (fingerprint=? OR (previous_fingerprint=? AND previous_until>?))`, id, fingerprint, fingerprint, now.Unix()).Scan(&allowed); errors.Is(e, sql.ErrNoRows) {
+			return ErrAuthentication
+		} else if e != nil {
+			return errors.New("cannot authenticate sessions report")
+		}
+		var last int64
+		if e = tx.QueryRowContext(ctx, `SELECT reported_at FROM device_sessions WHERE device_id=?`, id).Scan(&last); e != nil && !errors.Is(e, sql.ErrNoRows) {
 			return sessionsError()
 		}
-		for _, x := range v.Sessions {
-			b, _ := json.Marshal(x)
-			if _, e = tx.ExecContext(ctx, `INSERT INTO session_history(device_id,session_key,user_name,domain,session_json,first_seen_at,last_seen_at) VALUES(?,?,?,?,?,?,?)
+		if now.Unix() < last {
+			return nil
+		}
+		var snapshotAt any
+		if report.Status == "ok" {
+			snapshotAt = now.Unix()
+			var v protocol.Sessions
+			if json.Unmarshal(report.Data, &v) != nil {
+				return sessionsError()
+			}
+			for _, x := range v.Sessions {
+				b, _ := json.Marshal(x)
+				if _, e = tx.ExecContext(ctx, `INSERT INTO session_history(device_id,session_key,user_name,domain,session_json,first_seen_at,last_seen_at) VALUES(?,?,?,?,?,?,?)
  ON CONFLICT(device_id,session_key) DO UPDATE SET session_json=excluded.session_json,last_seen_at=excluded.last_seen_at,ended_at=NULL`, id, sessionKey(x), x.User, x.Domain, string(b), now.Unix(), now.Unix()); e != nil {
+					return sessionsError()
+				}
+			}
+			// Sessions no longer reported were gone by now.
+			if _, e = tx.ExecContext(ctx, `UPDATE session_history SET ended_at=? WHERE device_id=? AND ended_at IS NULL AND last_seen_at<?`, now.Unix(), id, now.Unix()); e != nil {
+				return sessionsError()
+			}
+			if _, e = tx.ExecContext(ctx, `DELETE FROM session_history WHERE device_id=? AND id NOT IN (SELECT id FROM session_history WHERE device_id=? ORDER BY last_seen_at DESC,id DESC LIMIT ?)`, id, id, SessionHistoryLimit); e != nil {
 				return sessionsError()
 			}
 		}
-		// Sessions no longer reported were gone by now.
-		if _, e = tx.ExecContext(ctx, `UPDATE session_history SET ended_at=? WHERE device_id=? AND ended_at IS NULL AND last_seen_at<?`, now.Unix(), id, now.Unix()); e != nil {
-			return sessionsError()
-		}
-		if _, e = tx.ExecContext(ctx, `DELETE FROM session_history WHERE device_id=? AND id NOT IN (SELECT id FROM session_history WHERE device_id=? ORDER BY last_seen_at DESC,id DESC LIMIT ?)`, id, id, SessionHistoryLimit); e != nil {
-			return sessionsError()
-		}
-	}
-	_, e = tx.ExecContext(ctx, `INSERT INTO device_sessions(device_id,capability_version,last_status,reported_at,snapshot_json,snapshot_at) VALUES(?,?,?,?,?,?)
+		_, e = tx.ExecContext(ctx, `INSERT INTO device_sessions(device_id,capability_version,last_status,reported_at,snapshot_json,snapshot_at) VALUES(?,?,?,?,?,?)
  ON CONFLICT(device_id) DO UPDATE SET capability_version=excluded.capability_version,last_status=excluded.last_status,reported_at=excluded.reported_at,
  snapshot_json=CASE WHEN excluded.last_status='ok' THEN excluded.snapshot_json ELSE device_sessions.snapshot_json END,
  snapshot_at=CASE WHEN excluded.last_status='ok' THEN excluded.snapshot_at ELSE device_sessions.snapshot_at END`, id, report.Capability.Version, report.Status, now.Unix(), string(report.Data), snapshotAt)
-	if e != nil {
-		return sessionsError()
-	}
-	if tx.Commit() != nil {
-		return sessionsError()
-	}
-	return nil
+		if e != nil {
+			return sessionsError()
+		}
+		return nil
+	})
 }
 
 func (s *Store) Sessions(ctx context.Context, id string) (Sessions, error) {

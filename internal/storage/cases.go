@@ -67,7 +67,7 @@ const LiveCase = "00000000000000000000000000000000"
 // AppendCustody adds an entry to an open case inside tx. Later steps call it
 // in the same transaction as the action they record. For LiveCase it writes
 // an audit event instead.
-func AppendCustody(ctx context.Context, tx *sql.Tx, caseID, actor, deviceID, action string, details map[string]string, evidence []custody.Evidence, outcome string, now time.Time) (custody.Entry, error) {
+func AppendCustody(ctx context.Context, tx execer, caseID, actor, deviceID, action string, details map[string]string, evidence []custody.Evidence, outcome string, now time.Time) (custody.Entry, error) {
 	if caseID == LiveCase {
 		return custody.Entry{}, liveAudit(ctx, tx, actor, deviceID, action, details, outcome, now)
 	}
@@ -80,7 +80,8 @@ func AppendCustody(ctx context.Context, tx *sql.Tx, caseID, actor, deviceID, act
 
 // appendCustodyAnyStatus also records in closed cases: access to their
 // evidence must still be logged.
-func appendCustodyAnyStatus(ctx context.Context, tx *sql.Tx, caseID, actor, deviceID, action string, details map[string]string, evidence []custody.Evidence, outcome string, now time.Time) (custody.Entry, error) {
+func appendCustodyAnyStatus(ctx context.Context, tx execer, caseID, actor, deviceID, action string, details map[string]string, evidence []custody.Evidence, outcome string, now time.Time) (custody.Entry, error) {
+	durable(tx)
 	if caseID == LiveCase {
 		return custody.Entry{}, liveAudit(ctx, tx, actor, deviceID, action, details, outcome, now)
 	}
@@ -109,7 +110,7 @@ func appendCustodyAnyStatus(ctx context.Context, tx *sql.Tx, caseID, actor, devi
 
 // liveAudit records a case-less live response step in the audit log (no
 // details beyond the job and action; results are not kept as evidence).
-func liveAudit(ctx context.Context, tx *sql.Tx, actor, deviceID, action string, details map[string]string, outcome string, now time.Time) error {
+func liveAudit(ctx context.Context, tx execer, actor, deviceID, action string, details map[string]string, outcome string, now time.Time) error {
 	target := deviceID
 	if job := details["job"]; job != "" {
 		target += "/" + job

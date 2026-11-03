@@ -78,7 +78,7 @@ type MetricHistory struct {
 
 // Called only inside the authenticated collector write transaction. Never use
 // the retained latest snapshot: a failed report is an unavailable observation.
-func captureMetric(ctx context.Context, tx *sql.Tx, id, kind, status string, raw json.RawMessage, now time.Time) error {
+func captureMetric(ctx context.Context, tx execer, id, kind, status string, raw json.RawMessage, now time.Time) error {
 	var value any
 	if status == "ok" {
 		switch kind {

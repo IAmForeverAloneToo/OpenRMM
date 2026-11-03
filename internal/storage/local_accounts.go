@@ -25,7 +25,9 @@ func (s *Store) RecordLocalAccounts(ctx context.Context, id, fingerprint string,
 	if e != nil {
 		return e
 	}
-	return s.recordSnapshot(ctx, "device_local_accounts", id, fingerprint, report, now)
+	return s.telemetry(ctx, func(ctx context.Context, tx *telemetryTx) error {
+		return recordSnapshot(ctx, tx, "device_local_accounts", id, fingerprint, report, now)
+	})
 }
 
 func (s *Store) LocalAccounts(ctx context.Context, id string) (LocalAccounts, error) {

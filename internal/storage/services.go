@@ -21,18 +21,15 @@ type Services struct {
 // Authorization is repeated atomically at the write. Failed/disabled/unsupported
 // reports retain the last successful snapshot, so its stale state stays visible.
 func (s *Store) RecordServices(ctx context.Context, id, fingerprint string, report protocol.FeatureReport, now time.Time) error {
-	tx, err := s.tdb.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	var snapshotAt any
-	if report.Status == "ok" {
-		snapshotAt = now.Unix()
-	}
-	// The snapshot time comes back for the stored check results.
-	var stored *int64
-	err = tx.QueryRowContext(ctx, `INSERT INTO device_services(device_id,capability_version,last_status,reported_at,snapshot_json,snapshot_at)
+	return s.telemetry(ctx, func(ctx context.Context, tx *telemetryTx) error {
+		var err error
+		var snapshotAt any
+		if report.Status == "ok" {
+			snapshotAt = now.Unix()
+		}
+		// The snapshot time comes back for the stored check results.
+		var stored *int64
+		err = tx.QueryRowContext(ctx, `INSERT INTO device_services(device_id,capability_version,last_status,reported_at,snapshot_json,snapshot_at)
         SELECT id,?,?,?,?,? FROM devices WHERE id=? AND revoked_at IS NULL
         AND (fingerprint=? OR (previous_fingerprint=? AND previous_until>?))
         ON CONFLICT(device_id) DO UPDATE SET capability_version=excluded.capability_version,last_status=excluded.last_status,
@@ -40,17 +37,18 @@ func (s *Store) RecordServices(ctx context.Context, id, fingerprint string, repo
         snapshot_json=CASE WHEN excluded.last_status='ok' THEN excluded.snapshot_json ELSE device_services.snapshot_json END,
         snapshot_at=CASE WHEN excluded.last_status='ok' THEN MAX(COALESCE(device_services.snapshot_at,0),excluded.snapshot_at) ELSE device_services.snapshot_at END
         RETURNING snapshot_at`,
-		report.Capability.Version, report.Status, now.Unix(), string(report.Data), snapshotAt, id, fingerprint, fingerprint, now.Unix()).Scan(&stored)
-	if errors.Is(err, sql.ErrNoRows) {
-		return ErrAuthentication
-	}
-	if err != nil {
-		return errors.New("cannot record device services")
-	}
-	if err = captureHealth(ctx, tx, id, report, stored, now); err != nil {
-		return err
-	}
-	return tx.Commit()
+			report.Capability.Version, report.Status, now.Unix(), string(report.Data), snapshotAt, id, fingerprint, fingerprint, now.Unix()).Scan(&stored)
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrAuthentication
+		}
+		if err != nil {
+			return errors.New("cannot record device services")
+		}
+		if err = captureHealth(ctx, tx, id, report, stored, now); err != nil {
+			return err
+		}
+		return nil
+	})
 }
 
 func (s *Store) Services(ctx context.Context, id string) (Services, error) {

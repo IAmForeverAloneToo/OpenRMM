@@ -41,7 +41,7 @@ func serviceHealth(c HealthCheck, report protocol.FeatureReport) (string, bool) 
 	return "unknown", false
 }
 
-func captureHealth(ctx context.Context, tx *sql.Tx, id string, report protocol.FeatureReport, snapshotAt *int64, now time.Time) error {
+func captureHealth(ctx context.Context, tx execer, id string, report protocol.FeatureReport, snapshotAt *int64, now time.Time) error {
 	rows, e := tx.QueryContext(ctx, "SELECT "+healthColumns+" FROM health_checks WHERE device_id=? AND enabled=1", id)
 	if e != nil {
 		return e

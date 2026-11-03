@@ -49,7 +49,8 @@ func (s *Store) Administrator(ctx context.Context) (Administrator, error) {
 	return admin, nil
 }
 
-func audit(ctx context.Context, tx *sql.Tx, now time.Time, actor, action, outcome string) error {
+func audit(ctx context.Context, tx execer, now time.Time, actor, action, outcome string) error {
+	durable(tx)
 	if _, err := tx.ExecContext(ctx, "INSERT INTO audit_events (occurred_at, actor, action, outcome) VALUES (?, ?, ?, ?)", now.UTC().Format(time.RFC3339Nano), actor, action, outcome); err != nil {
 		return errors.New("cannot record audit event")
 	}

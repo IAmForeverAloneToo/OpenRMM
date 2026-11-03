@@ -27,19 +27,21 @@ func (s *Store) RecordSystemInfo(ctx context.Context, id, fingerprint string, re
 	if e != nil {
 		return e
 	}
-	if e = s.recordSnapshot(ctx, "device_system_info", id, fingerprint, report, now); e != nil || report.Status != "ok" {
-		return e
-	}
-	var v protocol.SystemInfo
-	if json.Unmarshal(report.Data, &v) != nil {
-		return errors.New("cannot persist device information")
-	}
-	d := identifiers(v)
-	// Only when this report is the stored one (not out of order).
-	if _, e = s.tdb.ExecContext(ctx, `UPDATE device_system_info SET primary_ipv4=?,addresses=?,macs=?,serial=?,manufacturer=?,model=? WHERE device_id=? AND reported_at=? AND last_status='ok'`, d.PrimaryIPv4, strings.Join(d.Addresses, ","), strings.Join(d.MACs, ","), d.Serial, d.Manufacturer, d.Model, id, now.Unix()); e != nil {
-		return errors.New("cannot persist device information")
-	}
-	return nil
+	return s.telemetry(ctx, func(ctx context.Context, tx *telemetryTx) error {
+		if e = recordSnapshot(ctx, tx, "device_system_info", id, fingerprint, report, now); e != nil || report.Status != "ok" {
+			return e
+		}
+		var v protocol.SystemInfo
+		if json.Unmarshal(report.Data, &v) != nil {
+			return errors.New("cannot persist device information")
+		}
+		d := identifiers(v)
+		// Only when this report is the stored one (not out of order).
+		if _, e = tx.ExecContext(ctx, `UPDATE device_system_info SET primary_ipv4=?,addresses=?,macs=?,serial=?,manufacturer=?,model=? WHERE device_id=? AND reported_at=? AND last_status='ok'`, d.PrimaryIPv4, strings.Join(d.Addresses, ","), strings.Join(d.MACs, ","), d.Serial, d.Manufacturer, d.Model, id, now.Unix()); e != nil {
+			return errors.New("cannot persist device information")
+		}
+		return nil
+	})
 }
 
 func (s *Store) SystemInfo(ctx context.Context, id string) (SystemInfo, error) {

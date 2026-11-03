@@ -25,19 +25,21 @@ func (s *Store) RecordSecurityStatus(ctx context.Context, id, fingerprint string
 	if e != nil {
 		return e
 	}
-	if e = s.recordSnapshot(ctx, "device_security", id, fingerprint, report, now); e != nil || report.Status != "ok" {
-		return e
-	}
-	var v protocol.SecurityStatus
-	if json.Unmarshal(report.Data, &v) != nil {
-		return errors.New("cannot persist security status")
-	}
-	bitlocker, defender := securitystatus.Summary(v)
-	// Only when this report is the stored one (not out of order).
-	if _, e = s.tdb.ExecContext(ctx, `UPDATE device_security SET bitlocker=?,defender=? WHERE device_id=? AND reported_at=? AND last_status='ok'`, bitlocker, defender, id, now.Unix()); e != nil {
-		return errors.New("cannot persist security status")
-	}
-	return nil
+	return s.telemetry(ctx, func(ctx context.Context, tx *telemetryTx) error {
+		if e = recordSnapshot(ctx, tx, "device_security", id, fingerprint, report, now); e != nil || report.Status != "ok" {
+			return e
+		}
+		var v protocol.SecurityStatus
+		if json.Unmarshal(report.Data, &v) != nil {
+			return errors.New("cannot persist security status")
+		}
+		bitlocker, defender := securitystatus.Summary(v)
+		// Only when this report is the stored one (not out of order).
+		if _, e = tx.ExecContext(ctx, `UPDATE device_security SET bitlocker=?,defender=? WHERE device_id=? AND reported_at=? AND last_status='ok'`, bitlocker, defender, id, now.Unix()); e != nil {
+			return errors.New("cannot persist security status")
+		}
+		return nil
+	})
 }
 
 func (s *Store) SecurityStatus(ctx context.Context, id string) (SecurityStatus, error) {

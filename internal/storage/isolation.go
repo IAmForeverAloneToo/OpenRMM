@@ -335,7 +335,7 @@ func (s *Store) IsolationPhases(ctx context.Context) (map[string]string, error) 
 // recordIsolation stores the isolation state a heartbeat reports and closes
 // the isolation record when the agent reports a release (by the server, the
 // timed release or the local break-glass command).
-func recordIsolation(ctx context.Context, tx *sql.Tx, device string, st protocol.IsolationState, now time.Time) error {
+func recordIsolation(ctx context.Context, tx execer, device string, st protocol.IsolationState, now time.Time) error {
 	raw, _ := json.Marshal(st)
 	if _, e := tx.ExecContext(ctx, `UPDATE devices SET isolation_json=?,isolated=? WHERE id=?`, string(raw), st.Isolated, device); e != nil {
 		return e

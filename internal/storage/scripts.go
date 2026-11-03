@@ -138,23 +138,25 @@ func (s *Store) RecordScriptSupport(ctx context.Context, id, fp string, r protoc
 	if e != nil {
 		return e
 	}
-	result, e := s.tdb.ExecContext(ctx, `INSERT INTO device_script_support(device_id,capability_version,last_status,reported_at,support_json) SELECT id,?,?,?,? FROM devices WHERE id=? AND revoked_at IS NULL AND (fingerprint=? OR(previous_fingerprint=? AND previous_until>?)) ON CONFLICT(device_id) DO UPDATE SET capability_version=excluded.capability_version,last_status=excluded.last_status,reported_at=excluded.reported_at,support_json=excluded.support_json WHERE excluded.reported_at>=device_script_support.reported_at`, r.Capability.Version, r.Status, now.Unix(), string(r.Data), id, fp, fp, now.Unix())
-	if e != nil {
-		return e
-	}
-	n, e := result.RowsAffected()
-	if e != nil {
-		return e
-	}
-	if n == 0 {
-		var found string
-		e = s.tdb.QueryRowContext(ctx, `SELECT id FROM devices WHERE id=? AND revoked_at IS NULL AND (fingerprint=? OR(previous_fingerprint=? AND previous_until>?))`, id, fp, fp, now.Unix()).Scan(&found)
-		if errors.Is(e, sql.ErrNoRows) {
-			return ErrAuthentication
+	return s.telemetry(ctx, func(ctx context.Context, tx *telemetryTx) error {
+		result, e := tx.ExecContext(ctx, `INSERT INTO device_script_support(device_id,capability_version,last_status,reported_at,support_json) SELECT id,?,?,?,? FROM devices WHERE id=? AND revoked_at IS NULL AND (fingerprint=? OR(previous_fingerprint=? AND previous_until>?)) ON CONFLICT(device_id) DO UPDATE SET capability_version=excluded.capability_version,last_status=excluded.last_status,reported_at=excluded.reported_at,support_json=excluded.support_json WHERE excluded.reported_at>=device_script_support.reported_at`, r.Capability.Version, r.Status, now.Unix(), string(r.Data), id, fp, fp, now.Unix())
+		if e != nil {
+			return e
 		}
-		return e
-	}
-	return nil
+		n, e := result.RowsAffected()
+		if e != nil {
+			return e
+		}
+		if n == 0 {
+			var found string
+			e = tx.QueryRowContext(ctx, `SELECT id FROM devices WHERE id=? AND revoked_at IS NULL AND (fingerprint=? OR(previous_fingerprint=? AND previous_until>?))`, id, fp, fp, now.Unix()).Scan(&found)
+			if errors.Is(e, sql.ErrNoRows) {
+				return ErrAuthentication
+			}
+			return e
+		}
+		return nil
+	})
 }
 func (s *Store) ScriptSupport(ctx context.Context, id string) (ScriptSupport, error) {
 	v := ScriptSupport{Status: "not_reported"}

@@ -142,7 +142,7 @@ func queueServiceAction(ctx context.Context, tx *sql.Tx, a ServiceAction, now ti
 
 	return nil
 }
-func authorizedActionDevice(ctx context.Context, tx *sql.Tx, id, fp string, now time.Time) error {
+func authorizedActionDevice(ctx context.Context, tx execer, id, fp string, now time.Time) error {
 	var v string
 	e := tx.QueryRowContext(ctx, `SELECT id FROM devices WHERE id=? AND revoked_at IS NULL AND (fingerprint=? OR (previous_fingerprint=? AND previous_until>?))`, id, fp, fp, now.Unix()).Scan(&v)
 	if e != nil {

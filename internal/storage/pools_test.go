@@ -3,9 +3,11 @@ package storage
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -86,5 +88,46 @@ func TestActiveAlertCounts(t *testing.T) {
 	}
 	if len(counts) != 1 || counts[d.ID] != (AlertCount{Active: 250, Critical: 125}) {
 		t.Fatalf("counts: %+v", counts)
+	}
+}
+
+// Telemetry writes commit in batches: a write that fails (here, a wrong
+// fingerprint) leaves the others in its batch intact, and writes after
+// Close fail rather than wait.
+func TestTelemetryBatches(t *testing.T) {
+	s, d, now := alertFixture(t)
+	ctx := context.Background()
+	hb := protocol.Heartbeat{Hostname: d.Hostname, OS: "windows", Architecture: "amd64", AgentVersion: "test"}
+	var wg sync.WaitGroup
+	var good, refused, other atomic.Int64
+	for i := range 300 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			fingerprint := d.Fingerprint
+			if i%3 == 0 {
+				fingerprint = strings.Repeat("0", 64)
+			}
+			switch e := s.RecordHeartbeat(ctx, d.ID, fingerprint, hb, now.Add(time.Duration(i)*time.Second)); {
+			case e == nil:
+				good.Add(1)
+			case errors.Is(e, ErrAuthentication):
+				refused.Add(1)
+			default:
+				other.Add(1)
+			}
+		}()
+	}
+	wg.Wait()
+	if good.Load() != 200 || refused.Load() != 100 || other.Load() != 0 {
+		t.Fatal(good.Load(), refused.Load(), other.Load())
+	}
+	var last int64
+	if e := s.rdb.QueryRow("SELECT last_contact_at FROM devices WHERE id=?", d.ID).Scan(&last); e != nil || last != now.Add(299*time.Second).Unix() {
+		t.Fatal("last contact", last, e)
+	}
+	s.Close()
+	if e := s.RecordHeartbeat(ctx, d.ID, d.Fingerprint, hb, now); !errors.Is(e, errClosed) {
+		t.Fatal("write after close:", e)
 	}
 }

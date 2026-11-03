@@ -210,7 +210,7 @@ func closeHealth(ctx context.Context, tx *sql.Tx, id, reason string, now time.Ti
 	return e
 }
 
-func cancelHealthActions(ctx context.Context, tx *sql.Tx, id string, now time.Time) error {
+func cancelHealthActions(ctx context.Context, tx execer, id string, now time.Time) error {
 	r, e := tx.ExecContext(ctx, `UPDATE service_actions SET status='cancelled',finished_at=? WHERE status='queued' AND id IN (SELECT action_id FROM health_attempts WHERE check_id=?)`, now.Unix(), id)
 	if e != nil {
 		return e

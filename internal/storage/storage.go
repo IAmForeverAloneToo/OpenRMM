@@ -31,7 +31,8 @@ var migrationFiles embed.FS
 //     (synchronous=NORMAL), for heartbeats and feature reports. A power cut or
 //     operating system crash can lose its last commits (agents report again
 //     within a minute); every commit of the writer, which shares the WAL file,
-//     makes them durable. SQLite lets one of the two write at a time;
+//     makes them durable. SQLite lets one of the two write at a time. Its
+//     writes run in batches (see telemetry);
 //   - rdb, readers: several read-only connections for hot reads (device
 //     authentication, pending work, dashboard pages), which in WAL mode never
 //     wait for a writer.
@@ -44,6 +45,10 @@ type Store struct {
 	stopCheckpoints chan struct{}
 	checkpointsDone chan struct{}
 	stopOnce        sync.Once
+	// The telemetry batches (see telemetry).
+	telemetryWrites chan telemetryWrite
+	stopTelemetry   chan struct{}
+	telemetryDone   chan struct{}
 	stmts           statements
 	directory       string
 	artifactMu      sync.Mutex
@@ -142,8 +147,10 @@ func Open(ctx context.Context, path string) (*Store, error) {
 	if err != nil {
 		return fail(err)
 	}
-	s := &Store{db: db, tdb: tdb, rdb: rdb, cdb: cdb, directory: directory, stopCheckpoints: make(chan struct{}), checkpointsDone: make(chan struct{})}
+	s := &Store{db: db, tdb: tdb, rdb: rdb, cdb: cdb, directory: directory, stopCheckpoints: make(chan struct{}), checkpointsDone: make(chan struct{}),
+		telemetryWrites: make(chan telemetryWrite), stopTelemetry: make(chan struct{}), telemetryDone: make(chan struct{})}
 	go s.checkpoint()
+	go s.writeTelemetry()
 	return s, nil
 }
 
@@ -273,8 +280,12 @@ func migrate(ctx context.Context, db *sql.DB) error {
 
 func (s *Store) Close() error {
 	s.transcripts.Wait()
-	// Close may be called more than once; the checkpointer stops once.
-	s.stopOnce.Do(func() { close(s.stopCheckpoints) })
+	// Close may be called more than once; the background work stops once.
+	s.stopOnce.Do(func() {
+		close(s.stopTelemetry)
+		close(s.stopCheckpoints)
+	})
+	<-s.telemetryDone
 	<-s.checkpointsDone
 	s.stmts.close()
 	// A last full checkpoint leaves the WAL empty.

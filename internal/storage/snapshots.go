@@ -15,7 +15,7 @@ var snapshotTables = map[string]bool{"device_local_accounts": true, "device_syst
 
 // recordSnapshot stores an already normalized report for an authorized
 // device; failed and out-of-order reports keep the last good snapshot.
-func (s *Store) recordSnapshot(ctx context.Context, table, id, fingerprint string, report protocol.FeatureReport, now time.Time) error {
+func recordSnapshot(ctx context.Context, tx execer, table, id, fingerprint string, report protocol.FeatureReport, now time.Time) error {
 	if !snapshotTables[table] {
 		return errors.New("unknown snapshot table")
 	}
@@ -23,7 +23,7 @@ func (s *Store) recordSnapshot(ctx context.Context, table, id, fingerprint strin
 	if report.Status == "ok" {
 		snapshotAt = now.Unix()
 	}
-	result, e := s.tdb.ExecContext(ctx, `INSERT INTO `+table+`(device_id,capability_version,last_status,reported_at,snapshot_json,snapshot_at)
+	result, e := tx.ExecContext(ctx, `INSERT INTO `+table+`(device_id,capability_version,last_status,reported_at,snapshot_json,snapshot_at)
  SELECT id,?,?,?,?,? FROM devices WHERE id=? AND revoked_at IS NULL AND (fingerprint=? OR (previous_fingerprint=? AND previous_until>?))
  ON CONFLICT(device_id) DO UPDATE SET capability_version=excluded.capability_version,last_status=excluded.last_status,reported_at=excluded.reported_at,
  snapshot_json=CASE WHEN excluded.last_status='ok' THEN excluded.snapshot_json ELSE `+table+`.snapshot_json END,
@@ -37,7 +37,7 @@ func (s *Store) recordSnapshot(ctx context.Context, table, id, fingerprint strin
 	} else if n == 0 {
 		// Either the device is not authorized or the report is out of order.
 		var allowed int
-		if s.tdb.QueryRowContext(ctx, `SELECT 1 FROM devices WHERE id=? AND revoked_at IS NULL AND (fingerprint=? OR (previous_fingerprint=? AND previous_until>?))`, id, fingerprint, fingerprint, now.Unix()).Scan(&allowed) != nil {
+		if tx.QueryRowContext(ctx, `SELECT 1 FROM devices WHERE id=? AND revoked_at IS NULL AND (fingerprint=? OR (previous_fingerprint=? AND previous_until>?))`, id, fingerprint, fingerprint, now.Unix()).Scan(&allowed) != nil {
 			return ErrAuthentication
 		}
 	}
