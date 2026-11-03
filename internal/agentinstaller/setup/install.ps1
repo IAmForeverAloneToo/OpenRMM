@@ -55,7 +55,12 @@ try {
         # SYSTEM-only state folder itself) and enroll as a new device; revoke
         # the old entry in OpenRMM.
         $previous = $dataRoot + '.previous-' + (Get-Date -Format 'yyyyMMddHHmmss')
-        [IO.Directory]::Move($dataRoot, $previous)
+        # Right after an uninstall the stopped agent may still hold its files
+        # for a few seconds: retry for up to 30 seconds.
+        for ($attempt = 1; ; $attempt++) {
+            try { [IO.Directory]::Move($dataRoot, $previous); break }
+            catch { if ($attempt -ge 15) { throw } ; Start-Sleep -Seconds 2 }
+        }
         Write-Output "The previous OpenRMM data folder was kept as $previous; this machine enrolls as a new device."
     }
     # The token stays in the data folder until the service has enrolled, so the

@@ -80,6 +80,13 @@ Only the latest release receives fixes, including security fixes. Pre-releases a
 
 ## Version notes
 
+### 0.4.1
+
+Agent fixes; nothing to do when updating.
+
+- **Remote desktop companions no longer pile up.** Each agent install or update left the previous `openrmm-desktop.exe` running in every signed-in session (Windows Installer moves a running file aside to replace it), so the agent started another one next to it. The agent now ends companions whose file was replaced or removed; updating to this release also ends those left over.
+- `install.cmd` no longer fails with "Access to the path ... is denied" when it runs right after the agent was uninstalled: it waits up to 30 seconds for the stopped agent to release its data folder.
+
 ### 0.4.0
 
 YARA scanning; nothing to do when updating.
