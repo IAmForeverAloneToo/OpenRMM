@@ -80,6 +80,15 @@ Only the latest release receives fixes, including security fixes. Pre-releases a
 
 ## Version notes
 
+### 0.3.1
+
+Dashboard fixes for narrow windows; nothing to do when updating.
+
+- Below 1024 px window width the sidebar shrinks to icons (labels on hover), so pages keep their width on laptops and split screens.
+- Dialogs fit the window and scroll inside: the paging of the parsed-artifact, NTFS and action viewers is no longer cut off.
+- On the case page, hashes and custody details wrap instead of widening the page.
+- The "Live" indicator no longer makes page headers wrap on and off as it ticks.
+
 ### 0.3.0
 
 Parsed artifacts; nothing to do when updating.
