@@ -246,7 +246,7 @@ func organizationTx(ctx context.Context, tx *sql.Tx, devices bool) (Organization
 	if e != nil || !devices {
 		return o, e
 	}
-	rows, e = tx.QueryContext(ctx, `SELECT d.id,d.hostname,COALESCE(o.group_id,''),COALESCE(o.policy_id,''),COALESCE(o.tags_json,'[]') FROM devices d LEFT JOIN device_organization o ON o.device_id=d.id WHERE d.revoked_at IS NULL ORDER BY d.enrolled_at DESC,d.id LIMIT 1000`)
+	rows, e = tx.QueryContext(ctx, `SELECT d.id,d.hostname,COALESCE(o.group_id,''),COALESCE(o.policy_id,''),COALESCE(o.tags_json,'[]') FROM devices d LEFT JOIN device_organization o ON o.device_id=d.id WHERE d.revoked_at IS NULL ORDER BY d.enrolled_at DESC,d.id`+fleetLimit)
 	if e != nil {
 		return o, e
 	}
@@ -268,7 +268,7 @@ func organizationTx(ctx context.Context, tx *sql.Tx, devices bool) (Organization
 	return o, e
 }
 func (s *Store) Organization(ctx context.Context) (Organization, error) {
-	tx, e := s.db.BeginTx(ctx, nil)
+	tx, e := s.rdb.BeginTx(ctx, nil)
 	if e != nil {
 		return Organization{}, e
 	}

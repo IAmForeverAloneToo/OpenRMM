@@ -21,7 +21,7 @@ var ErrBackupSettingsChanged = errors.New("the backup settings changed since the
 func (s *Store) BackupSettings(ctx context.Context) (BackupSettings, error) {
 	var b BackupSettings
 	var updated sql.NullInt64
-	if e := s.db.QueryRowContext(ctx, "SELECT enabled,hour,updated_at,revision FROM backup_settings WHERE id=1").Scan(&b.Enabled, &b.Hour, &updated, &b.Revision); e != nil {
+	if e := s.rdb.QueryRowContext(ctx, "SELECT enabled,hour,updated_at,revision FROM backup_settings WHERE id=1").Scan(&b.Enabled, &b.Hour, &updated, &b.Revision); e != nil {
 		return BackupSettings{}, errors.New("cannot read the backup settings")
 	}
 	if updated.Valid {

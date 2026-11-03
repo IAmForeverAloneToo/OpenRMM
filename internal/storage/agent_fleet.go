@@ -43,7 +43,7 @@ type AgentFleet struct {
 
 // LatestAgentRelease returns the newest usable release, or nil.
 func (s *Store) LatestAgentRelease(ctx context.Context, now time.Time) (*AgentRelease, error) {
-	rows, e := s.db.QueryContext(ctx, "SELECT "+agentReleaseColumns+" FROM agent_releases WHERE withdrawn=0 ORDER BY sequence DESC LIMIT 16")
+	rows, e := s.rdb.QueryContext(ctx, "SELECT "+agentReleaseColumns+" FROM agent_releases WHERE withdrawn=0 ORDER BY sequence DESC LIMIT 16")
 	if e != nil {
 		return nil, e
 	}
@@ -65,12 +65,12 @@ func (s *Store) AgentFleet(ctx context.Context, now time.Time, offline time.Dura
 	if e != nil {
 		return AgentFleet{}, e
 	}
-	rows, e := s.db.QueryContext(ctx, `SELECT d.id,d.hostname,COALESCE(o.group_id,''),d.agent_version,COALESCE(d.last_contact_at,0),
+	rows, e := s.rdb.QueryContext(ctx, `SELECT d.id,d.hostname,COALESCE(o.group_id,''),d.agent_version,COALESCE(d.last_contact_at,0),
  COALESCE(s.last_status,''),COALESCE(s.reported_at,0),COALESCE(s.support_json,''),
  COALESCE((SELECT j.status FROM agent_upgrade_jobs j WHERE j.device_id=d.id ORDER BY j.created_at DESC,j.id LIMIT 1),''),
  COALESCE(f.last_status,''),COALESCE(f.support_json,'')
  FROM devices d LEFT JOIN device_organization o ON o.device_id=d.id LEFT JOIN device_agent_upgrade_support s ON s.device_id=d.id LEFT JOIN device_script_support f ON f.device_id=d.id
- WHERE d.revoked_at IS NULL AND d.os='windows' AND d.architecture='amd64' ORDER BY d.hostname,d.id LIMIT 1000`)
+ WHERE d.revoked_at IS NULL AND d.os='windows' AND d.architecture='amd64' ORDER BY d.hostname,d.id`+fleetLimit)
 	if e != nil {
 		return AgentFleet{}, e
 	}

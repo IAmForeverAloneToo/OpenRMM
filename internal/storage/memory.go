@@ -21,7 +21,7 @@ type Memory struct {
 // Authorization is repeated atomically at the write. Failed/disabled/unsupported
 // reports retain the last successful snapshot, so its stale state stays visible.
 func (s *Store) RecordMemory(ctx context.Context, id, fingerprint string, report protocol.FeatureReport, now time.Time) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.tdb.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -61,7 +61,7 @@ func (s *Store) RecordMemory(ctx context.Context, id, fingerprint string, report
 func (s *Store) Memory(ctx context.Context, id string) (Memory, error) {
 	value := Memory{Capability: protocol.Capability{Name: "memory"}, Status: "not_reported"}
 	var data string
-	err := s.db.QueryRowContext(ctx, `SELECT capability_version,last_status,reported_at,snapshot_json,snapshot_at FROM device_memory WHERE device_id=?`, id).Scan(&value.Capability.Version, &value.Status, &value.ReportedAt, &data, &value.SnapshotAt)
+	err := s.rdb.QueryRowContext(ctx, `SELECT capability_version,last_status,reported_at,snapshot_json,snapshot_at FROM device_memory WHERE device_id=?`, id).Scan(&value.Capability.Version, &value.Status, &value.ReportedAt, &data, &value.SnapshotAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return value, nil
 	}

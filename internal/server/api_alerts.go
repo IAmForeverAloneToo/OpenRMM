@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -91,7 +92,13 @@ func registerAlertsAPI(mux *http.ServeMux, a *api) {
 		now := time.Now()
 		result, e1 := a.store.AlertTriage(ctx, s, f)
 		runtime, e2 := a.store.AlertRuntime(ctx)
-		states, e3 := a.store.AlertStatesForSession(ctx, s, f.Device)
+		var listed []string
+		for _, al := range result.Alerts {
+			if al.Status == "active" && !slices.Contains(listed, al.DeviceID) {
+				listed = append(listed, al.DeviceID)
+			}
+		}
+		states, e3 := a.store.AlertStatesForSession(ctx, s, listed...)
 		org, e4 := a.store.Organization(ctx)
 		if errors.Join(e1, e2, e3, e4) != nil {
 			unavailable(w)

@@ -90,7 +90,7 @@ func (s *Store) AgentRelease(ctx context.Context, id string) (AgentRelease, erro
 	if !agentupdate.Hash(id) {
 		return AgentRelease{}, ErrAgentUpgrade
 	}
-	return scanAgentRelease(s.db.QueryRowContext(ctx, "SELECT "+agentReleaseColumns+" FROM agent_releases WHERE id=?", id))
+	return scanAgentRelease(s.rdb.QueryRowContext(ctx, "SELECT "+agentReleaseColumns+" FROM agent_releases WHERE id=?", id))
 }
 
 // The caller spools an entire bounded multipart request privately before commit.
@@ -108,7 +108,7 @@ const BundledReleaseActor = "system:server-build"
 // when that exact release is already in the library, including withdrawn.
 func (s *Store) ImportBundledAgentRelease(ctx context.Context, r protocol.SignedAgentRelease, public, temp string, now time.Time) (bool, error) {
 	var existing int
-	if e := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM agent_releases WHERE id=?", agentupdate.ReleaseID(r)).Scan(&existing); e != nil {
+	if e := s.rdb.QueryRowContext(ctx, "SELECT COUNT(*) FROM agent_releases WHERE id=?", agentupdate.ReleaseID(r)).Scan(&existing); e != nil {
 		return false, e
 	}
 	if existing != 0 {

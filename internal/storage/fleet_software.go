@@ -12,7 +12,7 @@ import (
 	"github.com/IAmForeverAloneToo/OpenRMM/internal/software"
 )
 
-const FleetSoftwareDeviceLimit = 1000
+const FleetSoftwareDeviceLimit = MaxFleet
 const FleetSoftwareByteLimit = 64 * 1024 * 1024
 const FleetSoftwareExamples = 5
 
@@ -92,7 +92,7 @@ func (s *Store) FleetSoftwareForSession(ctx context.Context, v Session, f FleetS
 	}
 	rows, e := tx.QueryContext(ctx, `SELECT d.id,d.hostname,d.os,d.architecture,d.enrolled_at,d.agent_version,d.last_contact_at,COALESCE(o.group_id,''),
  COALESCE((SELECT name FROM device_groups WHERE id=o.group_id),''),COALESCE(o.tags_json,'[]'),
- COALESCE(sw.capability_version,1),COALESCE(sw.last_status,'not_reported'),COALESCE(sw.reported_at,0),sw.snapshot_at,COALESCE(sw.snapshot_json,'')`+from+` LIMIT 1000`, args...)
+ COALESCE(sw.capability_version,1),COALESCE(sw.last_status,'not_reported'),COALESCE(sw.reported_at,0),sw.snapshot_at,COALESCE(sw.snapshot_json,'')`+from+fleetLimit, args...)
 	if e != nil {
 		return nil, e
 	}

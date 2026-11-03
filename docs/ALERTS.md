@@ -206,7 +206,7 @@ Device text appears only in the quoted-printable message body, never in a header
 
 | Item | Limit |
 | --- | --- |
-| Monitored devices | Newest 1,000 active devices (a capacity warning appears if there are more) |
+| Monitored devices | Newest 5,000 active devices (a capacity warning appears if there are more) |
 | Reading queue | 10,000 small records, up to 2,000 processed per pass; overflow resets qualification |
 | Incident page size | 50 |
 | Finished incidents | 2,000 or 30 days, whichever removes them first; their delivery records go with them |

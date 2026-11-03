@@ -33,7 +33,7 @@ func auditDevice(ctx context.Context, tx *sql.Tx, now time.Time, actor, action, 
 }
 func (s *Store) DeviceAuthority(ctx context.Context) (string, error) {
 	var value string
-	err := s.db.QueryRowContext(ctx, "SELECT fingerprint FROM device_authority WHERE id=1").Scan(&value)
+	err := s.rdb.QueryRowContext(ctx, "SELECT fingerprint FROM device_authority WHERE id=1").Scan(&value)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", nil
 	}
@@ -74,7 +74,7 @@ func (s *Store) EnrollDevice(ctx context.Context, hash string, device Device, no
 	return nil
 }
 func (s *Store) Devices(ctx context.Context) ([]Device, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT id,hostname,os,architecture,enrolled_at,revoked_at,last_contact_at,agent_version FROM devices ORDER BY enrolled_at DESC,id LIMIT 1000")
+	rows, err := s.rdb.QueryContext(ctx, "SELECT id,hostname,os,architecture,enrolled_at,revoked_at,last_contact_at,agent_version FROM devices ORDER BY enrolled_at DESC,id"+fleetLimit)
 	if err != nil {
 		return nil, errors.New("cannot list devices")
 	}
@@ -94,10 +94,10 @@ func (s *Store) Devices(ctx context.Context) ([]Device, error) {
 }
 func (s *Store) ActiveDevice(ctx context.Context, id, fingerprint string, now time.Time) (Device, error) {
 	var d Device
-	err := s.db.QueryRowContext(ctx, `SELECT id,hostname,os,architecture,enrolled_at,certificate_pem,fingerprint,previous_fingerprint,previous_until FROM devices WHERE id=? AND revoked_at IS NULL AND (fingerprint=? OR (previous_fingerprint=? AND previous_until>?))`, id, fingerprint, fingerprint, now.Unix()).Scan(&d.ID, &d.Hostname, &d.OS, &d.Architecture, &d.EnrolledAt, &d.Certificate, &d.Fingerprint, &d.PreviousFingerprint, &d.PreviousUntil)
+	err := s.queryRow(ctx, `SELECT id,hostname,os,architecture,enrolled_at,certificate_pem,fingerprint,previous_fingerprint,previous_until FROM devices WHERE id=? AND revoked_at IS NULL AND (fingerprint=? OR (previous_fingerprint=? AND previous_until>?))`, id, fingerprint, fingerprint, now.Unix()).Scan(&d.ID, &d.Hostname, &d.OS, &d.Architecture, &d.EnrolledAt, &d.Certificate, &d.Fingerprint, &d.PreviousFingerprint, &d.PreviousUntil)
 	if errors.Is(err, sql.ErrNoRows) {
 		var revoked int
-		if s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM devices WHERE id=? AND revoked_at IS NOT NULL", id).Scan(&revoked) == nil && revoked > 0 {
+		if s.rdb.QueryRowContext(ctx, "SELECT COUNT(*) FROM devices WHERE id=? AND revoked_at IS NOT NULL", id).Scan(&revoked) == nil && revoked > 0 {
 			return Device{}, ErrDeviceRevoked
 		}
 		return Device{}, ErrAuthentication

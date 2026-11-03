@@ -31,7 +31,7 @@ func (s *Store) RecordProcesses(ctx context.Context, id, fingerprint string, rep
 	if report.Status == "ok" {
 		snapshotAt = now.Unix()
 	}
-	result, err := s.db.ExecContext(ctx, `INSERT INTO device_processes(device_id,capability_version,last_status,reported_at,snapshot_json,snapshot_at)
+	result, err := s.tdb.ExecContext(ctx, `INSERT INTO device_processes(device_id,capability_version,last_status,reported_at,snapshot_json,snapshot_at)
         SELECT id,?,?,?,?,? FROM devices WHERE id=? AND revoked_at IS NULL
         AND (fingerprint=? OR (previous_fingerprint=? AND previous_until>?))
         ON CONFLICT(device_id) DO UPDATE SET capability_version=excluded.capability_version,last_status=excluded.last_status,
@@ -48,7 +48,7 @@ func (s *Store) RecordProcesses(ctx context.Context, id, fingerprint string, rep
 	}
 	if count == 0 {
 		var valid string
-		err = s.db.QueryRowContext(ctx, `SELECT id FROM devices WHERE id=? AND revoked_at IS NULL AND (fingerprint=? OR (previous_fingerprint=? AND previous_until>?))`, id, fingerprint, fingerprint, now.Unix()).Scan(&valid)
+		err = s.tdb.QueryRowContext(ctx, `SELECT id FROM devices WHERE id=? AND revoked_at IS NULL AND (fingerprint=? OR (previous_fingerprint=? AND previous_until>?))`, id, fingerprint, fingerprint, now.Unix()).Scan(&valid)
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrAuthentication
 		}
@@ -63,7 +63,7 @@ func (s *Store) RecordProcesses(ctx context.Context, id, fingerprint string, rep
 func (s *Store) Processes(ctx context.Context, id string) (Processes, error) {
 	value := Processes{Capability: protocol.Capability{Name: "processes"}, Status: "not_reported"}
 	var data string
-	err := s.db.QueryRowContext(ctx, `SELECT capability_version,last_status,reported_at,snapshot_json,snapshot_at FROM device_processes WHERE device_id=?`, id).Scan(&value.Capability.Version, &value.Status, &value.ReportedAt, &data, &value.SnapshotAt)
+	err := s.rdb.QueryRowContext(ctx, `SELECT capability_version,last_status,reported_at,snapshot_json,snapshot_at FROM device_processes WHERE device_id=?`, id).Scan(&value.Capability.Version, &value.Status, &value.ReportedAt, &data, &value.SnapshotAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return value, nil
 	}

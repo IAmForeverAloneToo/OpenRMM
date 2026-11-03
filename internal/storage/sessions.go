@@ -52,7 +52,7 @@ func (s *Store) RecordSessions(ctx context.Context, id, fingerprint string, repo
 	if e != nil {
 		return e
 	}
-	tx, e := s.db.BeginTx(ctx, nil)
+	tx, e := s.tdb.BeginTx(ctx, nil)
 	if e != nil {
 		return errors.New("cannot begin sessions report")
 	}
@@ -108,7 +108,7 @@ func (s *Store) RecordSessions(ctx context.Context, id, fingerprint string, repo
 func (s *Store) Sessions(ctx context.Context, id string) (Sessions, error) {
 	v := Sessions{Capability: sessions.Capability, Status: "not_reported"}
 	var data string
-	e := s.db.QueryRowContext(ctx, `SELECT capability_version,last_status,reported_at,snapshot_json,snapshot_at FROM device_sessions WHERE device_id=?`, id).Scan(&v.Capability.Version, &v.Status, &v.ReportedAt, &data, &v.SnapshotAt)
+	e := s.rdb.QueryRowContext(ctx, `SELECT capability_version,last_status,reported_at,snapshot_json,snapshot_at FROM device_sessions WHERE device_id=?`, id).Scan(&v.Capability.Version, &v.Status, &v.ReportedAt, &data, &v.SnapshotAt)
 	if errors.Is(e, sql.ErrNoRows) {
 		return v, nil
 	}
@@ -127,7 +127,7 @@ func (s *Store) Sessions(ctx context.Context, id string) (Sessions, error) {
 // SessionHistory returns the newest observed sessions within retention.
 func (s *Store) SessionHistory(ctx context.Context, id string, now time.Time) ([]SessionRecord, error) {
 	out := []SessionRecord{}
-	rows, e := s.db.QueryContext(ctx, `SELECT id,session_json,first_seen_at,last_seen_at,ended_at FROM session_history WHERE device_id=? AND last_seen_at>? ORDER BY last_seen_at DESC,id DESC LIMIT ?`, id, now.Add(-SessionHistoryDays*24*time.Hour).Unix(), SessionHistoryPage)
+	rows, e := s.rdb.QueryContext(ctx, `SELECT id,session_json,first_seen_at,last_seen_at,ended_at FROM session_history WHERE device_id=? AND last_seen_at>? ORDER BY last_seen_at DESC,id DESC LIMIT ?`, id, now.Add(-SessionHistoryDays*24*time.Hour).Unix(), SessionHistoryPage)
 	if e != nil {
 		return nil, errors.New("cannot read session history")
 	}
@@ -146,7 +146,7 @@ func (s *Store) SessionHistory(ctx context.Context, id string, now time.Time) ([
 // SignedInUsers maps devices to the users of their active sessions, from
 // reports no older than five minutes ("DOMAIN\user", or "user").
 func (s *Store) SignedInUsers(ctx context.Context, now time.Time) (map[string][]string, error) {
-	rows, e := s.db.QueryContext(ctx, `SELECT device_id,snapshot_json FROM device_sessions WHERE last_status='ok' AND snapshot_at>?`, now.Add(-signedInFreshness).Unix())
+	rows, e := s.rdb.QueryContext(ctx, `SELECT device_id,snapshot_json FROM device_sessions WHERE last_status='ok' AND snapshot_at>?`, now.Add(-signedInFreshness).Unix())
 	if e != nil {
 		return nil, errors.New("cannot read signed-in users")
 	}

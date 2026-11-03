@@ -84,7 +84,7 @@ func (s *Store) AddEnrollmentToken(ctx context.Context, hash string, t Enrollmen
 // DeploymentTokens lists reusable tokens, newest first, including expired and
 // revoked ones within their retention.
 func (s *Store) DeploymentTokens(ctx context.Context, now time.Time) ([]EnrollmentToken, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT id,label,reusable,max_devices,used,actor,created_at,expires_at,revoked_at FROM enrollment_tokens WHERE reusable=1 AND COALESCE(revoked_at,expires_at)>? ORDER BY created_at DESC,id LIMIT 200", now.Add(-deployTokenRetention).Unix())
+	rows, err := s.rdb.QueryContext(ctx, "SELECT id,label,reusable,max_devices,used,actor,created_at,expires_at,revoked_at FROM enrollment_tokens WHERE reusable=1 AND COALESCE(revoked_at,expires_at)>? ORDER BY created_at DESC,id LIMIT 200", now.Add(-deployTokenRetention).Unix())
 	if err != nil {
 		return nil, errors.New("cannot list deployment tokens")
 	}
@@ -125,7 +125,7 @@ func (s *Store) RevokeDeploymentToken(ctx context.Context, id, actor string, now
 
 func (s *Store) InstallerSettings(ctx context.Context) (InstallerSettings, error) {
 	var v InstallerSettings
-	if err := s.db.QueryRowContext(ctx, "SELECT server_url,device_url FROM installer_settings WHERE id=1").Scan(&v.ServerURL, &v.DeviceURL); err != nil {
+	if err := s.rdb.QueryRowContext(ctx, "SELECT server_url,device_url FROM installer_settings WHERE id=1").Scan(&v.ServerURL, &v.DeviceURL); err != nil {
 		return InstallerSettings{}, errors.New("cannot read installer settings")
 	}
 	return v, nil
@@ -180,7 +180,7 @@ func (s *Store) InitializeInstallerSettings(ctx context.Context, v InstallerSett
 // enroll a device now.
 func (s *Store) EnrollmentTokenUsable(ctx context.Context, hash string, now time.Time) (bool, error) {
 	var n int
-	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM enrollment_tokens WHERE token_hash=? AND expires_at>? AND revoked_at IS NULL AND used<max_devices", hash, now.Unix()).Scan(&n); err != nil {
+	if err := s.rdb.QueryRowContext(ctx, "SELECT COUNT(*) FROM enrollment_tokens WHERE token_hash=? AND expires_at>? AND revoked_at IS NULL AND used<max_devices", hash, now.Unix()).Scan(&n); err != nil {
 		return false, errors.New("cannot read enrollment token")
 	}
 	return n > 0, nil

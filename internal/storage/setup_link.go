@@ -60,7 +60,7 @@ func (s *Store) CheckSetupLink(ctx context.Context, hash string, now time.Time) 
 	var stored string
 	var expires int64
 	var used sql.NullInt64
-	e := s.db.QueryRowContext(ctx, `SELECT token_hash,expires_at,used_at FROM setup_links WHERE id=1`).Scan(&stored, &expires, &used)
+	e := s.rdb.QueryRowContext(ctx, `SELECT token_hash,expires_at,used_at FROM setup_links WHERE id=1`).Scan(&stored, &expires, &used)
 	if errors.Is(e, sql.ErrNoRows) {
 		return ErrSetupLink
 	}

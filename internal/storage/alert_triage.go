@@ -106,7 +106,7 @@ func (s *Store) AlertTriage(ctx context.Context, v Session, f AlertFilter) (Aler
 	if f.Query != "" {
 		add("(instr(lower(a.hostname),lower(?))>0 OR instr(a.device_id,?)>0)", f.Query, f.Query)
 	}
-	tx, e := s.db.BeginTx(ctx, nil)
+	tx, e := s.rdb.BeginTx(ctx, nil)
 	if e != nil {
 		return out, e
 	}
@@ -143,7 +143,7 @@ func (s *Store) AlertIncidentForSession(ctx context.Context, v Session, id strin
 	}
 	scope, args := technicianScope(v, "a.device_id")
 	args = append([]any{id}, args...)
-	a, e := scanAlert(s.db.QueryRowContext(ctx, "SELECT "+alertColumns+" FROM alerts a WHERE a.id=? AND ("+scope+")", args...))
+	a, e := scanAlert(s.rdb.QueryRowContext(ctx, "SELECT "+alertColumns+" FROM alerts a WHERE a.id=? AND ("+scope+")", args...))
 	if errors.Is(e, sql.ErrNoRows) {
 		return Alert{}, ErrAlertNotFound
 	}

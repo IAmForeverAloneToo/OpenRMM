@@ -126,7 +126,7 @@ The list uses the last successful snapshot regardless of its age: an offline dev
 `GET /api/v1/reports/devices.csv` (the **Export CSV** button on **Devices**) is available to every account.
 
 - It exports the same devices as the Devices list: technicians get only the devices they can see; the administrator gets every device in the list, including revoked ones.
-- The on-screen filters are not applied; the export always covers the whole list (the newest 1,000 devices).
+- The on-screen filters are not applied; the export always covers the whole list (the newest 5,000 devices).
 - It takes no parameters; a request with a query string is refused with HTTP 400.
 - The file is `openrmm-devices.csv`, UTF-8, one row per device.
 

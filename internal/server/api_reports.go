@@ -108,7 +108,7 @@ func registerReportsAPI(mux *http.ServeMux, a *api) {
 		if len(ids) > 0 {
 			buckets, e := a.store.MetricSummariesForSession(r.Context(), s, ids, window)
 			if errors.Is(e, storage.ErrMetrics) {
-				apiError(w, http.StatusUnprocessableEntity, "too_large", "The report covers more than 1,000 devices. Narrow it with a group or tag.")
+				apiError(w, http.StatusUnprocessableEntity, "too_large", "The report covers more than 5,000 devices. Narrow it with a group or tag.")
 				return window, nil, nil, false
 			}
 			if e != nil {
@@ -186,7 +186,7 @@ func registerReportsAPI(mux *http.ServeMux, a *api) {
 		}
 		data, e := a.store.FleetSoftwareForSession(r.Context(), s, f)
 		if errors.Is(e, storage.ErrFleetSoftwareLimit) {
-			apiError(w, http.StatusUnprocessableEntity, "too_large", "The search covers more than 1,000 devices or 64 MiB of inventory. Narrow it with a group or tag.")
+			apiError(w, http.StatusUnprocessableEntity, "too_large", "The search covers more than 5,000 devices or 64 MiB of inventory. Narrow it with a group or tag.")
 			return f, nil, false
 		}
 		if e != nil {

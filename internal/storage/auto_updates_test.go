@@ -34,6 +34,7 @@ func TestAutomaticAgentUpdatesDefault(t *testing.T) {
 		"ALTER TABLE hunt_results DROP COLUMN yara_files",
 		"ALTER TABLE hunt_results DROP COLUMN yara_processes",
 		"ALTER TABLE hunt_results DROP COLUMN yara_unread",
+		"DROP TABLE health_current",
 		"UPDATE agent_ring_policy SET enabled=0 WHERE id=1",
 		"INSERT INTO devices(id,hostname,os,architecture,enrolled_at,certificate_pem,fingerprint) VALUES('00000000000000000000000000000001','pc','windows','amd64',1,'public','f')",
 	} {

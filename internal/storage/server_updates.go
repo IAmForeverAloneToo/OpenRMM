@@ -36,7 +36,7 @@ var ErrServerUpdate = errors.New("a server update is already in progress")
 func (s *Store) ServerUpdateSettings(ctx context.Context) (ServerUpdateSettings, error) {
 	var v ServerUpdateSettings
 	var checked sql.NullInt64
-	if err := s.db.QueryRowContext(ctx, "SELECT check_enabled,checked_at,check_error,available_json FROM server_update_settings WHERE id=1").Scan(&v.CheckEnabled, &checked, &v.CheckError, &v.Available); err != nil {
+	if err := s.rdb.QueryRowContext(ctx, "SELECT check_enabled,checked_at,check_error,available_json FROM server_update_settings WHERE id=1").Scan(&v.CheckEnabled, &checked, &v.CheckError, &v.Available); err != nil {
 		return ServerUpdateSettings{}, errors.New("cannot read server update settings")
 	}
 	if checked.Valid {
@@ -157,7 +157,7 @@ func (s *Store) ApplyServerUpdateStatus(ctx context.Context, id, phase, detail, 
 
 // ServerUpdates lists recent update requests, newest first.
 func (s *Store) ServerUpdates(ctx context.Context) ([]ServerUpdate, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT id,version,sequence,from_version,requested_by,requested_at,phase,detail,backup,finished_at FROM server_updates ORDER BY requested_at DESC,id LIMIT 20")
+	rows, err := s.rdb.QueryContext(ctx, "SELECT id,version,sequence,from_version,requested_by,requested_at,phase,detail,backup,finished_at FROM server_updates ORDER BY requested_at DESC,id LIMIT 20")
 	if err != nil {
 		return nil, errors.New("cannot list server updates")
 	}

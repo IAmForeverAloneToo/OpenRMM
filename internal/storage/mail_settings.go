@@ -32,7 +32,7 @@ func (s *Store) MailSettings(ctx context.Context) (MailSettings, error) {
 	var m MailSettings
 	var to string
 	var updated sql.NullInt64
-	e := s.db.QueryRowContext(ctx, "SELECT enabled,host,port,tls,username,password_cipher,from_address,recipients_json,server_url,updated_at,revision FROM mail_settings WHERE id=1").
+	e := s.rdb.QueryRowContext(ctx, "SELECT enabled,host,port,tls,username,password_cipher,from_address,recipients_json,server_url,updated_at,revision FROM mail_settings WHERE id=1").
 		Scan(&m.Enabled, &m.Host, &m.Port, &m.TLS, &m.Username, &m.PasswordCipher, &m.From, &to, &m.ServerURL, &updated, &m.Revision)
 	if e != nil || json.Unmarshal([]byte(to), &m.To) != nil {
 		return MailSettings{}, errors.New("cannot read the e-mail settings")

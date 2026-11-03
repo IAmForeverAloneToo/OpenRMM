@@ -40,7 +40,7 @@ The account list shows the state of each account: **Active**, **Invited**, **Inv
 - Group access follows current membership, including devices added to the group later. An individual device grant survives a move to another group.
 - Up to 100 device IDs and 100 group IDs can be stored per technician.
 - Revoked devices are never accessible, even if their IDs remain in a technician's scope.
-- Fleet lists, group selectors and aggregate alerts show only devices in scope; direct device routes enforce scope too. The fleet and monitoring lists show at most the newest 1,000 active devices.
+- Fleet lists, group selectors and aggregate alerts show only devices in scope; direct device routes enforce scope too. The fleet and monitoring lists show at most the newest 5,000 active devices.
 
 ## What every technician can see
 

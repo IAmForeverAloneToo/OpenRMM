@@ -25,7 +25,7 @@ func (s *Store) RecordUpdateSupport(ctx context.Context, id, fingerprint string,
 	if report.Status == "ok" {
 		snapshotAt = now.Unix()
 	}
-	result, err := s.db.ExecContext(ctx, `INSERT INTO device_update_support(device_id,capability_version,last_status,reported_at,snapshot_json,snapshot_at)
+	result, err := s.tdb.ExecContext(ctx, `INSERT INTO device_update_support(device_id,capability_version,last_status,reported_at,snapshot_json,snapshot_at)
         SELECT id,?,?,?,?,? FROM devices WHERE id=? AND revoked_at IS NULL
         AND (fingerprint=? OR (previous_fingerprint=? AND previous_until>?))
         ON CONFLICT(device_id) DO UPDATE SET capability_version=excluded.capability_version,last_status=excluded.last_status,
@@ -46,7 +46,7 @@ func (s *Store) RecordUpdateSupport(ctx context.Context, id, fingerprint string,
 func (s *Store) UpdateSupport(ctx context.Context, id string) (UpdateSupport, error) {
 	value := UpdateSupport{Capability: protocol.Capability{Name: "windows_updates"}, Status: "not_reported"}
 	var data string
-	err := s.db.QueryRowContext(ctx, `SELECT capability_version,last_status,reported_at,snapshot_json,snapshot_at FROM device_update_support WHERE device_id=?`, id).Scan(&value.Capability.Version, &value.Status, &value.ReportedAt, &data, &value.SnapshotAt)
+	err := s.rdb.QueryRowContext(ctx, `SELECT capability_version,last_status,reported_at,snapshot_json,snapshot_at FROM device_update_support WHERE device_id=?`, id).Scan(&value.Capability.Version, &value.Status, &value.ReportedAt, &data, &value.SnapshotAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return value, nil
 	}

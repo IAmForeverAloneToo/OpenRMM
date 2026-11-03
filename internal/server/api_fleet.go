@@ -51,18 +51,9 @@ func (a *api) visibleDevices(ctx context.Context, s storage.Session, now time.Ti
 		groupNames[g.ID] = g.Name
 		groups = append(groups, fleetGroup{g.ID, g.Name})
 	}
-	alerts, err := a.store.AlertsForSession(ctx, s, "")
+	counts, err := a.store.ActiveAlertCounts(ctx, s)
 	if err != nil {
 		return nil, nil, err
-	}
-	active, critical := map[string]int{}, map[string]int{}
-	for _, al := range alerts {
-		if al.Status == "active" {
-			active[al.DeviceID]++
-			if al.Severity == "critical" {
-				critical[al.DeviceID]++
-			}
-		}
 	}
 	out := []fleetDevice{}
 	for _, v := range list {
@@ -76,7 +67,7 @@ func (a *api) visibleDevices(ctx context.Context, s storage.Session, now time.Ti
 			v.GroupID, v.GroupName, v.Tags = d.GroupID, groupNames[d.GroupID], d.Tags
 			_, v.PolicySource = o.Effective(d)
 		}
-		out = append(out, fleetDevice{View: v, ActiveAlerts: active[v.ID], CriticalAlerts: critical[v.ID]})
+		out = append(out, fleetDevice{View: v, ActiveAlerts: counts[v.ID].Active, CriticalAlerts: counts[v.ID].Critical})
 	}
 	return out, groups, nil
 }

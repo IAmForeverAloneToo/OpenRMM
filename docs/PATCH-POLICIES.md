@@ -85,7 +85,7 @@ After a pending restart, a failed or interrupted mutation, or an uncertain outco
 | Window length | 30–240 minutes |
 | Restart deferral | 1–168 hours |
 | Run history | 2,000 runs, up to 90 days |
-| Update job queue | 1,000 active jobs (queued or dispatched, at most one per device; shared with manual Windows Update work); finished history is pruned to about 200 jobs |
+| Update job queue | 5,000 active jobs (queued or dispatched, at most one per device; shared with manual Windows Update work); finished history is pruned to about 200 jobs |
 | Window starts | Up to 100 devices every 5 seconds; a start more than a minute late is recorded as missed |
 
 Completed run history is pruned; device holds are separate durable state. A [server restore](RECOVERY.md) pauses all policies, ends unfinished runs as Unknown and keeps device holds.

@@ -37,7 +37,7 @@ func (s *Store) RecordLogons(ctx context.Context, id, fingerprint string, report
 	if e != nil {
 		return e
 	}
-	tx, e := s.db.BeginTx(ctx, nil)
+	tx, e := s.tdb.BeginTx(ctx, nil)
 	if e != nil {
 		return logonsError()
 	}
@@ -91,7 +91,7 @@ func (s *Store) RecordLogons(ctx context.Context, id, fingerprint string, report
 
 func (s *Store) LogonStatus(ctx context.Context, id string) (LogonStatus, error) {
 	v := LogonStatus{Capability: logons.Capability, Status: "not_reported"}
-	e := s.db.QueryRowContext(ctx, `SELECT capability_version,last_status,reported_at,collected_at,more FROM device_logons WHERE device_id=?`, id).Scan(&v.Capability.Version, &v.Status, &v.ReportedAt, &v.CollectedAt, &v.More)
+	e := s.rdb.QueryRowContext(ctx, `SELECT capability_version,last_status,reported_at,collected_at,more FROM device_logons WHERE device_id=?`, id).Scan(&v.Capability.Version, &v.Status, &v.ReportedAt, &v.CollectedAt, &v.More)
 	if errors.Is(e, sql.ErrNoRows) {
 		return v, nil
 	}
@@ -145,7 +145,7 @@ func (s *Store) Logons(ctx context.Context, id string, f LogonFilter, now time.T
 	}
 	q += ` ORDER BY logon_at DESC,record_id DESC LIMIT ?`
 	args = append(args, LogonHistoryPage+1)
-	rows, e := s.db.QueryContext(ctx, q, args...)
+	rows, e := s.rdb.QueryContext(ctx, q, args...)
 	if e != nil {
 		return nil, false, errors.New("cannot read logon history")
 	}

@@ -36,7 +36,7 @@ func (s *Store) RecordSystemInfo(ctx context.Context, id, fingerprint string, re
 	}
 	d := identifiers(v)
 	// Only when this report is the stored one (not out of order).
-	if _, e = s.db.ExecContext(ctx, `UPDATE device_system_info SET primary_ipv4=?,addresses=?,macs=?,serial=?,manufacturer=?,model=? WHERE device_id=? AND reported_at=? AND last_status='ok'`, d.PrimaryIPv4, strings.Join(d.Addresses, ","), strings.Join(d.MACs, ","), d.Serial, d.Manufacturer, d.Model, id, now.Unix()); e != nil {
+	if _, e = s.tdb.ExecContext(ctx, `UPDATE device_system_info SET primary_ipv4=?,addresses=?,macs=?,serial=?,manufacturer=?,model=? WHERE device_id=? AND reported_at=? AND last_status='ok'`, d.PrimaryIPv4, strings.Join(d.Addresses, ","), strings.Join(d.MACs, ","), d.Serial, d.Manufacturer, d.Model, id, now.Unix()); e != nil {
 		return errors.New("cannot persist device information")
 	}
 	return nil
@@ -115,7 +115,7 @@ func split(s string) []string {
 // DeviceIdentifiers reads the stored identifier columns of the last good
 // reports; it never decodes the reports themselves.
 func (s *Store) DeviceIdentifiers(ctx context.Context) (map[string]DeviceIdentifiers, error) {
-	rows, e := s.db.QueryContext(ctx, `SELECT device_id,primary_ipv4,addresses,macs,serial,manufacturer,model FROM device_system_info WHERE snapshot_json<>''`)
+	rows, e := s.rdb.QueryContext(ctx, `SELECT device_id,primary_ipv4,addresses,macs,serial,manufacturer,model FROM device_system_info WHERE snapshot_json<>''`)
 	if e != nil {
 		return nil, errors.New("cannot read device identifiers")
 	}

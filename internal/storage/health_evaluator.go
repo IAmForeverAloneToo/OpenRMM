@@ -41,7 +41,7 @@ func serviceHealth(c HealthCheck, report protocol.FeatureReport) (string, bool) 
 	return "unknown", false
 }
 
-func captureHealth(ctx context.Context, tx *sql.Tx, id string, report protocol.FeatureReport, now time.Time) error {
+func captureHealth(ctx context.Context, tx *sql.Tx, id string, report protocol.FeatureReport, snapshotAt *int64, now time.Time) error {
 	rows, e := tx.QueryContext(ctx, "SELECT "+healthColumns+" FROM health_checks WHERE device_id=? AND enabled=1", id)
 	if e != nil {
 		return e
@@ -65,7 +65,10 @@ func captureHealth(ctx context.Context, tx *sql.Tx, id string, report protocol.F
 		return e
 	}
 	for _, c := range checks {
-		condition, _ := serviceHealth(c, report)
+		condition, start := serviceHealth(c, report)
+		if _, e = tx.ExecContext(ctx, `INSERT INTO health_current(check_id,revision,condition,can_start,snapshot_at) VALUES(?,?,?,?,?) ON CONFLICT(check_id) DO UPDATE SET revision=excluded.revision,condition=excluded.condition,can_start=excluded.can_start,snapshot_at=excluded.snapshot_at`, c.ID, c.Revision, condition, start, snapshotAt); e != nil {
+			return e
+		}
 		if !online {
 			condition = "unknown"
 		}
@@ -94,7 +97,124 @@ func captureHealth(ctx context.Context, tx *sql.Tx, id string, report protocol.F
 	return e
 }
 
-func loadHealthState(ctx context.Context, tx *sql.Tx, id string) (alerting.State, string, error) {
+// sweepHealth holds, for one sweep, the health states and the latest
+// service results of the checks: read in two queries rather than several
+// per check, so the sweep's write transaction stays short.
+type sweepHealth struct {
+	states  map[string]healthState
+	current map[string]serviceResult
+	// queued lists the checks with a queued response action, the only ones
+	// with an action to cancel.
+	queued map[string]bool
+	stmts  map[string]*sql.Stmt
+}
+
+// exec runs a statement of the sweep, prepared once per sweep.
+func (h *sweepHealth) exec(ctx context.Context, tx *sql.Tx, q string, args ...any) error {
+	stmt, ok := h.stmts[q]
+	if !ok {
+		var e error
+		if stmt, e = tx.PrepareContext(ctx, q); e != nil {
+			return e
+		}
+		h.stmts[q] = stmt
+	}
+	_, e := stmt.ExecContext(ctx, args...)
+	return e
+}
+
+func (h *sweepHealth) close() {
+	for _, stmt := range h.stmts {
+		stmt.Close()
+	}
+}
+
+type healthState struct {
+	state   alerting.State
+	attempt string
+}
+
+// serviceResult is a check's result from its device's latest services
+// report, with that snapshot's time and the device's last contact.
+type serviceResult struct {
+	revision    int64
+	condition   string
+	start       bool
+	at, contact *int64
+}
+
+func loadSweepHealth(ctx context.Context, tx *sql.Tx) (*sweepHealth, error) {
+	h := &sweepHealth{states: map[string]healthState{}, current: map[string]serviceResult{}, queued: map[string]bool{}, stmts: map[string]*sql.Stmt{}}
+	rows, e := tx.QueryContext(ctx, "SELECT check_id,state_json,attempt_id,device_id FROM health_states")
+	if e != nil {
+		return nil, e
+	}
+	damaged := map[string]string{}
+	for rows.Next() {
+		var id, raw, device string
+		var v healthState
+		if e = rows.Scan(&id, &raw, &v.attempt, &device); e != nil {
+			rows.Close()
+			return nil, e
+		}
+		if json.Unmarshal([]byte(raw), &v.state) != nil {
+			damaged[id] = device
+			continue
+		}
+		h.states[id] = v
+	}
+	e = rows.Err()
+	rows.Close()
+	if e != nil {
+		return nil, e
+	}
+	for id, device := range damaged {
+		state, e := damagedState(ctx, tx, device, "check:"+id)
+		if e != nil {
+			return nil, e
+		}
+		h.states[id] = healthState{state: state}
+	}
+	rows, e = tx.QueryContext(ctx, `SELECT h.check_id,h.revision,h.condition,h.can_start,h.snapshot_at,d.last_contact_at FROM health_current h JOIN health_checks c ON c.id=h.check_id JOIN devices d ON d.id=c.device_id AND d.revoked_at IS NULL`)
+	if e != nil {
+		return nil, e
+	}
+	for rows.Next() {
+		var id string
+		var r serviceResult
+		if e = rows.Scan(&id, &r.revision, &r.condition, &r.start, &r.at, &r.contact); e != nil {
+			rows.Close()
+			return nil, e
+		}
+		h.current[id] = r
+	}
+	e = rows.Err()
+	rows.Close()
+	if e != nil {
+		return nil, e
+	}
+	rows, e = tx.QueryContext(ctx, `SELECT DISTINCT h.check_id FROM health_attempts h JOIN service_actions a ON a.id=h.action_id WHERE a.status='queued'`)
+	if e != nil {
+		return nil, e
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		if e = rows.Scan(&id); e != nil {
+			return nil, e
+		}
+		h.queued[id] = true
+	}
+	return h, rows.Err()
+}
+
+// loadHealthState reads a check's state, from the sweep's states when h is
+// set.
+func loadHealthState(ctx context.Context, tx *sql.Tx, h *sweepHealth, id string) (alerting.State, string, error) {
+	if h != nil {
+		v := h.states[id]
+		return v.state, v.attempt, nil
+	}
 	var state alerting.State
 	var raw, attempt, device string
 	e := tx.QueryRowContext(ctx, "SELECT state_json,attempt_id,device_id FROM health_states WHERE check_id=?", id).Scan(&raw, &attempt, &device)
@@ -117,8 +237,8 @@ func healthID() (string, error) {
 	return hex.EncodeToString(v[:]), e
 }
 
-func applyHealth(ctx context.Context, tx *sql.Tx, c HealthCheck, o alerting.Observation, now time.Time) error {
-	s, attempt, e := loadHealthState(ctx, tx, c.ID)
+func applyHealth(ctx context.Context, tx *sql.Tx, h *sweepHealth, c HealthCheck, o alerting.Observation, now time.Time) error {
+	s, attempt, e := loadHealthState(ctx, tx, h, c.ID)
 	if e != nil {
 		return e
 	}
@@ -161,9 +281,12 @@ func applyHealth(ctx context.Context, tx *sql.Tx, c HealthCheck, o alerting.Obse
 			return e
 		}
 	}
-	if next.Condition != "bad" || next.Incident == "" {
+	if (next.Condition != "bad" || next.Incident == "") && (h == nil || h.queued[c.ID]) {
 		if e = cancelHealthActions(ctx, tx, c.ID, now); e != nil {
 			return e
+		}
+		if h != nil {
+			delete(h.queued, c.ID)
 		}
 	}
 	if event != "" {
@@ -176,11 +299,36 @@ func applyHealth(ctx context.Context, tx *sql.Tx, c HealthCheck, o alerting.Obse
 		}
 	}
 	raw, _ := json.Marshal(next)
-	_, e = tx.ExecContext(ctx, `INSERT INTO health_states(check_id,device_id,state_json,attempt_id) VALUES(?,?,?,?) ON CONFLICT(check_id) DO UPDATE SET state_json=excluded.state_json,attempt_id=excluded.attempt_id`, c.ID, c.DeviceID, string(raw), attempt)
-	return e
+	const save = `INSERT INTO health_states(check_id,device_id,state_json,attempt_id) VALUES(?,?,?,?) ON CONFLICT(check_id) DO UPDATE SET state_json=excluded.state_json,attempt_id=excluded.attempt_id`
+	if h == nil {
+		_, e = tx.ExecContext(ctx, save, c.ID, c.DeviceID, string(raw), attempt)
+		return e
+	}
+	if e = h.exec(ctx, tx, save, c.ID, c.DeviceID, string(raw), attempt); e != nil {
+		return e
+	}
+	h.states[c.ID] = healthState{next, attempt}
+	return nil
 }
 
-func currentServiceHealth(ctx context.Context, tx *sql.Tx, c HealthCheck, now time.Time, offline int64) (string, bool, error) {
+// serviceFresh reports whether a services snapshot is recent enough, from a
+// device still in contact, to judge a check by.
+func serviceFresh(at, contact *int64, now time.Time, offline int64) bool {
+	return at != nil && contact != nil && *at <= now.Unix() && now.Unix()-*at < 120 && *contact <= now.Unix() && now.Unix()-*contact < offline
+}
+
+// currentServiceHealth judges a check by its device's latest services
+// snapshot: in a sweep from the result stored with that report, otherwise
+// (or for a check changed since) from the snapshot itself.
+func currentServiceHealth(ctx context.Context, tx *sql.Tx, h *sweepHealth, c HealthCheck, now time.Time, offline int64) (string, bool, error) {
+	if h != nil {
+		if r, ok := h.current[c.ID]; ok && r.revision == c.Revision {
+			if !serviceFresh(r.at, r.contact, now, offline) {
+				return "unknown", false, nil
+			}
+			return r.condition, r.start, nil
+		}
+	}
 	var data, status string
 	var version int
 	var at, contact *int64
@@ -191,7 +339,7 @@ func currentServiceHealth(ctx context.Context, tx *sql.Tx, c HealthCheck, now ti
 	if e != nil {
 		return "unknown", false, e
 	}
-	if at == nil || contact == nil || *at > now.Unix() || now.Unix()-*at >= 120 || *contact > now.Unix() || now.Unix()-*contact >= offline {
+	if !serviceFresh(at, contact, now, offline) {
 		return "unknown", false, nil
 	}
 	condition, start := serviceHealth(c, protocol.FeatureReport{Capability: protocol.Capability{Version: version}, Status: status, Data: json.RawMessage(data)})
@@ -236,12 +384,15 @@ func evaluateHealth(ctx context.Context, tx *sql.Tx, now time.Time, offline, las
 		}
 	}
 	// A revoked device never reports again: 30 days after the revocation its
-	// checks go, with their response history.
+	// checks go, with their response history (checked once an hour).
 	revokedLong := now.Add(-30 * 24 * time.Hour).Unix()
 	for _, q := range []string{
 		"DELETE FROM health_attempts WHERE check_id IN (SELECT c.id FROM health_checks c JOIN devices d ON d.id=c.device_id WHERE d.revoked_at<?)",
 		"DELETE FROM health_checks WHERE device_id IN (SELECT id FROM devices WHERE revoked_at<?) AND id NOT IN (SELECT check_id FROM health_states) AND id NOT IN (SELECT check_id FROM health_samples)",
 	} {
+		if now.Unix()/3600 == last/3600 {
+			break
+		}
 		if _, e = tx.ExecContext(ctx, q, revokedLong); e != nil {
 			return e
 		}
@@ -264,7 +415,12 @@ func evaluateHealth(ctx context.Context, tx *sql.Tx, now time.Time, offline, las
 	if e != nil {
 		return e
 	}
-	rows, e = tx.QueryContext(ctx, "SELECT seq,check_id,revision,condition,received_at FROM health_samples ORDER BY seq LIMIT 2000")
+	h, e := loadSweepHealth(ctx, tx)
+	if e != nil {
+		return e
+	}
+	defer h.close()
+	rows, e = tx.QueryContext(ctx, "SELECT seq,check_id,revision,condition,received_at FROM health_samples ORDER BY seq LIMIT 10000")
 	if e != nil {
 		return e
 	}
@@ -288,29 +444,32 @@ func evaluateHealth(ctx context.Context, tx *sql.Tx, now time.Time, offline, las
 	}
 	for _, v := range samples {
 		if c, ok := checks[v.id]; ok && c.Revision == v.revision {
-			if e = applyHealth(ctx, tx, c, alerting.Observation{Condition: v.condition, At: v.at}, now); e != nil {
+			if e = applyHealth(ctx, tx, h, c, alerting.Observation{Condition: v.condition, At: v.at}, now); e != nil {
 				return e
 			}
 		}
-		if _, e = tx.ExecContext(ctx, "DELETE FROM health_samples WHERE seq=?", v.seq); e != nil {
+	}
+	// As with alert samples: read in order, removed only here.
+	if len(samples) > 0 {
+		if _, e = tx.ExecContext(ctx, "DELETE FROM health_samples WHERE seq<=?", samples[len(samples)-1].seq); e != nil {
 			return e
 		}
 	}
 	for _, c := range checks {
-		state, _, e := loadHealthState(ctx, tx, c.ID)
+		state, _, e := loadHealthState(ctx, tx, h, c.ID)
 		if e != nil {
 			return e
 		}
-		condition, _, e := currentServiceHealth(ctx, tx, c, now, offline)
+		condition, _, e := currentServiceHealth(ctx, tx, h, c, now, offline)
 		if e != nil {
 			return e
 		}
 		if condition == "unknown" || state.LastSample > now.Unix() || now.Unix()-state.LastSample >= 120 {
-			if e = applyHealth(ctx, tx, c, alerting.Observation{Condition: "unknown", At: now.Unix()}, now); e != nil {
+			if e = applyHealth(ctx, tx, h, c, alerting.Observation{Condition: "unknown", At: now.Unix()}, now); e != nil {
 				return e
 			}
 		}
-		if e = queueHealthResponse(ctx, tx, c, now, offline); e != nil {
+		if e = queueHealthResponse(ctx, tx, h, c, now, offline); e != nil {
 			return e
 		}
 	}
@@ -320,18 +479,18 @@ func evaluateHealth(ctx context.Context, tx *sql.Tx, now time.Time, offline, las
 	return e
 }
 
-func queueHealthResponse(ctx context.Context, tx *sql.Tx, c HealthCheck, now time.Time, offline int64) error {
+func queueHealthResponse(ctx context.Context, tx *sql.Tx, h *sweepHealth, c HealthCheck, now time.Time, offline int64) error {
 	if !c.Enabled || !c.Response {
 		return nil
 	}
-	state, attempt, e := loadHealthState(ctx, tx, c.ID)
+	state, attempt, e := loadHealthState(ctx, tx, h, c.ID)
 	if e != nil {
 		return e
 	}
 	if state.Incident == "" || attempt != "" || state.Condition != "bad" || state.Samples < 2 || state.LastSample-state.Since < c.HoldSeconds || state.LastSample > now.Unix() || now.Unix()-state.LastSample >= 120 {
 		return nil
 	}
-	condition, start, e := currentServiceHealth(ctx, tx, c, now, offline)
+	condition, start, e := currentServiceHealth(ctx, tx, h, c, now, offline)
 	if e != nil {
 		return e
 	}
@@ -373,6 +532,13 @@ func queueHealthResponse(ctx context.Context, tx *sql.Tx, c HealthCheck, now tim
 	if _, e = tx.ExecContext(ctx, "UPDATE health_states SET attempt_id=? WHERE check_id=?", id, c.ID); e != nil {
 		return e
 	}
+	if h != nil {
+		if v, ok := h.states[c.ID]; ok {
+			v.attempt = id
+			h.states[c.ID] = v
+		}
+		h.queued[c.ID] = true
+	}
 	return auditDevice(ctx, tx, now, "server", "health_response_queued", c.DeviceID+":"+c.ID+":"+id, "start_once")
 }
 
@@ -393,7 +559,7 @@ func healthDispatchAllowed(ctx context.Context, tx *sql.Tx, a ServiceAction, now
 	if !c.Enabled || !c.Response || c.Revision != revision || a.Actor != "health:"+check || a.DeviceID != c.DeviceID || a.Service != c.Service || a.Action != "start" {
 		return false, nil
 	}
-	state, attempt, e := loadHealthState(ctx, tx, c.ID)
+	state, attempt, e := loadHealthState(ctx, tx, nil, c.ID)
 	if e != nil {
 		return false, e
 	}
@@ -408,12 +574,12 @@ func healthDispatchAllowed(ctx context.Context, tx *sql.Tx, a ServiceAction, now
 		return false, nil
 	}
 	var monitored int
-	if e = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM (SELECT id FROM devices WHERE revoked_at IS NULL ORDER BY enrolled_at DESC,id LIMIT 1000) WHERE id=?`, c.DeviceID).Scan(&monitored); e != nil {
+	if e = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM (SELECT id FROM devices WHERE revoked_at IS NULL ORDER BY enrolled_at DESC,id`+fleetLimit+`) WHERE id=?`, c.DeviceID).Scan(&monitored); e != nil {
 		return false, e
 	}
 	if monitored != 1 {
 		return false, nil
 	}
-	condition, start, e := currentServiceHealth(ctx, tx, c, now, offline)
+	condition, start, e := currentServiceHealth(ctx, tx, nil, c, now, offline)
 	return condition == "bad" && start, e
 }

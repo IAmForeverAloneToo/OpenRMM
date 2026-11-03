@@ -25,7 +25,7 @@ func (s *Store) RecordInventory(ctx context.Context, id, fingerprint string, rep
 	if report.Status == "ok" {
 		snapshotAt = now.Unix()
 	}
-	result, err := s.db.ExecContext(ctx, `INSERT INTO device_inventory(device_id,capability_version,last_status,reported_at,snapshot_json,snapshot_at)
+	result, err := s.tdb.ExecContext(ctx, `INSERT INTO device_inventory(device_id,capability_version,last_status,reported_at,snapshot_json,snapshot_at)
         SELECT id,?,?,?,?,? FROM devices WHERE id=? AND revoked_at IS NULL
         AND (fingerprint=? OR (previous_fingerprint=? AND previous_until>?))
         ON CONFLICT(device_id) DO UPDATE SET capability_version=excluded.capability_version,last_status=excluded.last_status,
@@ -46,7 +46,7 @@ func (s *Store) RecordInventory(ctx context.Context, id, fingerprint string, rep
 func (s *Store) Inventory(ctx context.Context, id string) (Inventory, error) {
 	value := Inventory{Capability: protocol.Capability{Name: "inventory"}, Status: "not_reported"}
 	var data string
-	err := s.db.QueryRowContext(ctx, `SELECT capability_version,last_status,reported_at,snapshot_json,snapshot_at FROM device_inventory WHERE device_id=?`, id).Scan(&value.Capability.Version, &value.Status, &value.ReportedAt, &data, &value.SnapshotAt)
+	err := s.rdb.QueryRowContext(ctx, `SELECT capability_version,last_status,reported_at,snapshot_json,snapshot_at FROM device_inventory WHERE device_id=?`, id).Scan(&value.Capability.Version, &value.Status, &value.ReportedAt, &data, &value.SnapshotAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return value, nil
 	}
@@ -64,7 +64,7 @@ func (s *Store) Inventory(ctx context.Context, id string) (Inventory, error) {
 
 func (s *Store) Device(ctx context.Context, id string) (Device, error) {
 	var d Device
-	err := s.db.QueryRowContext(ctx, `SELECT id,hostname,os,architecture,enrolled_at,revoked_at,last_contact_at,agent_version FROM devices WHERE id=?`, id).Scan(&d.ID, &d.Hostname, &d.OS, &d.Architecture, &d.EnrolledAt, &d.RevokedAt, &d.LastContactAt, &d.AgentVersion)
+	err := s.rdb.QueryRowContext(ctx, `SELECT id,hostname,os,architecture,enrolled_at,revoked_at,last_contact_at,agent_version FROM devices WHERE id=?`, id).Scan(&d.ID, &d.Hostname, &d.OS, &d.Architecture, &d.EnrolledAt, &d.RevokedAt, &d.LastContactAt, &d.AgentVersion)
 	if errors.Is(err, sql.ErrNoRows) {
 		return d, ErrAuthentication
 	}

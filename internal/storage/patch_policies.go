@@ -304,7 +304,7 @@ func patchGuardTx(ctx context.Context, tx *sql.Tx, id string) (PatchGuard, error
 	return g, e
 }
 func (s *Store) PatchGuards(ctx context.Context) ([]PatchGuard, error) {
-	rows, e := s.db.QueryContext(ctx, `SELECT g.device_id,d.hostname,g.hold,g.owner_run,g.reboot_since,g.defer_until,g.revision FROM patch_device_guards g JOIN devices d ON d.id=g.device_id ORDER BY d.hostname,g.device_id LIMIT 1000`)
+	rows, e := s.rdb.QueryContext(ctx, `SELECT g.device_id,d.hostname,g.hold,g.owner_run,g.reboot_since,g.defer_until,g.revision FROM patch_device_guards g JOIN devices d ON d.id=g.device_id ORDER BY d.hostname,g.device_id`+fleetLimit)
 	if e != nil {
 		return nil, e
 	}

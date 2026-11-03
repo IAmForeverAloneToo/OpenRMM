@@ -35,7 +35,7 @@ func iocListValid(name string, list []protocol.Indicator) bool {
 }
 
 func (s *Store) IOCLists(ctx context.Context) ([]IOCList, error) {
-	rows, e := s.db.QueryContext(ctx, `SELECT id,name,indicators_json,created_by,created_at,updated_by,updated_at FROM ioc_lists ORDER BY lower(name)`)
+	rows, e := s.rdb.QueryContext(ctx, `SELECT id,name,indicators_json,created_by,created_at,updated_by,updated_at FROM ioc_lists ORDER BY lower(name)`)
 	if e != nil {
 		return nil, e
 	}
@@ -58,7 +58,7 @@ func (s *Store) IOCLists(ctx context.Context) ([]IOCList, error) {
 func (s *Store) IOCList(ctx context.Context, id string) (IOCList, error) {
 	var l IOCList
 	var raw string
-	e := s.db.QueryRowContext(ctx, `SELECT id,name,indicators_json,created_by,created_at,updated_by,updated_at FROM ioc_lists WHERE id=?`, id).Scan(&l.ID, &l.Name, &raw, &l.CreatedBy, &l.CreatedAt, &l.UpdatedBy, &l.UpdatedAt)
+	e := s.rdb.QueryRowContext(ctx, `SELECT id,name,indicators_json,created_by,created_at,updated_by,updated_at FROM ioc_lists WHERE id=?`, id).Scan(&l.ID, &l.Name, &raw, &l.CreatedBy, &l.CreatedAt, &l.UpdatedBy, &l.UpdatedAt)
 	if errors.Is(e, sql.ErrNoRows) {
 		return l, ErrIOCList
 	}

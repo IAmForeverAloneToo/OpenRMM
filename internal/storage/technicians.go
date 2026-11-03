@@ -83,7 +83,7 @@ func scanTechnician(row interface{ Scan(...any) error }) (Technician, error) {
 	return t, e
 }
 func (s *Store) Technicians(ctx context.Context) ([]Technician, error) {
-	rows, e := s.db.QueryContext(ctx, "SELECT "+technicianColumns+" FROM technicians ORDER BY username")
+	rows, e := s.rdb.QueryContext(ctx, "SELECT "+technicianColumns+" FROM technicians ORDER BY username")
 	if e != nil {
 		return nil, e
 	}
@@ -99,10 +99,10 @@ func (s *Store) Technicians(ctx context.Context) ([]Technician, error) {
 	return result, rows.Err()
 }
 func (s *Store) TechnicianByName(ctx context.Context, name string) (Technician, error) {
-	return scanTechnician(s.db.QueryRowContext(ctx, "SELECT "+technicianColumns+" FROM technicians WHERE username=?", name))
+	return scanTechnician(s.rdb.QueryRowContext(ctx, "SELECT "+technicianColumns+" FROM technicians WHERE username=?", name))
 }
 func (s *Store) TechnicianInvitation(ctx context.Context, hash string, now time.Time) (Technician, error) {
-	return scanTechnician(s.db.QueryRowContext(ctx, "SELECT "+technicianColumns+" FROM technicians WHERE invitation_hash=? AND invitation_until>? AND enabled=1 AND confirmed=0", hash, now.Unix()))
+	return scanTechnician(s.rdb.QueryRowContext(ctx, "SELECT "+technicianColumns+" FROM technicians WHERE invitation_hash=? AND invitation_until>? AND enabled=1 AND confirmed=0", hash, now.Unix()))
 }
 func technicianName(name string) bool {
 	if len(name) < 3 || len(name) > 64 || strings.TrimSpace(name) != name {

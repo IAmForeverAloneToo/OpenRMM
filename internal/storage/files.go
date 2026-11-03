@@ -34,7 +34,7 @@ func (s *Store) RecordFileSupport(ctx context.Context, id, fp string, r protocol
 	if e != nil {
 		return e
 	}
-	tx, e := s.db.BeginTx(ctx, nil)
+	tx, e := s.tdb.BeginTx(ctx, nil)
 	if e != nil {
 		return e
 	}
@@ -51,7 +51,7 @@ func (s *Store) RecordFileSupport(ctx context.Context, id, fp string, r protocol
 func (s *Store) FileSupport(ctx context.Context, id string) (FileSupport, error) {
 	v := FileSupport{Status: "not_reported", Support: protocol.FileSupport{Roots: []protocol.FileRoot{}}}
 	var raw string
-	e := s.db.QueryRowContext(ctx, "SELECT last_status,reported_at,support_json FROM device_file_support WHERE device_id=?", id).Scan(&v.Status, &v.ReportedAt, &raw)
+	e := s.rdb.QueryRowContext(ctx, "SELECT last_status,reported_at,support_json FROM device_file_support WHERE device_id=?", id).Scan(&v.Status, &v.ReportedAt, &raw)
 	if errors.Is(e, sql.ErrNoRows) {
 		return v, nil
 	}
@@ -235,7 +235,7 @@ func (s *Store) FileJobs(ctx context.Context, v Session, device string, now time
 	}
 	scope, args := technicianScope(v, "device_id")
 	args = append([]any{device}, args...)
-	rows, e := s.db.QueryContext(ctx, "SELECT "+fileColumns+" FROM file_jobs WHERE device_id=? AND "+scope+" ORDER BY created_at DESC,id DESC LIMIT 50", args...)
+	rows, e := s.rdb.QueryContext(ctx, "SELECT "+fileColumns+" FROM file_jobs WHERE device_id=? AND "+scope+" ORDER BY created_at DESC,id DESC LIMIT 50", args...)
 	if e != nil {
 		return nil, e
 	}

@@ -92,7 +92,7 @@ func updateEligible(ctx context.Context, tx *sql.Tx, id string, now time.Time, o
 // Active (queued or dispatched) jobs are one per device at most; finished
 // history is pruned to about maxFinishedUpdates jobs.
 const (
-	maxActiveUpdates   = 1000
+	maxActiveUpdates   = MaxFleet
 	maxFinishedUpdates = 200
 )
 

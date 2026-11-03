@@ -85,7 +85,7 @@ func (s *Store) CreateScriptVersion(ctx context.Context, v ScriptVersion, now ti
 	return v, tx.Commit()
 }
 func (s *Store) ScriptVersion(ctx context.Context, id string) (ScriptVersion, error) {
-	v, e := scanScriptVersion(s.db.QueryRowContext(ctx, "SELECT "+scriptVersionColumns+" FROM script_versions WHERE id=? AND id NOT IN(SELECT mutation_runner FROM application_versions UNION ALL SELECT verification_runner FROM application_versions)", id))
+	v, e := scanScriptVersion(s.rdb.QueryRowContext(ctx, "SELECT "+scriptVersionColumns+" FROM script_versions WHERE id=? AND id NOT IN(SELECT mutation_runner FROM application_versions UNION ALL SELECT verification_runner FROM application_versions)", id))
 	if errors.Is(e, sql.ErrNoRows) {
 		return v, ErrScript
 	}
@@ -96,7 +96,7 @@ func (s *Store) ScriptVersion(ctx context.Context, id string) (ScriptVersion, er
 // (case-insensitive), for the live response run command.
 func (s *Store) ScriptNamed(ctx context.Context, name string) (string, error) {
 	var id string
-	e := s.db.QueryRowContext(ctx, "SELECT id FROM script_versions WHERE lower(json_extract(definition_json,'$.name'))=lower(?) AND version=(SELECT MAX(v.version) FROM script_versions v WHERE v.script_id=script_versions.script_id) AND id NOT IN(SELECT mutation_runner FROM application_versions UNION ALL SELECT verification_runner FROM application_versions) ORDER BY created_at DESC,id LIMIT 1", name).Scan(&id)
+	e := s.rdb.QueryRowContext(ctx, "SELECT id FROM script_versions WHERE lower(json_extract(definition_json,'$.name'))=lower(?) AND version=(SELECT MAX(v.version) FROM script_versions v WHERE v.script_id=script_versions.script_id) AND id NOT IN(SELECT mutation_runner FROM application_versions UNION ALL SELECT verification_runner FROM application_versions) ORDER BY created_at DESC,id LIMIT 1", name).Scan(&id)
 	if errors.Is(e, sql.ErrNoRows) {
 		return "", ErrScript
 	}
@@ -111,7 +111,7 @@ func (s *Store) ScriptVersions(ctx context.Context, scriptID string) ([]ScriptVe
 		query = "SELECT " + scriptVersionColumns + " FROM script_versions WHERE script_id=?" + hide + " ORDER BY version DESC LIMIT 500"
 		args = append(args, scriptID)
 	}
-	rows, e := s.db.QueryContext(ctx, query, args...)
+	rows, e := s.rdb.QueryContext(ctx, query, args...)
 	if e != nil {
 		return nil, e
 	}
@@ -138,7 +138,7 @@ func (s *Store) RecordScriptSupport(ctx context.Context, id, fp string, r protoc
 	if e != nil {
 		return e
 	}
-	result, e := s.db.ExecContext(ctx, `INSERT INTO device_script_support(device_id,capability_version,last_status,reported_at,support_json) SELECT id,?,?,?,? FROM devices WHERE id=? AND revoked_at IS NULL AND (fingerprint=? OR(previous_fingerprint=? AND previous_until>?)) ON CONFLICT(device_id) DO UPDATE SET capability_version=excluded.capability_version,last_status=excluded.last_status,reported_at=excluded.reported_at,support_json=excluded.support_json WHERE excluded.reported_at>=device_script_support.reported_at`, r.Capability.Version, r.Status, now.Unix(), string(r.Data), id, fp, fp, now.Unix())
+	result, e := s.tdb.ExecContext(ctx, `INSERT INTO device_script_support(device_id,capability_version,last_status,reported_at,support_json) SELECT id,?,?,?,? FROM devices WHERE id=? AND revoked_at IS NULL AND (fingerprint=? OR(previous_fingerprint=? AND previous_until>?)) ON CONFLICT(device_id) DO UPDATE SET capability_version=excluded.capability_version,last_status=excluded.last_status,reported_at=excluded.reported_at,support_json=excluded.support_json WHERE excluded.reported_at>=device_script_support.reported_at`, r.Capability.Version, r.Status, now.Unix(), string(r.Data), id, fp, fp, now.Unix())
 	if e != nil {
 		return e
 	}
@@ -148,7 +148,7 @@ func (s *Store) RecordScriptSupport(ctx context.Context, id, fp string, r protoc
 	}
 	if n == 0 {
 		var found string
-		e = s.db.QueryRowContext(ctx, `SELECT id FROM devices WHERE id=? AND revoked_at IS NULL AND (fingerprint=? OR(previous_fingerprint=? AND previous_until>?))`, id, fp, fp, now.Unix()).Scan(&found)
+		e = s.tdb.QueryRowContext(ctx, `SELECT id FROM devices WHERE id=? AND revoked_at IS NULL AND (fingerprint=? OR(previous_fingerprint=? AND previous_until>?))`, id, fp, fp, now.Unix()).Scan(&found)
 		if errors.Is(e, sql.ErrNoRows) {
 			return ErrAuthentication
 		}
@@ -159,7 +159,7 @@ func (s *Store) RecordScriptSupport(ctx context.Context, id, fp string, r protoc
 func (s *Store) ScriptSupport(ctx context.Context, id string) (ScriptSupport, error) {
 	v := ScriptSupport{Status: "not_reported"}
 	var raw string
-	e := s.db.QueryRowContext(ctx, "SELECT last_status,reported_at,support_json FROM device_script_support WHERE device_id=?", id).Scan(&v.Status, &v.ReportedAt, &raw)
+	e := s.rdb.QueryRowContext(ctx, "SELECT last_status,reported_at,support_json FROM device_script_support WHERE device_id=?", id).Scan(&v.Status, &v.ReportedAt, &raw)
 	if errors.Is(e, sql.ErrNoRows) {
 		return v, nil
 	}

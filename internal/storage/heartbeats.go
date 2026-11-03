@@ -14,7 +14,7 @@ import (
 // or superseding renewal cannot turn an earlier successful check into a write.
 // Only server receipt time is stored; a clock correction cannot move it back.
 func (s *Store) RecordHeartbeat(ctx context.Context, id, fingerprint string, input protocol.Heartbeat, now time.Time) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.tdb.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -54,7 +54,7 @@ func (s *Store) RecordHeartbeat(ctx context.Context, id, fingerprint string, inp
 // off by its local administrator, sorted.
 func (s *Store) FeatureLocks(ctx context.Context, id string) ([]string, error) {
 	var raw string
-	if err := s.db.QueryRowContext(ctx, "SELECT feature_locks_json FROM devices WHERE id=?", id).Scan(&raw); err != nil {
+	if err := s.rdb.QueryRowContext(ctx, "SELECT feature_locks_json FROM devices WHERE id=?", id).Scan(&raw); err != nil {
 		return nil, err
 	}
 	locks := []string{}
@@ -68,7 +68,7 @@ func (s *Store) FeatureLocks(ctx context.Context, id string) ([]string, error) {
 // (device policy, else its group's policy, else nothing), sorted.
 func (s *Store) DisabledFeatures(ctx context.Context, id string) ([]string, error) {
 	var raw string
-	err := s.db.QueryRowContext(ctx, `SELECT CASE WHEN o.policy_id IS NOT NULL THEN dp.features_json WHEN g.policy_id IS NOT NULL THEN gp.features_json ELSE '{}' END
+	err := s.queryRow(ctx, `SELECT CASE WHEN o.policy_id IS NOT NULL THEN dp.features_json WHEN g.policy_id IS NOT NULL THEN gp.features_json ELSE '{}' END
         FROM devices d LEFT JOIN device_organization o ON o.device_id=d.id LEFT JOIN monitoring_policies dp ON dp.id=o.policy_id
         LEFT JOIN device_groups g ON g.id=o.group_id LEFT JOIN monitoring_policies gp ON gp.id=g.policy_id WHERE d.id=?`, id).Scan(&raw)
 	if err != nil {
@@ -89,7 +89,7 @@ func (s *Store) DisabledFeatures(ctx context.Context, id string) ([]string, erro
 // (protocol.Heartbeat.Abilities).
 func (s *Store) HasAbility(ctx context.Context, id, ability string) bool {
 	var raw string
-	if s.db.QueryRowContext(ctx, "SELECT abilities_json FROM devices WHERE id=? AND revoked_at IS NULL", id).Scan(&raw) != nil {
+	if s.rdb.QueryRowContext(ctx, "SELECT abilities_json FROM devices WHERE id=? AND revoked_at IS NULL", id).Scan(&raw) != nil {
 		return false
 	}
 	abilities := []string{}

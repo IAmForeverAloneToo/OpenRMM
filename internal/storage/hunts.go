@@ -286,7 +286,7 @@ func (s *Store) huntTargets(ctx context.Context, devices, groups []string) ([]Or
 func (s *Store) HuntDetail(ctx context.Context, id string) (Hunt, error) {
 	h := Hunt{Problems: []HuntProblem{}, Targets: []HuntTarget{}}
 	var filter, problems string
-	e := s.db.QueryRowContext(ctx, `SELECT id,kind,case_id,actor,spec,problems_json,created_at,expires_at,cancelled_at FROM hunts WHERE id=?`, id).Scan(&h.ID, &h.Kind, &h.CaseID, &h.Actor, &filter, &problems, &h.CreatedAt, &h.ExpiresAt, &h.CancelledAt)
+	e := s.rdb.QueryRowContext(ctx, `SELECT id,kind,case_id,actor,spec,problems_json,created_at,expires_at,cancelled_at FROM hunts WHERE id=?`, id).Scan(&h.ID, &h.Kind, &h.CaseID, &h.Actor, &filter, &problems, &h.CreatedAt, &h.ExpiresAt, &h.CancelledAt)
 	if errors.Is(e, sql.ErrNoRows) {
 		return h, ErrHunt
 	}
@@ -304,7 +304,7 @@ func (s *Store) HuntDetail(ctx context.Context, id string) (Hunt, error) {
 	} else if json.Unmarshal([]byte(filter), &h.Filter) != nil {
 		return h, ErrHunt
 	}
-	rows, e := s.db.QueryContext(ctx, `SELECT j.id,j.device_id,COALESCE(d.hostname,''),j.status,j.outcome,j.finished_at,j.server_sha256,j.size,r.outcome,COALESCE(r.events,0),COALESCE(r.more,0),COALESCE(r.skipped,0),COALESCE(r.stopped,''),COALESCE(r.limit_minutes,0),COALESCE(r.yara_files,0),COALESCE(r.yara_processes,0),COALESCE(r.yara_unread,0) FROM evidence_jobs j LEFT JOIN devices d ON d.id=j.device_id LEFT JOIN hunt_results r ON r.job_id=j.id WHERE j.hunt_id=? ORDER BY d.hostname,j.id`, id)
+	rows, e := s.rdb.QueryContext(ctx, `SELECT j.id,j.device_id,COALESCE(d.hostname,''),j.status,j.outcome,j.finished_at,j.server_sha256,j.size,r.outcome,COALESCE(r.events,0),COALESCE(r.more,0),COALESCE(r.skipped,0),COALESCE(r.stopped,''),COALESCE(r.limit_minutes,0),COALESCE(r.yara_files,0),COALESCE(r.yara_processes,0),COALESCE(r.yara_unread,0) FROM evidence_jobs j LEFT JOIN devices d ON d.id=j.device_id LEFT JOIN hunt_results r ON r.job_id=j.id WHERE j.hunt_id=? ORDER BY d.hostname,j.id`, id)
 	if e != nil {
 		return h, e
 	}
@@ -361,7 +361,7 @@ func (s *Store) HuntDetail(ctx context.Context, id string) (Hunt, error) {
 
 // Hunts lists searches, newest first: all of them, or one account's.
 func (s *Store) Hunts(ctx context.Context, actor string, all bool) ([]HuntSummary, error) {
-	rows, e := s.db.QueryContext(ctx, `SELECT h.id,h.kind,h.case_id,h.actor,h.spec,h.problems_json,h.created_at,h.expires_at,h.cancelled_at,
+	rows, e := s.rdb.QueryContext(ctx, `SELECT h.id,h.kind,h.case_id,h.actor,h.spec,h.problems_json,h.created_at,h.expires_at,h.cancelled_at,
  (SELECT COUNT(*) FROM evidence_jobs j WHERE j.hunt_id=h.id),
  (SELECT COUNT(*) FROM evidence_jobs j WHERE j.hunt_id=h.id AND j.status IN ('queued','dispatched','uploading','verifying'))
  FROM hunts h WHERE ? OR h.actor=? ORDER BY h.created_at DESC,h.id LIMIT 200`, all, actor)
@@ -416,7 +416,7 @@ func (s *Store) CancelHunt(ctx context.Context, id, actor string, now time.Time)
 
 // HuntJobCase names the case of a hunt's job, for reading its result.
 func (s *Store) HuntJobCase(ctx context.Context, hunt, job string) (caseID, device string, err error) {
-	if e := s.db.QueryRowContext(ctx, `SELECT case_id,device_id FROM evidence_jobs WHERE id=? AND hunt_id=?`, job, hunt).Scan(&caseID, &device); e != nil {
+	if e := s.rdb.QueryRowContext(ctx, `SELECT case_id,device_id FROM evidence_jobs WHERE id=? AND hunt_id=?`, job, hunt).Scan(&caseID, &device); e != nil {
 		return "", "", ErrHunt
 	}
 	return caseID, device, nil

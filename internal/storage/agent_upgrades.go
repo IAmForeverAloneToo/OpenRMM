@@ -22,7 +22,7 @@ func (s *Store) RecordAgentUpgradeSupport(ctx context.Context, id, fp string, r 
 	if e != nil {
 		return e
 	}
-	tx, e := s.db.BeginTx(ctx, nil)
+	tx, e := s.tdb.BeginTx(ctx, nil)
 	if e != nil {
 		return e
 	}
@@ -39,7 +39,7 @@ func (s *Store) RecordAgentUpgradeSupport(ctx context.Context, id, fp string, r 
 func (s *Store) AgentUpgradeSupport(ctx context.Context, id string) (AgentUpgradeSupport, error) {
 	v := AgentUpgradeSupport{Status: "not_reported"}
 	var raw string
-	e := s.db.QueryRowContext(ctx, "SELECT last_status,reported_at,support_json FROM device_agent_upgrade_support WHERE device_id=?", id).Scan(&v.Status, &v.ReportedAt, &raw)
+	e := s.rdb.QueryRowContext(ctx, "SELECT last_status,reported_at,support_json FROM device_agent_upgrade_support WHERE device_id=?", id).Scan(&v.Status, &v.ReportedAt, &raw)
 	if errors.Is(e, sql.ErrNoRows) {
 		return v, nil
 	}
@@ -298,7 +298,7 @@ func (s *Store) AgentUpgradeJobs(ctx context.Context, v Session, device string, 
 	}
 	scope, args := technicianScope(v, "j.device_id")
 	args = append([]any{device, device}, args...)
-	rows, e := s.db.QueryContext(ctx, "SELECT "+agentJobColumns+" FROM agent_upgrade_jobs j JOIN devices d ON d.id=j.device_id WHERE (?='' OR j.device_id=?) AND "+scope+" ORDER BY j.created_at DESC,j.id LIMIT 200", args...)
+	rows, e := s.rdb.QueryContext(ctx, "SELECT "+agentJobColumns+" FROM agent_upgrade_jobs j JOIN devices d ON d.id=j.device_id WHERE (?='' OR j.device_id=?) AND "+scope+" ORDER BY j.created_at DESC,j.id LIMIT 200", args...)
 	if e != nil {
 		return nil, e
 	}

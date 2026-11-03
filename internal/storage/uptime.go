@@ -25,7 +25,7 @@ func (s *Store) RecordUptime(ctx context.Context, id, fingerprint string, report
 	if report.Status == "ok" {
 		snapshotAt = now.Unix()
 	}
-	result, err := s.db.ExecContext(ctx, `INSERT INTO device_uptime(device_id,capability_version,last_status,reported_at,snapshot_json,snapshot_at)
+	result, err := s.tdb.ExecContext(ctx, `INSERT INTO device_uptime(device_id,capability_version,last_status,reported_at,snapshot_json,snapshot_at)
         SELECT id,?,?,?,?,? FROM devices WHERE id=? AND revoked_at IS NULL
         AND (fingerprint=? OR (previous_fingerprint=? AND previous_until>?))
         ON CONFLICT(device_id) DO UPDATE SET capability_version=excluded.capability_version,last_status=excluded.last_status,
@@ -46,7 +46,7 @@ func (s *Store) RecordUptime(ctx context.Context, id, fingerprint string, report
 func (s *Store) Uptime(ctx context.Context, id string) (Uptime, error) {
 	value := Uptime{Capability: protocol.Capability{Name: "uptime"}, Status: "not_reported"}
 	var data string
-	err := s.db.QueryRowContext(ctx, `SELECT capability_version,last_status,reported_at,snapshot_json,snapshot_at FROM device_uptime WHERE device_id=?`, id).Scan(&value.Capability.Version, &value.Status, &value.ReportedAt, &data, &value.SnapshotAt)
+	err := s.rdb.QueryRowContext(ctx, `SELECT capability_version,last_status,reported_at,snapshot_json,snapshot_at FROM device_uptime WHERE device_id=?`, id).Scan(&value.Capability.Version, &value.Status, &value.ReportedAt, &data, &value.SnapshotAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return value, nil
 	}

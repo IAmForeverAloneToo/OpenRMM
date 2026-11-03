@@ -21,7 +21,7 @@ The history is built from the existing [CPU](CPU.md), [memory](MEMORY.md) and [d
 
 **Reports → Metrics:**
 
-- Lists every matching device within the fleet bound (the newest 1,000 active devices); narrow larger fleets with a group or tag.
+- Lists every matching device within the fleet bound (the newest 5,000 active devices); narrow larger fleets with a group or tag.
 - The CSV export contains all matching visible devices (up to 3,000 device/metric rows), including empty series.
 
 Exports use fixed file names and UTF-8 CSV. Hostname cells that could be read as spreadsheet formulas are prefixed with an apostrophe, because CSV quoting alone does not prevent formulas. Other CSV exports are the [software inventory report](SOFTWARE.md#fleet-search) and the [device list](DEVICE-INFO.md#device-csv).
@@ -51,7 +51,7 @@ How to read the numbers:
 
 - Each resolution is bounded so every active device keeps its full retention: the bound is the number of active devices times the buckets one device needs (1,728 five-minute and 2,160 hourly buckets for CPU, memory and disk), plus 10%, and at least **100,000 buckets**. Above it, the oldest buckets are removed first (ties broken in a stable device and metric order). Buckets with only unavailable observations count towards the bound. Old buckets are removed once a minute by the server's housekeeping.
 - Period starts are rounded down to UTC bucket boundaries, so the first bucket can extend slightly beyond the selected period; the current bucket is partial. Actual first and last observation times are returned.
-- A device history query returns at most 2,200 buckets. Fleet reports cover at most 1,000 devices.
+- A device history query returns at most 2,200 buckets. Fleet reports cover at most 5,000 devices.
 - Pruning runs when new buckets are created and in the server's once-a-minute housekeeping.
 - SQLite allocation, the WAL and backups can be larger than the logical retained data; the cap is not a file-size limit.
 

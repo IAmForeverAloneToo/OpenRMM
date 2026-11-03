@@ -50,7 +50,7 @@ Each device in scope gets one result:
 
 ### Fleet API
 
-`GET /api/v1/reports/software` returns every device in scope (at most 1,000) with its result. Accepted query keys:
+`GET /api/v1/reports/software` returns every device in scope (at most 5,000) with its result. Accepted query keys:
 
 | Key | Content |
 | --- | --- |
@@ -66,7 +66,7 @@ Repeated or unknown keys and malformed filters are rejected.
 
 ### Fleet search limits
 
-- Each report scans at most 1,000 authorized active devices and 64 MiB of stored snapshot JSON, with a five-second database deadline.
+- Each report scans at most 5,000 authorized active devices and 64 MiB of stored snapshot JSON, with a five-second database deadline.
 - Over-limit reports return HTTP 422 asking for a narrower group or tag; a timeout or corrupt data returns HTTP 503. No partial report or inaccurate absence result is returned.
 - Application and result filters reduce matching rows but not the scan budget; use a group or tag for that.
 

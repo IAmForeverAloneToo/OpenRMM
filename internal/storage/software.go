@@ -118,7 +118,7 @@ func (s *Store) RecordSoftware(ctx context.Context, id, fingerprint string, repo
 	if e != nil {
 		return e
 	}
-	tx, e := s.db.BeginTx(ctx, nil)
+	tx, e := s.tdb.BeginTx(ctx, nil)
 	if e != nil {
 		return errors.New("cannot begin software report")
 	}
@@ -192,7 +192,7 @@ func softwareError() error { return errors.New("cannot persist software inventor
 func (s *Store) Software(ctx context.Context, id string) (Software, error) {
 	v := Software{Capability: software.Capability, Status: "not_reported"}
 	var data string
-	e := s.db.QueryRowContext(ctx, `SELECT capability_version,last_status,reported_at,snapshot_json,snapshot_at,baseline_ready FROM device_software WHERE device_id=?`, id).Scan(&v.Capability.Version, &v.Status, &v.ReportedAt, &data, &v.SnapshotAt, &v.BaselineReady)
+	e := s.rdb.QueryRowContext(ctx, `SELECT capability_version,last_status,reported_at,snapshot_json,snapshot_at,baseline_ready FROM device_software WHERE device_id=?`, id).Scan(&v.Capability.Version, &v.Status, &v.ReportedAt, &data, &v.SnapshotAt, &v.BaselineReady)
 	if errors.Is(e, sql.ErrNoRows) {
 		return v, nil
 	}
@@ -209,7 +209,7 @@ func (s *Store) Software(ctx context.Context, id string) (Software, error) {
 }
 func (s *Store) SoftwareHistory(ctx context.Context, id string, now time.Time) ([]SoftwareChange, error) {
 	out := []SoftwareChange{}
-	rows, e := s.db.QueryContext(ctx, `SELECT id,from_at,observed_at,kind,before_json,after_json FROM software_changes WHERE device_id=? AND observed_at>? ORDER BY id DESC LIMIT ?`, id, now.Add(-SoftwareHistoryDays*24*time.Hour).Unix(), SoftwareHistoryLimit)
+	rows, e := s.rdb.QueryContext(ctx, `SELECT id,from_at,observed_at,kind,before_json,after_json FROM software_changes WHERE device_id=? AND observed_at>? ORDER BY id DESC LIMIT ?`, id, now.Add(-SoftwareHistoryDays*24*time.Hour).Unix(), SoftwareHistoryLimit)
 	if e != nil {
 		return nil, errors.New("cannot read software history")
 	}

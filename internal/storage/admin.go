@@ -39,7 +39,7 @@ type Session struct {
 
 func (s *Store) Administrator(ctx context.Context) (Administrator, error) {
 	var admin Administrator
-	err := s.db.QueryRowContext(ctx, "SELECT username, password_hash, totp_cipher, mfa_confirmed, last_totp_step, credential_version FROM administrators WHERE id=1").Scan(&admin.Username, &admin.PasswordHash, &admin.TOTPCipher, &admin.Confirmed, &admin.LastStep, &admin.Version)
+	err := s.rdb.QueryRowContext(ctx, "SELECT username, password_hash, totp_cipher, mfa_confirmed, last_totp_step, credential_version FROM administrators WHERE id=1").Scan(&admin.Username, &admin.PasswordHash, &admin.TOTPCipher, &admin.Confirmed, &admin.LastStep, &admin.Version)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Administrator{}, ErrNoAdministrator
 	}
@@ -232,7 +232,7 @@ func (s *Store) CompleteLogin(ctx context.Context, version, step int64, recovery
 
 func (s *Store) Session(ctx context.Context, tokenHash string, now time.Time) (Session, error) {
 	var session Session
-	err := s.db.QueryRowContext(ctx, `SELECT s.token_hash, a.username, s.csrf_token, s.credential_version, s.created_at, s.expires_at, s.last_seen_at
+	err := s.rdb.QueryRowContext(ctx, `SELECT s.token_hash, a.username, s.csrf_token, s.credential_version, s.created_at, s.expires_at, s.last_seen_at
         FROM sessions s JOIN administrators a ON a.id=s.administrator_id
         WHERE s.token_hash=? AND s.technician_id IS NULL AND s.credential_version=a.credential_version AND a.mfa_confirmed=1
         AND s.expires_at>? AND s.last_seen_at>?`, tokenHash, now.Unix(), now.Add(-30*time.Minute).Unix()).Scan(&session.TokenHash, &session.Username, &session.CSRF, &session.Version, &session.CreatedAt, &session.ExpiresAt, &session.LastSeenAt)

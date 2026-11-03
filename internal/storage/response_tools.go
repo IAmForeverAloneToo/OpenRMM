@@ -132,7 +132,7 @@ func (s *Store) AddTool(ctx context.Context, name, description, actor string, bo
 
 // Tools lists the tool library, newest first.
 func (s *Store) Tools(ctx context.Context) ([]ResponseTool, error) {
-	rows, e := s.db.QueryContext(ctx, `SELECT id,name,description,sha256,size,actor,created_at,withdrawn_at FROM response_tools ORDER BY created_at DESC,id LIMIT 500`)
+	rows, e := s.rdb.QueryContext(ctx, `SELECT id,name,description,sha256,size,actor,created_at,withdrawn_at FROM response_tools ORDER BY created_at DESC,id LIMIT 500`)
 	if e != nil {
 		return nil, e
 	}
@@ -205,10 +205,10 @@ func (s *Store) ResolveAction(ctx context.Context, caseID string, a protocol.Res
 		var e error
 		switch a.Source {
 		case "tool":
-			e = s.db.QueryRowContext(ctx, `SELECT name,sha256,size FROM response_tools WHERE id=? AND withdrawn_at IS NULL`, a.Ref).Scan(&a.Name, &a.SHA256, &a.Size)
+			e = s.rdb.QueryRowContext(ctx, `SELECT name,sha256,size FROM response_tools WHERE id=? AND withdrawn_at IS NULL`, a.Ref).Scan(&a.Name, &a.SHA256, &a.Size)
 		case "evidence":
 			var j EvidenceJob
-			e = s.db.QueryRowContext(ctx, `SELECT id,path,source,kind,action,server_sha256,size FROM evidence_jobs WHERE id=? AND case_id=? AND status='succeeded'`, a.Ref, caseID).Scan(&j.ID, &j.Path, &j.Source, &j.Kind, &j.Action, &j.ServerSHA256, &j.Size)
+			e = s.rdb.QueryRowContext(ctx, `SELECT id,path,source,kind,action,server_sha256,size FROM evidence_jobs WHERE id=? AND case_id=? AND status='succeeded'`, a.Ref, caseID).Scan(&j.ID, &j.Path, &j.Source, &j.Kind, &j.Action, &j.ServerSHA256, &j.Size)
 			a.Name, a.SHA256, a.Size = j.Name(), j.ServerSHA256, j.Size
 		default:
 			e = ErrEvidence
@@ -246,7 +246,7 @@ func (s *Store) DropPayload(ctx context.Context, device, fp, job string, now tim
 	// Withdrawing a tool also stops drops already handed out.
 	if a.Source == "tool" {
 		var withdrawn int
-		if e = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM response_tools WHERE id=? AND withdrawn_at IS NOT NULL`, a.Ref).Scan(&withdrawn); e != nil || withdrawn > 0 {
+		if e = s.rdb.QueryRowContext(ctx, `SELECT COUNT(*) FROM response_tools WHERE id=? AND withdrawn_at IS NOT NULL`, a.Ref).Scan(&withdrawn); e != nil || withdrawn > 0 {
 			return nil, 0, ErrEvidence
 		}
 	}
@@ -265,7 +265,7 @@ func (s *Store) DropPayload(ctx context.Context, device, fp, job string, now tim
 // withdrawn), for the live response put command.
 func (s *Store) ToolNamed(ctx context.Context, name string) (string, error) {
 	var id string
-	e := s.db.QueryRowContext(ctx, `SELECT id FROM response_tools WHERE lower(name)=lower(?) AND withdrawn_at IS NULL ORDER BY created_at DESC,id LIMIT 1`, name).Scan(&id)
+	e := s.rdb.QueryRowContext(ctx, `SELECT id FROM response_tools WHERE lower(name)=lower(?) AND withdrawn_at IS NULL ORDER BY created_at DESC,id LIMIT 1`, name).Scan(&id)
 	if e != nil {
 		return "", ErrTool
 	}
@@ -277,7 +277,7 @@ func (s *Store) ToolNamed(ctx context.Context, name string) (string, error) {
 // and name make the kill refuse a reused PID.
 func (s *Store) ListedProcess(ctx context.Context, device string, pid uint32, now time.Time) (start, name string, err error) {
 	var job, caseID, hash string
-	e := s.db.QueryRowContext(ctx, `SELECT id,case_id,server_sha256 FROM evidence_jobs WHERE device_id=? AND status='succeeded' AND action LIKE '{"kind":"processes"%' AND finished_at>=? ORDER BY finished_at DESC,id LIMIT 1`, device, now.Add(-30*time.Minute).Unix()).Scan(&job, &caseID, &hash)
+	e := s.rdb.QueryRowContext(ctx, `SELECT id,case_id,server_sha256 FROM evidence_jobs WHERE device_id=? AND status='succeeded' AND action LIKE '{"kind":"processes"%' AND finished_at>=? ORDER BY finished_at DESC,id LIMIT 1`, device, now.Add(-30*time.Minute).Unix()).Scan(&job, &caseID, &hash)
 	if e != nil {
 		return "", "", ErrEvidence
 	}

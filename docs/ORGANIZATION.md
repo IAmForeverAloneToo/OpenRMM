@@ -148,7 +148,7 @@ References from revoked devices may be cleared during deletion; those devices st
 | Monitoring policies | 100 |
 | Devices per bulk change | 100 |
 | Tags per device | 16, each up to 32 characters |
-| Organized and monitored fleet | Newest 1,000 active devices |
+| Organized and monitored fleet | Newest 5,000 active devices |
 
 The device list puts active devices first, so revoked records cannot push active devices out of the monitored fleet. Membership totals include all active members, including any beyond the monitored capacity.
 

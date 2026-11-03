@@ -86,7 +86,7 @@ const healthColumns = "id,device_id,name,kind,service_name,enabled,hold_seconds,
 const (
 	maxHealthChecks       = 2000
 	maxStoredHealthChecks = 5000
-	monitoredDevices      = "SELECT id FROM devices WHERE revoked_at IS NULL ORDER BY enrolled_at DESC,id LIMIT 1000"
+	monitoredDevices      = "SELECT id FROM devices WHERE revoked_at IS NULL ORDER BY enrolled_at DESC,id LIMIT 5000" // MaxFleet
 )
 
 func scanHealth(row interface{ Scan(...any) error }) (HealthCheck, error) {
@@ -229,7 +229,7 @@ func (s *Store) HealthChecksForSession(ctx context.Context, v Session, device st
 	scope, args := technicianScope(v, "c.device_id")
 	args = append([]any{device, device}, args...)
 	columns := "c." + strings.ReplaceAll(healthColumns, ",", ",c.")
-	rows, e := s.db.QueryContext(ctx, `SELECT `+columns+`,d.hostname,COALESCE(h.state_json,'{}'),COALESCE(h.attempt_id,''),COALESCE(g.blocked,0),COALESCE(g.last_attempt,0),(SELECT last_sweep FROM alert_runtime WHERE id=1),d.revoked_at FROM health_checks c JOIN devices d ON d.id=c.device_id LEFT JOIN health_states h ON h.check_id=c.id LEFT JOIN health_guards g ON g.device_id=c.device_id AND g.service_key=c.service_key WHERE (?='' OR c.device_id=?) AND `+scope+` ORDER BY c.created_at,c.id LIMIT 5000`, args...)
+	rows, e := s.rdb.QueryContext(ctx, `SELECT `+columns+`,d.hostname,COALESCE(h.state_json,'{}'),COALESCE(h.attempt_id,''),COALESCE(g.blocked,0),COALESCE(g.last_attempt,0),(SELECT last_sweep FROM alert_runtime WHERE id=1),d.revoked_at FROM health_checks c JOIN devices d ON d.id=c.device_id LEFT JOIN health_states h ON h.check_id=c.id LEFT JOIN health_guards g ON g.device_id=c.device_id AND g.service_key=c.service_key WHERE (?='' OR c.device_id=?) AND `+scope+` ORDER BY c.created_at,c.id LIMIT 5000`, args...)
 	if e != nil {
 		return nil, e
 	}
@@ -259,7 +259,7 @@ func (s *Store) HealthChecksForSession(ctx context.Context, v Session, device st
 func (s *Store) HealthAttemptsForSession(ctx context.Context, v Session, device string) ([]HealthAttempt, error) {
 	scope, args := technicianScope(v, "h.device_id")
 	args = append([]any{device, device}, args...)
-	rows, e := s.db.QueryContext(ctx, `SELECT action_id,check_id,incident_id,device_id,check_name,service_name,created_at,status,outcome,observed_state,finished_at FROM health_attempts h WHERE (?='' OR h.device_id=?) AND `+scope+` ORDER BY created_at DESC,action_id DESC LIMIT 100`, args...)
+	rows, e := s.rdb.QueryContext(ctx, `SELECT action_id,check_id,incident_id,device_id,check_name,service_name,created_at,status,outcome,observed_state,finished_at FROM health_attempts h WHERE (?='' OR h.device_id=?) AND `+scope+` ORDER BY created_at DESC,action_id DESC LIMIT 100`, args...)
 	if e != nil {
 		return nil, e
 	}

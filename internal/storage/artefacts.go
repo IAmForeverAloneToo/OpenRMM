@@ -232,7 +232,7 @@ func (s *Store) FailParse(ctx context.Context, t ParseTask, outcome string, now 
 // RecoverParses restarts parses that were running when the server ended,
 // and gives up on those that ended it too often.
 func (s *Store) RecoverParses(ctx context.Context, now time.Time) error {
-	rows, e := s.db.QueryContext(ctx, `SELECT p.job_id,j.case_id,j.device_id FROM artefact_parses p JOIN evidence_jobs j ON j.id=p.job_id WHERE p.status='running' AND p.attempts>=?`, parseAttempts)
+	rows, e := s.rdb.QueryContext(ctx, `SELECT p.job_id,j.case_id,j.device_id FROM artefact_parses p JOIN evidence_jobs j ON j.id=p.job_id WHERE p.status='running' AND p.attempts>=?`, parseAttempts)
 	if e != nil {
 		return e
 	}

@@ -36,7 +36,7 @@ func (s *Store) PendingWork(ctx context.Context, device string, kinds []string) 
 	if query == "" {
 		return out, nil
 	}
-	rows, e := s.db.QueryContext(ctx, query, args...)
+	rows, e := s.query(ctx, query, args...)
 	if e != nil {
 		return nil, e
 	}

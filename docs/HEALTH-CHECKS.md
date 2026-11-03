@@ -86,7 +86,7 @@ A start result does not prove recovery. The incident recovers only when fresh he
 | Trigger duration | 1–1,440 minutes |
 | Recovery duration | 1–60 minutes |
 | Cooldown | 60–10,080 minutes |
-| Monitored devices | Newest 1,000 active devices, as for built-in alerts |
+| Monitored devices | Newest 5,000 active devices, as for built-in alerts |
 | Reading queue | 10,000 readings, 2,000 processed per pass |
 | Attempt history | Newest 2,000 attempts, plus pending actions, current incidents and latest guard evidence |
 | Hard attempt cap | 10,000; new automation stops if protected evidence fills it |

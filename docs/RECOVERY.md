@@ -5,6 +5,7 @@ This page explains what an OpenRMM server backup contains, how backups are taken
 ## Contents
 
 - [What to back up](#what-to-back-up)
+- [What a power loss can lose](#what-a-power-loss-can-lose)
 - [Production installs](#production-installs)
   - [Take a backup and copy it off the machine](#take-a-backup-and-copy-it-off-the-machine)
   - [Restore](#restore)
@@ -35,6 +36,15 @@ A stopped full-volume copy, or SQLite's online backup of a running database, kee
 
 > [!IMPORTANT]
 > The server backup never contains agent private keys or the agent release signing key. Back up the signing key folder and its passphrase separately (see [RELEASE.md](RELEASE.md)), and back up Windows agent state with a Windows backup process (see [Windows agent state](#windows-agent-state)).
+
+## What a power loss can lose
+
+The database commits in two durability classes:
+
+- **Telemetry** (heartbeats and device reports such as CPU, memory, services or software) is committed without waiting for the disk. A power loss or host crash can lose the last moments of it. Devices send it again on their next report, so nothing needs repair.
+- **Everything else** (cases, evidence and custody, the audit log, administrator and technician changes, jobs, scripts, enrollment, alerts) waits until the disk confirms each commit, so a confirmed change survives a power loss. Such a commit also makes all telemetry written before it durable.
+
+A process crash (the server stopping without the host going down) loses nothing in either class.
 
 ## Production installs
 

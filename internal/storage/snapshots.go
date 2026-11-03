@@ -23,7 +23,7 @@ func (s *Store) recordSnapshot(ctx context.Context, table, id, fingerprint strin
 	if report.Status == "ok" {
 		snapshotAt = now.Unix()
 	}
-	result, e := s.db.ExecContext(ctx, `INSERT INTO `+table+`(device_id,capability_version,last_status,reported_at,snapshot_json,snapshot_at)
+	result, e := s.tdb.ExecContext(ctx, `INSERT INTO `+table+`(device_id,capability_version,last_status,reported_at,snapshot_json,snapshot_at)
  SELECT id,?,?,?,?,? FROM devices WHERE id=? AND revoked_at IS NULL AND (fingerprint=? OR (previous_fingerprint=? AND previous_until>?))
  ON CONFLICT(device_id) DO UPDATE SET capability_version=excluded.capability_version,last_status=excluded.last_status,reported_at=excluded.reported_at,
  snapshot_json=CASE WHEN excluded.last_status='ok' THEN excluded.snapshot_json ELSE `+table+`.snapshot_json END,
@@ -37,7 +37,7 @@ func (s *Store) recordSnapshot(ctx context.Context, table, id, fingerprint strin
 	} else if n == 0 {
 		// Either the device is not authorized or the report is out of order.
 		var allowed int
-		if s.db.QueryRowContext(ctx, `SELECT 1 FROM devices WHERE id=? AND revoked_at IS NULL AND (fingerprint=? OR (previous_fingerprint=? AND previous_until>?))`, id, fingerprint, fingerprint, now.Unix()).Scan(&allowed) != nil {
+		if s.tdb.QueryRowContext(ctx, `SELECT 1 FROM devices WHERE id=? AND revoked_at IS NULL AND (fingerprint=? OR (previous_fingerprint=? AND previous_until>?))`, id, fingerprint, fingerprint, now.Unix()).Scan(&allowed) != nil {
 			return ErrAuthentication
 		}
 	}
@@ -51,7 +51,7 @@ func (s *Store) readSnapshot(ctx context.Context, table, id string, capability *
 	}
 	*status = "not_reported"
 	var data string
-	e := s.db.QueryRowContext(ctx, `SELECT capability_version,last_status,reported_at,snapshot_json,snapshot_at FROM `+table+` WHERE device_id=?`, id).Scan(&capability.Version, status, reportedAt, &data, snapshotAt)
+	e := s.rdb.QueryRowContext(ctx, `SELECT capability_version,last_status,reported_at,snapshot_json,snapshot_at FROM `+table+` WHERE device_id=?`, id).Scan(&capability.Version, status, reportedAt, &data, snapshotAt)
 	if errors.Is(e, sql.ErrNoRows) {
 		*status = "not_reported"
 		return "", nil

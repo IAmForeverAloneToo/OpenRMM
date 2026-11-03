@@ -48,7 +48,7 @@ func fullTriage() TriageProfile {
 // TriageProfiles lists the built-in profile and the owner's (not withdrawn).
 func (s *Store) TriageProfiles(ctx context.Context) ([]TriageProfile, error) {
 	out := []TriageProfile{fullTriage()}
-	rows, e := s.db.QueryContext(ctx, `SELECT id,name,items,created_by,created_at FROM triage_profiles WHERE withdrawn_at IS NULL ORDER BY lower(name)`)
+	rows, e := s.rdb.QueryContext(ctx, `SELECT id,name,items,created_by,created_at FROM triage_profiles WHERE withdrawn_at IS NULL ORDER BY lower(name)`)
 	if e != nil {
 		return nil, e
 	}
@@ -74,7 +74,7 @@ func (s *Store) TriageProfileByID(ctx context.Context, id string) (TriageProfile
 	}
 	var p TriageProfile
 	var items string
-	e := s.db.QueryRowContext(ctx, `SELECT id,name,items,created_by,created_at FROM triage_profiles WHERE id=? AND withdrawn_at IS NULL`, id).Scan(&p.ID, &p.Name, &items, &p.CreatedBy, &p.CreatedAt)
+	e := s.rdb.QueryRowContext(ctx, `SELECT id,name,items,created_by,created_at FROM triage_profiles WHERE id=? AND withdrawn_at IS NULL`, id).Scan(&p.ID, &p.Name, &items, &p.CreatedBy, &p.CreatedAt)
 	if errors.Is(e, sql.ErrNoRows) {
 		return p, ErrTriage
 	}
@@ -160,7 +160,7 @@ func (s *Store) QueueTriage(ctx context.Context, caseID, deviceID, session strin
 		return "", ErrEvidence
 	}
 	var active int
-	if e := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM devices WHERE id=? AND revoked_at IS NULL`, deviceID).Scan(&active); e != nil || active != 1 {
+	if e := s.rdb.QueryRowContext(ctx, `SELECT COUNT(*) FROM devices WHERE id=? AND revoked_at IS NULL`, deviceID).Scan(&active); e != nil || active != 1 {
 		return "", ErrEvidence
 	}
 	if !s.HasAbility(ctx, deviceID, protocol.AbilityTriage) {
@@ -181,7 +181,7 @@ func (s *Store) QueueNTFS(ctx context.Context, caseID, deviceID, session string,
 		return "", ErrEvidence
 	}
 	var active int
-	if e := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM devices WHERE id=? AND revoked_at IS NULL`, deviceID).Scan(&active); e != nil || active != 1 {
+	if e := s.rdb.QueryRowContext(ctx, `SELECT COUNT(*) FROM devices WHERE id=? AND revoked_at IS NULL`, deviceID).Scan(&active); e != nil || active != 1 {
 		return "", ErrEvidence
 	}
 	if !s.HasAbility(ctx, deviceID, protocol.AbilityNTFS) {

@@ -203,7 +203,7 @@ func (s *Store) MetricHistoryForSession(ctx context.Context, v Session, id strin
 	}
 	scope, args := technicianScope(v, "metric_buckets.device_id")
 	args = append([]any{id, w.Step, w.From, w.Until, w.Until}, args...)
-	rows, e := s.db.QueryContext(ctx, `SELECT device_id,kind,bucket,valid_count,unknown_count,gap_count,sum_value/NULLIF(valid_count,0),min_value,max_value,first_at,last_at FROM metric_buckets
+	rows, e := s.rdb.QueryContext(ctx, `SELECT device_id,kind,bucket,valid_count,unknown_count,gap_count,sum_value/NULLIF(valid_count,0),min_value,max_value,first_at,last_at FROM metric_buckets
  WHERE device_id=? AND step=? AND bucket>=? AND bucket<=? AND last_at<=? AND (`+scope+`) ORDER BY kind,bucket LIMIT 2200`, args...)
 	if e != nil {
 		return out, e
@@ -224,7 +224,7 @@ func (s *Store) MetricSummaries(ctx context.Context, ids []string, w MetricWindo
 	return s.MetricSummariesForSession(ctx, Session{}, ids, w)
 }
 func (s *Store) MetricSummariesForSession(ctx context.Context, v Session, ids []string, w MetricWindow) ([]MetricBucket, error) {
-	if len(ids) > 1000 || !validMetricWindow(w) {
+	if len(ids) > MaxFleet || !validMetricWindow(w) {
 		return nil, ErrMetrics
 	}
 	tx, e := s.db.BeginTx(ctx, nil)

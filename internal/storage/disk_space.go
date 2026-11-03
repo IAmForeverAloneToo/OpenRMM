@@ -26,9 +26,9 @@ type DeviceWithDiskSpace struct {
 // Fetch the bounded fleet and latest disk state together so warning freshness
 // uses one database snapshot without one extra query per listed device.
 func (s *Store) DevicesWithDiskSpace(ctx context.Context) ([]DeviceWithDiskSpace, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT d.id,d.hostname,d.os,d.architecture,d.enrolled_at,d.revoked_at,d.last_contact_at,d.agent_version,
+	rows, err := s.rdb.QueryContext(ctx, `SELECT d.id,d.hostname,d.os,d.architecture,d.enrolled_at,d.revoked_at,d.last_contact_at,d.agent_version,
         COALESCE(s.capability_version,0),COALESCE(s.last_status,'not_reported'),COALESCE(s.reported_at,0),COALESCE(s.snapshot_json,''),s.snapshot_at
-        FROM devices d LEFT JOIN device_disk_space s ON s.device_id=d.id ORDER BY (d.revoked_at IS NOT NULL),d.enrolled_at DESC,d.id LIMIT 1000`)
+        FROM devices d LEFT JOIN device_disk_space s ON s.device_id=d.id ORDER BY (d.revoked_at IS NOT NULL),d.enrolled_at DESC,d.id`+fleetLimit)
 	if err != nil {
 		return nil, errors.New("cannot list devices with disk space")
 	}
@@ -59,7 +59,7 @@ func (s *Store) DevicesWithDiskSpace(ctx context.Context) ([]DeviceWithDiskSpace
 // Authorization is repeated atomically at the write. Failed/disabled/unsupported
 // reports retain the last successful snapshot, so its stale state stays visible.
 func (s *Store) RecordDiskSpace(ctx context.Context, id, fingerprint string, report protocol.FeatureReport, now time.Time) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.tdb.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -99,7 +99,7 @@ func (s *Store) RecordDiskSpace(ctx context.Context, id, fingerprint string, rep
 func (s *Store) DiskSpace(ctx context.Context, id string) (DiskSpace, error) {
 	value := DiskSpace{Capability: protocol.Capability{Name: "disk_space"}, Status: "not_reported"}
 	var data string
-	err := s.db.QueryRowContext(ctx, `SELECT capability_version,last_status,reported_at,snapshot_json,snapshot_at FROM device_disk_space WHERE device_id=?`, id).Scan(&value.Capability.Version, &value.Status, &value.ReportedAt, &data, &value.SnapshotAt)
+	err := s.rdb.QueryRowContext(ctx, `SELECT capability_version,last_status,reported_at,snapshot_json,snapshot_at FROM device_disk_space WHERE device_id=?`, id).Scan(&value.Capability.Version, &value.Status, &value.ReportedAt, &data, &value.SnapshotAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return value, nil
 	}

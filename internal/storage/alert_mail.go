@@ -227,7 +227,7 @@ func (s *Store) IncidentDeliveriesForSession(ctx context.Context, v Session, inc
 func (s *Store) alertDeliveriesFor(ctx context.Context, v Session, device, incident string) ([]AlertDelivery, error) {
 	scope, args := technicianScope(v, "a.device_id")
 	args = append([]any{device, device, incident, incident}, args...)
-	rows, e := s.db.QueryContext(ctx, `SELECT m.id,m.alert_id,m.event,m.status,m.created_at,m.next_attempt,m.attempts,m.finished_at,m.reason FROM alert_deliveries m JOIN alerts a ON a.id=m.alert_id WHERE (?='' OR a.device_id=?) AND (?='' OR a.id=?) AND `+scope+` ORDER BY m.id DESC LIMIT 100`, args...)
+	rows, e := s.rdb.QueryContext(ctx, `SELECT m.id,m.alert_id,m.event,m.status,m.created_at,m.next_attempt,m.attempts,m.finished_at,m.reason FROM alert_deliveries m JOIN alerts a ON a.id=m.alert_id WHERE (?='' OR a.device_id=?) AND (?='' OR a.id=?) AND `+scope+` ORDER BY m.id DESC LIMIT 100`, args...)
 	if e != nil {
 		return nil, e
 	}

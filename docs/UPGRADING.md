@@ -80,6 +80,15 @@ Only the latest release receives fixes, including security fixes. Pre-releases a
 
 ## Version notes
 
+### 0.6.0
+
+Larger fleets; nothing to do when updating. The database migrates on first start (schema 57).
+
+- **The server stays responsive with 2,000 devices and more.** Reads use their own connections, so pages no longer wait behind writes, and the alert sweep is much shorter, so device reports no longer queue behind it. Measured with 2,000 simulated devices (heartbeats every 30 s, typical reports, a health check on every device and the dashboard in use): device requests answer within 100 ms at the 99th percentile, the alert sweep takes about 150 ms, and no request fails.
+- **The fleet limit is 5,000 devices**, one documented limit for the device list, alerts, metrics, reports and agent updates (it was 1,000 in several places).
+- **Device alert badges count every active alert.** The device list and dashboard counted only the first 200 alerts, so on a fleet with more active alerts some devices showed none.
+- **Heartbeats and reports are committed without waiting for the disk**; everything else still is. A power loss can lose the last moments of telemetry, which devices send again ([RECOVERY.md](RECOVERY.md#what-a-power-loss-can-lose)).
+
 ### 0.5.0
 
 YARA modules; nothing to do when updating.

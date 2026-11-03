@@ -223,7 +223,7 @@ func (s *Store) QueueEventExport(ctx context.Context, caseID, deviceID, session,
 	}
 	// Agents that export report event logs capability version 2 or later.
 	var version int
-	if e := s.db.QueryRowContext(ctx, `SELECT capability_version FROM device_event_logs WHERE device_id=?`, deviceID).Scan(&version); e != nil || version < 2 {
+	if e := s.rdb.QueryRowContext(ctx, `SELECT capability_version FROM device_event_logs WHERE device_id=?`, deviceID).Scan(&version); e != nil || version < 2 {
 		return "", ErrEventExport
 	}
 	return s.queueJob(ctx, caseID, deviceID, "evtx", channel, query, "", session, actor, now)
@@ -276,7 +276,7 @@ func (s *Store) actionAbility(ctx context.Context, device string, a protocol.Res
 	}
 	if need != "" && !s.HasAbility(ctx, device, need) {
 		var active int
-		if e := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM devices WHERE id=? AND revoked_at IS NULL`, device).Scan(&active); e != nil || active != 1 {
+		if e := s.rdb.QueryRowContext(ctx, `SELECT COUNT(*) FROM devices WHERE id=? AND revoked_at IS NULL`, device).Scan(&active); e != nil || active != 1 {
 			return ErrEvidence
 		}
 		return ErrActionUnsupported
@@ -632,7 +632,7 @@ func (s *Store) PutEvidenceChunk(ctx context.Context, device, fp, job string, in
 		return ErrEvidence
 	}
 	var held string
-	if e = s.db.QueryRowContext(ctx, `SELECT sha256 FROM evidence_chunks WHERE job_id=? AND idx=?`, job, index).Scan(&held); e == nil {
+	if e = s.rdb.QueryRowContext(ctx, `SELECT sha256 FROM evidence_chunks WHERE job_id=? AND idx=?`, job, index).Scan(&held); e == nil {
 		if held != hash {
 			return ErrEvidence
 		}
@@ -744,7 +744,7 @@ func (s *Store) VerifyEvidence(ctx context.Context, now func() time.Time) (bool,
 	var j EvidenceJob
 	var attempts int
 	var meta string
-	e := s.db.QueryRowContext(ctx, `SELECT id,case_id,device_id,actor,path,status,size,chunk_size,resolved_path,file_modified,file_created,device_sha256,verify_attempts,source,meta_json,parent_id,action FROM evidence_jobs WHERE status='verifying' ORDER BY verify_attempts,activity_at,id LIMIT 1`).Scan(&j.ID, &j.CaseID, &j.DeviceID, &j.Actor, &j.Path, &j.Status, &j.Size, &j.ChunkSize, &j.Resolved, &j.FileModified, &j.FileCreated, &j.DeviceSHA256, &attempts, &j.Source, &meta, &j.ParentID, &j.Action)
+	e := s.rdb.QueryRowContext(ctx, `SELECT id,case_id,device_id,actor,path,status,size,chunk_size,resolved_path,file_modified,file_created,device_sha256,verify_attempts,source,meta_json,parent_id,action FROM evidence_jobs WHERE status='verifying' ORDER BY verify_attempts,activity_at,id LIMIT 1`).Scan(&j.ID, &j.CaseID, &j.DeviceID, &j.Actor, &j.Path, &j.Status, &j.Size, &j.ChunkSize, &j.Resolved, &j.FileModified, &j.FileCreated, &j.DeviceSHA256, &attempts, &j.Source, &meta, &j.ParentID, &j.Action)
 	if errors.Is(e, sql.ErrNoRows) {
 		return false, nil
 	}
@@ -1051,7 +1051,7 @@ func hashFile(ctx context.Context, path string) (string, int64, error) {
 // is re-read in its own transaction, so one that moved on is left alone.
 func (s *Store) SweepEvidence(ctx context.Context, now time.Time) error {
 	const stale = `kind='file' AND ((status IN ('queued','dispatched') AND expires_at<=?) OR (status='uploading' AND activity_at<=?))`
-	rows, e := s.db.QueryContext(ctx, `SELECT id FROM evidence_jobs WHERE `+stale, now.Unix(), now.Add(-evidenceStall).Unix())
+	rows, e := s.rdb.QueryContext(ctx, `SELECT id FROM evidence_jobs WHERE `+stale, now.Unix(), now.Add(-evidenceStall).Unix())
 	if e != nil {
 		return e
 	}
@@ -1093,7 +1093,7 @@ func (s *Store) SweepEvidence(ctx context.Context, now time.Time) error {
 
 // purgeLiveResults removes case-less live response results after 24 hours.
 func (s *Store) purgeLiveResults(ctx context.Context, now time.Time) error {
-	rows, e := s.db.QueryContext(ctx, `SELECT id FROM evidence_jobs WHERE case_id=? AND status='succeeded' AND finished_at<=?`, LiveCase, now.Add(-liveResultLife).Unix())
+	rows, e := s.rdb.QueryContext(ctx, `SELECT id FROM evidence_jobs WHERE case_id=? AND status='succeeded' AND finished_at<=?`, LiveCase, now.Add(-liveResultLife).Unix())
 	if e != nil {
 		return e
 	}
@@ -1127,7 +1127,7 @@ func (s *Store) purgeLiveResults(ctx context.Context, now time.Time) error {
 // EvidenceJobDevice names the device of a case's job (for authorization).
 func (s *Store) EvidenceJobDevice(ctx context.Context, caseID, job string) (string, error) {
 	var device string
-	if e := s.db.QueryRowContext(ctx, `SELECT device_id FROM evidence_jobs WHERE id=? AND case_id=?`, job, caseID).Scan(&device); e != nil {
+	if e := s.rdb.QueryRowContext(ctx, `SELECT device_id FROM evidence_jobs WHERE id=? AND case_id=?`, job, caseID).Scan(&device); e != nil {
 		return "", ErrEvidence
 	}
 	return device, nil
@@ -1197,14 +1197,14 @@ func (s *Store) SessionJobs(ctx context.Context, session, actor string) ([]Evide
 // SessionJobCase names the case (LiveCase without one) and device of a job
 // the actor started in a session.
 func (s *Store) SessionJobCase(ctx context.Context, session, actor, job string) (caseID, device string, err error) {
-	if e := s.db.QueryRowContext(ctx, `SELECT case_id,device_id FROM evidence_jobs WHERE id=? AND session_id=? AND actor=?`, job, session, actor).Scan(&caseID, &device); e != nil {
+	if e := s.rdb.QueryRowContext(ctx, `SELECT case_id,device_id FROM evidence_jobs WHERE id=? AND session_id=? AND actor=?`, job, session, actor).Scan(&caseID, &device); e != nil {
 		return "", "", ErrEvidence
 	}
 	return caseID, device, nil
 }
 
 func (s *Store) listJobs(ctx context.Context, where string, args ...any) ([]EvidenceJob, error) {
-	rows, e := s.db.QueryContext(ctx, `SELECT j.id,j.case_id,j.device_id,COALESCE(d.hostname,''),j.actor,j.path,j.status,j.outcome,j.chunk_size,j.size,(SELECT COUNT(*) FROM evidence_chunks c WHERE c.job_id=j.id),j.resolved_path,j.file_modified,j.file_created,j.device_sha256,j.server_sha256,j.created_at,j.finished_at,j.kind,j.source,j.meta_json,j.parent_id,j.action,j.query,
+	rows, e := s.rdb.QueryContext(ctx, `SELECT j.id,j.case_id,j.device_id,COALESCE(d.hostname,''),j.actor,j.path,j.status,j.outcome,j.chunk_size,j.size,(SELECT COUNT(*) FROM evidence_chunks c WHERE c.job_id=j.id),j.resolved_path,j.file_modified,j.file_created,j.device_sha256,j.server_sha256,j.created_at,j.finished_at,j.kind,j.source,j.meta_json,j.parent_id,j.action,j.query,
  COALESCE(p.status,''),COALESCE(p.outcome,''),COALESCE(p.parser,0),COALESCE(p.size,0),COALESCE(p.tables_json,'[]'),p.finished_at
  FROM evidence_jobs j LEFT JOIN devices d ON d.id=j.device_id LEFT JOIN artefact_parses p ON p.job_id=j.id WHERE `+where+` ORDER BY j.created_at DESC,j.id LIMIT 500`, args...)
 	if e != nil {

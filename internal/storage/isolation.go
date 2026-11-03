@@ -70,7 +70,7 @@ func ReleaseCode() (string, error) {
 // IsolationAllow is the effective policy's isolation allow list.
 func (s *Store) IsolationAllow(ctx context.Context, id string) ([]string, error) {
 	var raw string
-	err := s.db.QueryRowContext(ctx, `SELECT CASE WHEN o.policy_id IS NOT NULL THEN dp.isolation_allow_json WHEN g.policy_id IS NOT NULL THEN gp.isolation_allow_json ELSE '[]' END
+	err := s.rdb.QueryRowContext(ctx, `SELECT CASE WHEN o.policy_id IS NOT NULL THEN dp.isolation_allow_json WHEN g.policy_id IS NOT NULL THEN gp.isolation_allow_json ELSE '[]' END
         FROM devices d LEFT JOIN device_organization o ON o.device_id=d.id LEFT JOIN monitoring_policies dp ON dp.id=o.policy_id
         LEFT JOIN device_groups g ON g.id=o.group_id LEFT JOIN monitoring_policies gp ON gp.id=g.policy_id WHERE d.id=?`, id).Scan(&raw)
 	if err != nil {
@@ -206,7 +206,7 @@ func (s *Store) ReleaseDevice(ctx context.Context, device, actor string, now tim
 		return Isolation{}, e
 	}
 	var isolated int
-	_ = s.db.QueryRowContext(ctx, `SELECT isolated FROM devices WHERE id=?`, device).Scan(&isolated)
+	_ = s.rdb.QueryRowContext(ctx, `SELECT isolated FROM devices WHERE id=?`, device).Scan(&isolated)
 	if cur.ID == "" || cur.ReleasedAt != nil && isolated == 0 {
 		return Isolation{}, ErrNotIsolated
 	}
@@ -214,7 +214,7 @@ func (s *Store) ReleaseDevice(ctx context.Context, device, actor string, now tim
 		// A release under way is not repeated; one that did not get through
 		// (expired while the device was offline, refused, unknown) is.
 		var status string
-		_ = s.db.QueryRowContext(ctx, `SELECT status FROM evidence_jobs WHERE id=?`, cur.ReleaseJob).Scan(&status)
+		_ = s.rdb.QueryRowContext(ctx, `SELECT status FROM evidence_jobs WHERE id=?`, cur.ReleaseJob).Scan(&status)
 		if status == "queued" || status == "dispatched" || status == "uploading" || status == "verifying" || status == "succeeded" && isolated == 0 {
 			return cur, nil
 		}
@@ -270,7 +270,7 @@ func (s *Store) DeviceIsolation(ctx context.Context, device string) (Isolation, 
 	}
 	var allow string
 	var isolated int
-	e := s.db.QueryRowContext(ctx, `SELECT i.id,i.device_id,i.case_id,i.actor,i.code,i.allow_json,i.release_after,i.isolate_job,i.release_job,i.requested_at,i.isolated_at,i.release_requested_at,i.release_actor,i.released_at,i.release_reason,d.isolated
+	e := s.rdb.QueryRowContext(ctx, `SELECT i.id,i.device_id,i.case_id,i.actor,i.code,i.allow_json,i.release_after,i.isolate_job,i.release_job,i.requested_at,i.isolated_at,i.release_requested_at,i.release_actor,i.released_at,i.release_reason,d.isolated
  FROM device_isolations i JOIN devices d ON d.id=i.device_id WHERE i.device_id=? ORDER BY i.released_at IS NULL DESC,i.requested_at DESC,i.rowid DESC LIMIT 1`, device).Scan(&v.ID, &v.DeviceID, &v.CaseID, &v.Actor, &v.Code, &allow, &v.ReleaseAfter, &v.IsolateJob, &v.ReleaseJob, &v.RequestedAt, &v.IsolatedAt, &v.ReleaseRequestedAt, &v.ReleaseActor, &v.ReleasedAt, &v.ReleaseReason, &isolated)
 	if errors.Is(e, sql.ErrNoRows) {
 		return v, nil
@@ -310,7 +310,7 @@ func (s *Store) IsolationPhases(ctx context.Context) (map[string]string, error) 
 		}
 		_ = tx.Rollback()
 	}
-	rows, e := s.db.QueryContext(ctx, `SELECT d.id,d.isolated,(SELECT COUNT(*) FROM device_isolations i WHERE i.device_id=d.id AND i.released_at IS NULL),
+	rows, e := s.rdb.QueryContext(ctx, `SELECT d.id,d.isolated,(SELECT COUNT(*) FROM device_isolations i WHERE i.device_id=d.id AND i.released_at IS NULL),
  (SELECT COUNT(*) FROM device_isolations i WHERE i.device_id=d.id AND i.released_at IS NULL AND i.release_requested_at IS NOT NULL)
  FROM devices d WHERE d.isolated=1 OR EXISTS (SELECT 1 FROM device_isolations i WHERE i.device_id=d.id AND i.released_at IS NULL)`)
 	if e != nil {
@@ -373,7 +373,7 @@ func recordIsolation(ctx context.Context, tx *sql.Tx, device string, st protocol
 func (s *Store) ReportedIsolation(ctx context.Context, device string) (protocol.IsolationState, error) {
 	var raw string
 	var v protocol.IsolationState
-	if e := s.db.QueryRowContext(ctx, `SELECT isolation_json FROM devices WHERE id=?`, device).Scan(&raw); e != nil {
+	if e := s.rdb.QueryRowContext(ctx, `SELECT isolation_json FROM devices WHERE id=?`, device).Scan(&raw); e != nil {
 		return v, e
 	}
 	if raw != "" && (json.Unmarshal([]byte(raw), &v) != nil || !v.Valid()) {

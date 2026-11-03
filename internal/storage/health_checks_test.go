@@ -441,3 +441,52 @@ func TestHealthChecksMayMonitorButNotStartOpenRMMServices(t *testing.T) {
 		t.Fatal("ordinary service response refused")
 	}
 }
+
+// A sweep judges checks by the result stored with the latest services
+// report; a check changed since that report is judged from the snapshot.
+func TestHealthCurrentResult(t *testing.T) {
+	s, d, c, now := healthFixture(t, true)
+	ctx := context.Background()
+	healthReport(t, s, d, now, "stopped", true)
+	judge := func(c HealthCheck) (string, bool) {
+		t.Helper()
+		tx, e := s.db.BeginTx(ctx, nil)
+		if e != nil {
+			t.Fatal(e)
+		}
+		defer tx.Rollback()
+		h, e := loadSweepHealth(ctx, tx)
+		if e != nil {
+			t.Fatal(e)
+		}
+		condition, start, e := currentServiceHealth(ctx, tx, h, c, now.Add(time.Second), 120)
+		if e != nil {
+			t.Fatal(e)
+		}
+		return condition, start
+	}
+	if condition, start := judge(c); condition != "bad" || !start {
+		t.Fatal("stored result", condition, start)
+	}
+	// The stored result is used as is: the snapshot is not read again.
+	if _, e := s.db.Exec("UPDATE device_services SET snapshot_json='{}'"); e != nil {
+		t.Fatal(e)
+	}
+	if condition, _ := judge(c); condition != "bad" {
+		t.Fatal("snapshot read again", condition)
+	}
+	c.Revision++
+	if condition, _ := judge(c); condition != "unknown" {
+		t.Fatal("changed check judged by an old result", condition)
+	}
+	// Stale snapshots stay unknown either way.
+	for _, q := range []string{"UPDATE device_services SET snapshot_at=snapshot_at-300", "UPDATE health_current SET snapshot_at=snapshot_at-300"} {
+		if _, e := s.db.Exec(q); e != nil {
+			t.Fatal(e)
+		}
+	}
+	c.Revision--
+	if condition, _ := judge(c); condition != "unknown" {
+		t.Fatal("stale snapshot", condition)
+	}
+}

@@ -88,7 +88,7 @@ func scanYaraSet(row interface{ Scan(...any) error }, withSource bool) (YaraRule
 
 // YaraRuleSets lists the sets in use, without their rules.
 func (s *Store) YaraRuleSets(ctx context.Context) ([]YaraRuleSet, error) {
-	rows, e := s.db.QueryContext(ctx, `SELECT `+yaraSetColumns+` FROM yara_rule_sets s JOIN yara_rule_versions v ON v.set_id=s.id AND v.version=s.version WHERE s.withdrawn_at IS NULL ORDER BY lower(s.name)`)
+	rows, e := s.rdb.QueryContext(ctx, `SELECT `+yaraSetColumns+` FROM yara_rule_sets s JOIN yara_rule_versions v ON v.set_id=s.id AND v.version=s.version WHERE s.withdrawn_at IS NULL ORDER BY lower(s.name)`)
 	if e != nil {
 		return nil, e
 	}
@@ -106,7 +106,7 @@ func (s *Store) YaraRuleSets(ctx context.Context) ([]YaraRuleSet, error) {
 
 // YaraRuleSet reads a set in use with its current rules.
 func (s *Store) YaraRuleSet(ctx context.Context, id string) (YaraRuleSet, error) {
-	r, e := scanYaraSet(s.db.QueryRowContext(ctx, `SELECT `+yaraSetColumns+`,v.source FROM yara_rule_sets s JOIN yara_rule_versions v ON v.set_id=s.id AND v.version=s.version WHERE s.id=? AND s.withdrawn_at IS NULL`, id), true)
+	r, e := scanYaraSet(s.rdb.QueryRowContext(ctx, `SELECT `+yaraSetColumns+`,v.source FROM yara_rule_sets s JOIN yara_rule_versions v ON v.set_id=s.id AND v.version=s.version WHERE s.id=? AND s.withdrawn_at IS NULL`, id), true)
 	if errors.Is(e, sql.ErrNoRows) {
 		return r, ErrYaraSet
 	}
@@ -117,7 +117,7 @@ func (s *Store) YaraRuleSet(ctx context.Context, id string) (YaraRuleSet, error)
 // console.
 func (s *Store) YaraRuleSetNamed(ctx context.Context, name string) (YaraRuleSet, error) {
 	var id string
-	if e := s.db.QueryRowContext(ctx, `SELECT id FROM yara_rule_sets WHERE lower(name)=lower(?) AND withdrawn_at IS NULL`, strings.TrimSpace(name)).Scan(&id); e != nil {
+	if e := s.rdb.QueryRowContext(ctx, `SELECT id FROM yara_rule_sets WHERE lower(name)=lower(?) AND withdrawn_at IS NULL`, strings.TrimSpace(name)).Scan(&id); e != nil {
 		return YaraRuleSet{}, ErrYaraSet
 	}
 	return s.YaraRuleSet(ctx, id)

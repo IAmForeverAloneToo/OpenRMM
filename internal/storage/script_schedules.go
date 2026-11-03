@@ -52,10 +52,10 @@ func scanSchedule(row interface{ Scan(...any) error }) (ScriptSchedule, error) {
 	return v, e
 }
 func (s *Store) ScriptSchedule(ctx context.Context, device, id string) (ScriptSchedule, error) {
-	return scanSchedule(s.db.QueryRowContext(ctx, "SELECT "+scheduleColumns+" FROM script_schedules WHERE id=? AND device_id=?", id, device))
+	return scanSchedule(s.rdb.QueryRowContext(ctx, "SELECT "+scheduleColumns+" FROM script_schedules WHERE id=? AND device_id=?", id, device))
 }
 func (s *Store) ScriptSchedules(ctx context.Context, device string) ([]ScriptSchedule, error) {
-	rows, e := s.db.QueryContext(ctx, "SELECT "+scheduleColumns+" FROM script_schedules WHERE device_id=? ORDER BY updated_at DESC,id LIMIT 500", device)
+	rows, e := s.rdb.QueryContext(ctx, "SELECT "+scheduleColumns+" FROM script_schedules WHERE device_id=? ORDER BY updated_at DESC,id LIMIT 500", device)
 	if e != nil {
 		return nil, e
 	}
@@ -87,7 +87,7 @@ type FleetSchedule struct {
 
 // FleetScriptSchedules lists schedules across devices, live ones first.
 func (s *Store) FleetScriptSchedules(ctx context.Context) ([]FleetSchedule, error) {
-	rows, e := s.db.QueryContext(ctx, "SELECT id FROM script_schedules ORDER BY CASE state WHEN 'active' THEN 0 WHEN 'paused' THEN 1 ELSE 2 END,next_at,id LIMIT 500")
+	rows, e := s.rdb.QueryContext(ctx, "SELECT id FROM script_schedules ORDER BY CASE state WHEN 'active' THEN 0 WHEN 'paused' THEN 1 ELSE 2 END,next_at,id LIMIT 500")
 	if e != nil {
 		return nil, e
 	}
@@ -107,7 +107,7 @@ func (s *Store) FleetScriptSchedules(ctx context.Context) ([]FleetSchedule, erro
 	}
 	out := []FleetSchedule{}
 	for _, id := range ids {
-		v, e := scanSchedule(s.db.QueryRowContext(ctx, "SELECT "+scheduleColumns+" FROM script_schedules WHERE id=?", id))
+		v, e := scanSchedule(s.rdb.QueryRowContext(ctx, "SELECT "+scheduleColumns+" FROM script_schedules WHERE id=?", id))
 		if errors.Is(e, ErrSchedule) && v.ID != "" {
 			v.Arguments, e = map[string]string{}, nil // damaged: listed so it can be cancelled
 		}
@@ -115,7 +115,7 @@ func (s *Store) FleetScriptSchedules(ctx context.Context) ([]FleetSchedule, erro
 			return nil, e
 		}
 		f := FleetSchedule{ScriptSchedule: v}
-		_ = s.db.QueryRowContext(ctx, "SELECT hostname FROM devices WHERE id=?", v.DeviceID).Scan(&f.Hostname)
+		_ = s.rdb.QueryRowContext(ctx, "SELECT hostname FROM devices WHERE id=?", v.DeviceID).Scan(&f.Hostname)
 		if version, e := s.ScriptVersion(ctx, v.VersionID); e == nil {
 			f.ScriptName, f.ScriptVersion, f.RunAs = version.Definition.Name, version.Number, version.Definition.RunAs
 		}
@@ -125,7 +125,7 @@ func (s *Store) FleetScriptSchedules(ctx context.Context) ([]FleetSchedule, erro
 }
 
 func (s *Store) ScriptOccurrences(ctx context.Context, device, id string, now time.Time) ([]ScriptOccurrence, error) {
-	rows, e := s.db.QueryContext(ctx, `SELECT o.due_at,o.recorded_at,o.revision,o.missed_count,o.outcome,o.run_id,COALESCE(r.status,'') FROM script_schedule_occurrences o JOIN script_schedules s ON s.id=o.schedule_id LEFT JOIN script_runs r ON r.id=o.run_id WHERE s.id=? AND s.device_id=? AND o.recorded_at>=? ORDER BY o.recorded_at DESC,o.id DESC LIMIT 50`, id, device, now.Add(-30*24*time.Hour).Unix())
+	rows, e := s.rdb.QueryContext(ctx, `SELECT o.due_at,o.recorded_at,o.revision,o.missed_count,o.outcome,o.run_id,COALESCE(r.status,'') FROM script_schedule_occurrences o JOIN script_schedules s ON s.id=o.schedule_id LEFT JOIN script_runs r ON r.id=o.run_id WHERE s.id=? AND s.device_id=? AND o.recorded_at>=? ORDER BY o.recorded_at DESC,o.id DESC LIMIT 50`, id, device, now.Add(-30*24*time.Hour).Unix())
 	if e != nil {
 		return nil, e
 	}

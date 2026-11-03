@@ -247,7 +247,7 @@ func sampleObservation(v alertSample, r alerting.Rule, offline int64) alerting.O
 }
 func loadAlertState(ctx context.Context, tx *sql.Tx, id, kind string) (alerting.State, error) {
 	if strings.HasPrefix(kind, "check:") {
-		state, _, e := loadHealthState(ctx, tx, strings.TrimPrefix(kind, "check:"))
+		state, _, e := loadHealthState(ctx, tx, nil, strings.TrimPrefix(kind, "check:"))
 		return state, e
 	}
 	var raw string
@@ -280,12 +280,76 @@ func enqueueAlertMail(ctx context.Context, tx *sql.Tx, id, event string, now tim
 	_, e := tx.ExecContext(ctx, `INSERT OR IGNORE INTO alert_deliveries(alert_id,event,config_id,status,created_at,next_attempt) SELECT ?,?,mail_config,'queued',?,? FROM alert_runtime WHERE id=1 AND mail_config<>'' AND mail_paused=0`, id, event, now.Unix(), now.Unix())
 	return e
 }
-func applyAlert(ctx context.Context, tx *sql.Tx, d Device, r alerting.Rule, o alerting.Observation, now time.Time) error {
-	s, e := loadAlertState(ctx, tx, d.ID, r.Kind)
+
+// sweepStates holds the device alert states for one sweep: read in one
+// query, then written back once per changed state when the sweep ends, so
+// the sweep's write transaction stays short on large fleets.
+type sweepStates struct {
+	states map[[2]string]alerting.State
+	stored map[[2]string]string
+}
+
+func loadSweepStates(ctx context.Context, tx *sql.Tx) (sweepStates, error) {
+	v := sweepStates{states: map[[2]string]alerting.State{}, stored: map[[2]string]string{}}
+	rows, e := tx.QueryContext(ctx, "SELECT device_id,kind,state_json FROM alert_states")
 	if e != nil {
-		return e
+		return v, e
 	}
+	var damaged [][2]string
+	for rows.Next() {
+		var k [2]string
+		var raw string
+		if e = rows.Scan(&k[0], &k[1], &raw); e != nil {
+			rows.Close()
+			return v, e
+		}
+		var state alerting.State
+		if json.Unmarshal([]byte(raw), &state) != nil {
+			damaged = append(damaged, k)
+			continue
+		}
+		v.states[k] = state
+		v.stored[k] = raw
+	}
+	e = rows.Err()
+	rows.Close()
+	if e != nil {
+		return v, e
+	}
+	for _, k := range damaged {
+		if v.states[k], e = damagedState(ctx, tx, k[0], k[1]); e != nil {
+			return v, e
+		}
+	}
+	return v, nil
+}
+
+// save writes the states that changed during the sweep.
+func (v sweepStates) save(ctx context.Context, tx *sql.Tx) error {
+	var stmt *sql.Stmt
+	for k, state := range v.states {
+		raw, _ := json.Marshal(state)
+		if old, ok := v.stored[k]; ok && old == string(raw) {
+			continue
+		}
+		if stmt == nil {
+			var e error
+			if stmt, e = tx.PrepareContext(ctx, "INSERT INTO alert_states VALUES(?,?,?) ON CONFLICT(device_id,kind) DO UPDATE SET state_json=excluded.state_json"); e != nil {
+				return e
+			}
+			defer stmt.Close()
+		}
+		if _, e := stmt.ExecContext(ctx, k[0], k[1], string(raw)); e != nil {
+			return e
+		}
+	}
+	return nil
+}
+
+func applyAlert(ctx context.Context, tx *sql.Tx, states sweepStates, d Device, r alerting.Rule, o alerting.Observation, now time.Time) error {
+	s := states.states[[2]string{d.ID, r.Kind}]
 	next, event := alerting.Apply(r, s, o, now)
+	var e error
 	if event == "open" {
 		var nonce [16]byte
 		if _, e = rand.Read(nonce[:]); e != nil {
@@ -321,7 +385,7 @@ func applyAlert(ctx context.Context, tx *sql.Tx, d Device, r alerting.Rule, o al
 		next.Incident = ""
 	}
 	if next.Incident != "" && o.Condition == "bad" {
-		if _, e = tx.ExecContext(ctx, "UPDATE alerts SET last_seen=MAX(last_seen,?) WHERE id=?", o.At, next.Incident); e != nil {
+		if _, e := tx.ExecContext(ctx, "UPDATE alerts SET last_seen=MAX(last_seen,?) WHERE id=?", o.At, next.Incident); e != nil {
 			return e
 		}
 	}
@@ -330,13 +394,12 @@ func applyAlert(ctx context.Context, tx *sql.Tx, d Device, r alerting.Rule, o al
 		if target == "" {
 			target = s.Incident
 		}
-		if e = auditDevice(ctx, tx, now, "server", "alert_"+event, d.ID+":"+target, r.Kind); e != nil {
+		if e := auditDevice(ctx, tx, now, "server", "alert_"+event, d.ID+":"+target, r.Kind); e != nil {
 			return e
 		}
 	}
-	raw, _ := json.Marshal(next)
-	_, e = tx.ExecContext(ctx, "INSERT INTO alert_states VALUES(?,?,?) ON CONFLICT(device_id,kind) DO UPDATE SET state_json=excluded.state_json", d.ID, r.Kind, string(raw))
-	return e
+	states.states[[2]string{d.ID, r.Kind}] = next
+	return nil
 }
 
 // EvaluateAlerts consumes ordered receipt observations atomically, then checks
@@ -369,7 +432,7 @@ func (s *Store) EvaluateAlerts(ctx context.Context, now time.Time) error {
 			rules[d.ID][r.Kind] = r
 		}
 	}
-	rows, e := tx.QueryContext(ctx, "SELECT id,hostname,last_contact_at FROM devices WHERE revoked_at IS NULL ORDER BY enrolled_at DESC,id LIMIT 1000")
+	rows, e := tx.QueryContext(ctx, "SELECT id,hostname,last_contact_at FROM devices WHERE revoked_at IS NULL ORDER BY enrolled_at DESC,id"+fleetLimit)
 	if e != nil {
 		return e
 	}
@@ -387,13 +450,25 @@ func (s *Store) EvaluateAlerts(ctx context.Context, now time.Time) error {
 	if e != nil {
 		return e
 	}
-	if _, e = tx.ExecContext(ctx, `UPDATE alerts SET status='closed',finished_at=?,close_reason='not_monitored' WHERE status='active' AND device_id NOT IN (SELECT id FROM devices WHERE revoked_at IS NULL ORDER BY enrolled_at DESC,id LIMIT 1000)`, now.Unix()); e != nil {
+	if _, e = tx.ExecContext(ctx, `UPDATE alerts SET status='closed',finished_at=?,close_reason='not_monitored' WHERE status='active' AND device_id NOT IN (SELECT id FROM devices WHERE revoked_at IS NULL ORDER BY enrolled_at DESC,id`+fleetLimit+`)`, now.Unix()); e != nil {
 		return e
 	}
-	if _, e = tx.ExecContext(ctx, `DELETE FROM alert_states WHERE device_id NOT IN (SELECT id FROM devices WHERE revoked_at IS NULL ORDER BY enrolled_at DESC,id LIMIT 1000)`); e != nil {
+	states, e := loadSweepStates(ctx, tx)
+	if e != nil {
 		return e
 	}
-	rows, e = tx.QueryContext(ctx, "SELECT seq,device_id,kind,status,data,received_at,contact_at FROM alert_samples ORDER BY seq LIMIT 2000")
+	// Devices no longer monitored lose their states.
+	for k := range states.states {
+		if _, ok := fleet[k[0]]; ok {
+			continue
+		}
+		if _, e = tx.ExecContext(ctx, "DELETE FROM alert_states WHERE device_id=? AND kind=?", k[0], k[1]); e != nil {
+			return e
+		}
+		delete(states.states, k)
+		delete(states.stored, k)
+	}
+	rows, e = tx.QueryContext(ctx, "SELECT seq,device_id,kind,status,data,received_at,contact_at FROM alert_samples ORDER BY seq LIMIT 10000")
 	if e != nil {
 		return e
 	}
@@ -416,21 +491,22 @@ func (s *Store) EvaluateAlerts(ctx context.Context, now time.Time) error {
 		if ok {
 			r, ok := rules[d.ID][v.kind]
 			if ok {
-				if e = applyAlert(ctx, tx, d, r, sampleObservation(v, r, offline), now); e != nil {
+				if e = applyAlert(ctx, tx, states, d, r, sampleObservation(v, r, offline), now); e != nil {
 					return e
 				}
 			}
 		}
-		if _, e = tx.ExecContext(ctx, "DELETE FROM alert_samples WHERE seq=?", v.seq); e != nil {
+	}
+	// Samples are read in order and only this sweep removes them, so the
+	// processed ones are exactly those up to the last seq read.
+	if len(samples) > 0 {
+		if _, e = tx.ExecContext(ctx, "DELETE FROM alert_samples WHERE seq<=?", samples[len(samples)-1].seq); e != nil {
 			return e
 		}
 	}
 	for _, d := range fleet {
 		for _, r := range rules[d.ID] {
-			state, e := loadAlertState(ctx, tx, d.ID, r.Kind)
-			if e != nil {
-				return e
-			}
+			state := states.states[[2]string{d.ID, r.Kind}]
 			o := alerting.Observation{Condition: "unknown", At: now.Unix()}
 			online := d.LastContactAt != nil && *d.LastContactAt <= now.Unix() && now.Unix()-*d.LastContactAt < offline
 			if r.Kind == "offline" {
@@ -442,10 +518,13 @@ func (s *Store) EvaluateAlerts(ctx context.Context, now time.Time) error {
 			} else if online && state.LastSample <= now.Unix() && now.Unix()-state.LastSample < alerting.Freshness(r.Kind) {
 				continue
 			}
-			if e = applyAlert(ctx, tx, d, r, o, now); e != nil {
+			if e = applyAlert(ctx, tx, states, d, r, o, now); e != nil {
 				return e
 			}
 		}
+	}
+	if e = states.save(ctx, tx); e != nil {
+		return e
 	}
 	if e = evaluateHealth(ctx, tx, now, offline, last, gap); e != nil {
 		return e
@@ -479,7 +558,7 @@ func (s *Store) Alerts(ctx context.Context, device string) ([]Alert, error) {
 func (s *Store) AlertsForSession(ctx context.Context, v Session, device string) ([]Alert, error) {
 	scope, args := technicianScope(v, "a.device_id")
 	args = append([]any{device, device}, args...)
-	rows, e := s.db.QueryContext(ctx, "SELECT "+alertColumns+" FROM alerts a WHERE (?='' OR a.device_id=?) AND "+scope+" ORDER BY CASE a.status WHEN 'active' THEN 0 ELSE 1 END,CASE a.severity WHEN 'critical' THEN 0 ELSE 1 END,a.opened_at DESC,a.id LIMIT 200", args...)
+	rows, e := s.rdb.QueryContext(ctx, "SELECT "+alertColumns+" FROM alerts a WHERE (?='' OR a.device_id=?) AND "+scope+" ORDER BY CASE a.status WHEN 'active' THEN 0 ELSE 1 END,CASE a.severity WHEN 'critical' THEN 0 ELSE 1 END,a.opened_at DESC,a.id LIMIT 200", args...)
 	if e != nil {
 		return nil, e
 	}
@@ -494,18 +573,55 @@ func (s *Store) AlertsForSession(ctx context.Context, v Session, device string) 
 	}
 	return result, rows.Err()
 }
-func (s *Store) AlertStates(ctx context.Context, device string) ([]AlertDeviceState, error) {
-	return s.AlertStatesForSession(ctx, Session{}, device)
+
+// AlertCount is a device's number of active alerts.
+type AlertCount struct {
+	Active, Critical int
 }
-func (s *Store) AlertStatesForSession(ctx context.Context, v Session, device string) ([]AlertDeviceState, error) {
-	scope, args := technicianScope(v, "s.device_id")
-	args = append([]any{device, device}, args...)
-	rows, e := s.db.QueryContext(ctx, "SELECT s.device_id,d.hostname,s.kind,s.state_json,s.label FROM (SELECT device_id,kind,state_json,'' AS label FROM alert_states UNION ALL SELECT h.device_id,'check:'||h.check_id,h.state_json,c.name FROM health_states h JOIN health_checks c ON c.id=h.check_id) s JOIN devices d ON d.id=s.device_id WHERE (?='' OR s.device_id=?) AND "+scope+" ORDER BY s.device_id,s.kind LIMIT 4100", args...)
+
+// ActiveAlertCounts counts the active alerts of every device the session may
+// see (the alert list itself is bounded, active alerts on a large fleet are
+// not).
+func (s *Store) ActiveAlertCounts(ctx context.Context, v Session) (map[string]AlertCount, error) {
+	scope, args := technicianScope(v, "a.device_id")
+	rows, e := s.rdb.QueryContext(ctx, "SELECT a.device_id,COUNT(*),SUM(a.severity='critical') FROM alerts a WHERE a.status='active' AND "+scope+" GROUP BY a.device_id", args...)
 	if e != nil {
 		return nil, e
 	}
 	defer rows.Close()
+	result := map[string]AlertCount{}
+	for rows.Next() {
+		var id string
+		var c AlertCount
+		if e = rows.Scan(&id, &c.Active, &c.Critical); e != nil {
+			return nil, e
+		}
+		result[id] = c
+	}
+	return result, rows.Err()
+}
+func (s *Store) AlertStates(ctx context.Context, device string) ([]AlertDeviceState, error) {
+	return s.AlertStatesForSession(ctx, Session{}, device)
+}
+
+// AlertStatesForSession returns the alert and check states of the given
+// devices (a page of alerts at most), within the session's device scope.
+func (s *Store) AlertStatesForSession(ctx context.Context, v Session, devices ...string) ([]AlertDeviceState, error) {
 	result := []AlertDeviceState{}
+	if len(devices) == 0 {
+		return result, nil
+	}
+	scope, args := technicianScope(v, "s.device_id")
+	in := make([]any, len(devices))
+	for i, d := range devices {
+		in[i] = d
+	}
+	args = append(in, args...)
+	rows, e := s.rdb.QueryContext(ctx, "SELECT s.device_id,d.hostname,s.kind,s.state_json,s.label FROM (SELECT device_id,kind,state_json,'' AS label FROM alert_states UNION ALL SELECT h.device_id,'check:'||h.check_id,h.state_json,c.name FROM health_states h JOIN health_checks c ON c.id=h.check_id) s JOIN devices d ON d.id=s.device_id WHERE s.device_id IN (?"+strings.Repeat(",?", len(devices)-1)+") AND "+scope+" ORDER BY s.device_id,s.kind", args...)
+	if e != nil {
+		return nil, e
+	}
+	defer rows.Close()
 	for rows.Next() {
 		var a AlertDeviceState
 		var raw string
@@ -518,8 +634,8 @@ func (s *Store) AlertStatesForSession(ctx context.Context, v Session, device str
 }
 func (s *Store) AlertRuntime(ctx context.Context) (AlertRuntime, error) {
 	var r AlertRuntime
-	e := s.db.QueryRowContext(ctx, `SELECT offline_after,last_sweep,last_gap,mail_config,mail_paused,(SELECT COUNT(*) FROM alert_samples),(SELECT COUNT(*) FROM devices WHERE revoked_at IS NULL) FROM alert_runtime WHERE id=1`).Scan(&r.OfflineAfter, &r.LastSweep, &r.LastGap, &r.MailConfig, &r.MailPaused, &r.PendingSamples, &r.MonitoredDevices)
-	r.Limited = r.MonitoredDevices > 1000
+	e := s.rdb.QueryRowContext(ctx, `SELECT offline_after,last_sweep,last_gap,mail_config,mail_paused,(SELECT COUNT(*) FROM alert_samples),(SELECT COUNT(*) FROM devices WHERE revoked_at IS NULL) FROM alert_runtime WHERE id=1`).Scan(&r.OfflineAfter, &r.LastSweep, &r.LastGap, &r.MailConfig, &r.MailPaused, &r.PendingSamples, &r.MonitoredDevices)
+	r.Limited = r.MonitoredDevices > MaxFleet
 	r.MailConfigured = r.MailConfig != ""
 	return r, e
 }

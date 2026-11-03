@@ -245,7 +245,7 @@ func (s *Store) finishTranscript(ctx context.Context, job string, now time.Time)
 	defer s.transcriptMu.Unlock()
 	var j EvidenceJob
 	var recorder, reason string
-	if e := s.db.QueryRowContext(ctx, `SELECT id,case_id,device_id,path,status,device_sha256,outcome FROM evidence_jobs WHERE id=? AND kind='transcript'`, job).Scan(&j.ID, &j.CaseID, &j.DeviceID, &j.Path, &j.Status, &recorder, &reason); e != nil {
+	if e := s.rdb.QueryRowContext(ctx, `SELECT id,case_id,device_id,path,status,device_sha256,outcome FROM evidence_jobs WHERE id=? AND kind='transcript'`, job).Scan(&j.ID, &j.CaseID, &j.DeviceID, &j.Path, &j.Status, &recorder, &reason); e != nil {
 		return ErrEvidence
 	}
 	if j.Status != "uploading" {
@@ -339,7 +339,7 @@ func (s *Store) FinishTranscripts(ctx context.Context, now time.Time) error {
 	if s.evidence == "" {
 		return nil
 	}
-	rows, e := s.db.QueryContext(ctx, `SELECT id FROM evidence_jobs WHERE kind='transcript' AND status='uploading'`)
+	rows, e := s.rdb.QueryContext(ctx, `SELECT id FROM evidence_jobs WHERE kind='transcript' AND status='uploading'`)
 	if e != nil {
 		return e
 	}

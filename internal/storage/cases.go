@@ -213,7 +213,7 @@ const caseColumns = `c.id,c.title,c.status,c.created_by,c.created_at,c.updated_a
 
 // Cases lists cases, open ones first, then most recently updated.
 func (s *Store) Cases(ctx context.Context) ([]Case, error) {
-	rows, e := s.db.QueryContext(ctx, `SELECT `+caseColumns+` FROM cases c WHERE c.id<>? ORDER BY c.status='closed', c.updated_at DESC, c.id LIMIT 1000`, LiveCase)
+	rows, e := s.rdb.QueryContext(ctx, `SELECT `+caseColumns+` FROM cases c WHERE c.id<>? ORDER BY c.status='closed', c.updated_at DESC, c.id LIMIT 1000`, LiveCase)
 	if e != nil {
 		return nil, errors.New("cannot list cases")
 	}
@@ -234,14 +234,14 @@ func (s *Store) CaseRecords(ctx context.Context, id string) (Case, []custody.Rec
 	if id == LiveCase {
 		return Case{}, nil, ErrCase
 	}
-	c, e := scanCase(s.db.QueryRowContext(ctx, `SELECT `+caseColumns+` FROM cases c WHERE c.id=?`, id))
+	c, e := scanCase(s.rdb.QueryRowContext(ctx, `SELECT `+caseColumns+` FROM cases c WHERE c.id=?`, id))
 	if errors.Is(e, sql.ErrNoRows) {
 		return Case{}, nil, ErrCase
 	}
 	if e != nil {
 		return Case{}, nil, errors.New("cannot read case")
 	}
-	rows, e := s.db.QueryContext(ctx, `SELECT entry_json,hash FROM custody_entries WHERE case_id=? ORDER BY sequence`, id)
+	rows, e := s.rdb.QueryContext(ctx, `SELECT entry_json,hash FROM custody_entries WHERE case_id=? ORDER BY sequence`, id)
 	if e != nil {
 		return Case{}, nil, errors.New("cannot read custody log")
 	}
@@ -277,7 +277,7 @@ func (s *Store) CaseDetail(ctx context.Context, id string) (CaseDetail, error) {
 		if id, ok := strings.CutPrefix(x.Actor, "technician:"); ok {
 			if _, done := d.Actors[x.Actor]; !done {
 				var name string
-				if s.db.QueryRowContext(ctx, `SELECT username FROM technicians WHERE id=?`, id).Scan(&name) == nil {
+				if s.rdb.QueryRowContext(ctx, `SELECT username FROM technicians WHERE id=?`, id).Scan(&name) == nil {
 					d.Actors[x.Actor] = name
 				}
 			}
