@@ -60,20 +60,26 @@ type HuntProblem struct {
 }
 
 // HuntTarget is one device's job; Events (matching events, or matches of an
-// indicator hunt), More and Skipped come from its result once it is stored
-// (Result is false until then).
+// indicator hunt), More, Skipped and an indicator hunt's coverage (the part
+// its time limit stopped, the YARA counts) come from its result once it is
+// stored (Result is false until then).
 type HuntTarget struct {
-	DeviceID   string `json:"device_id"`
-	Hostname   string `json:"hostname"`
-	JobID      string `json:"job_id"`
-	Status     string `json:"status"`
-	Outcome    string `json:"outcome"`
-	FinishedAt *int64 `json:"finished_at"`
-	Result     bool   `json:"result"`
-	Searched   string `json:"searched,omitempty"`
-	Events     int    `json:"events"`
-	More       bool   `json:"more"`
-	Skipped    int    `json:"skipped"`
+	DeviceID      string `json:"device_id"`
+	Hostname      string `json:"hostname"`
+	JobID         string `json:"job_id"`
+	Status        string `json:"status"`
+	Outcome       string `json:"outcome"`
+	FinishedAt    *int64 `json:"finished_at"`
+	Result        bool   `json:"result"`
+	Searched      string `json:"searched,omitempty"`
+	Events        int    `json:"events"`
+	More          bool   `json:"more"`
+	Skipped       int    `json:"skipped"`
+	Stopped       string `json:"stopped,omitempty"`
+	Limit         int    `json:"limit_minutes,omitempty"`
+	YaraFiles     int    `json:"yara_files,omitempty"`
+	YaraProcesses int    `json:"yara_processes,omitempty"`
+	YaraUnread    int    `json:"yara_unread,omitempty"`
 }
 
 // HuntSummary is a hunt in the list.
@@ -298,7 +304,7 @@ func (s *Store) HuntDetail(ctx context.Context, id string) (Hunt, error) {
 	} else if json.Unmarshal([]byte(filter), &h.Filter) != nil {
 		return h, ErrHunt
 	}
-	rows, e := s.db.QueryContext(ctx, `SELECT j.id,j.device_id,COALESCE(d.hostname,''),j.status,j.outcome,j.finished_at,j.server_sha256,j.size,r.outcome,COALESCE(r.events,0),COALESCE(r.more,0),COALESCE(r.skipped,0) FROM evidence_jobs j LEFT JOIN devices d ON d.id=j.device_id LEFT JOIN hunt_results r ON r.job_id=j.id WHERE j.hunt_id=? ORDER BY d.hostname,j.id`, id)
+	rows, e := s.db.QueryContext(ctx, `SELECT j.id,j.device_id,COALESCE(d.hostname,''),j.status,j.outcome,j.finished_at,j.server_sha256,j.size,r.outcome,COALESCE(r.events,0),COALESCE(r.more,0),COALESCE(r.skipped,0),COALESCE(r.stopped,''),COALESCE(r.limit_minutes,0),COALESCE(r.yara_files,0),COALESCE(r.yara_processes,0),COALESCE(r.yara_unread,0) FROM evidence_jobs j LEFT JOIN devices d ON d.id=j.device_id LEFT JOIN hunt_results r ON r.job_id=j.id WHERE j.hunt_id=? ORDER BY d.hostname,j.id`, id)
 	if e != nil {
 		return h, e
 	}
@@ -313,7 +319,7 @@ func (s *Store) HuntDetail(ctx context.Context, id string) (Hunt, error) {
 		var hash string
 		var size int64
 		var searched *string
-		if e = rows.Scan(&t.JobID, &t.DeviceID, &t.Hostname, &t.Status, &t.Outcome, &t.FinishedAt, &hash, &size, &searched, &t.Events, &t.More, &t.Skipped); e != nil {
+		if e = rows.Scan(&t.JobID, &t.DeviceID, &t.Hostname, &t.Status, &t.Outcome, &t.FinishedAt, &hash, &size, &searched, &t.Events, &t.More, &t.Skipped, &t.Stopped, &t.Limit, &t.YaraFiles, &t.YaraProcesses, &t.YaraUnread); e != nil {
 			rows.Close()
 			return h, e
 		}
@@ -342,10 +348,13 @@ func (s *Store) HuntDetail(ctx context.Context, id string) (Hunt, error) {
 					t.Searched, t.Events, t.More, t.Skipped = r.EventLog.Outcome, len(r.EventLog.Events), r.EventLog.More, r.EventLog.Skipped
 				case r.Hunt != nil:
 					t.Searched, t.Events, t.More, t.Skipped = r.Hunt.Outcome, len(r.Hunt.Matches), r.Hunt.More, r.Hunt.Skipped
+					t.Stopped, t.Limit = r.Hunt.Stopped, r.Hunt.Limit
+					t.YaraFiles, t.YaraProcesses, t.YaraUnread = r.Hunt.Scanned.YaraFiles, r.Hunt.Scanned.YaraProcesses, r.Hunt.Scanned.YaraUnread
 				}
 			}
 		}
-		_, _ = s.db.ExecContext(ctx, `INSERT OR IGNORE INTO hunt_results(job_id,outcome,events,more,skipped) VALUES(?,?,?,?,?)`, m.job, t.Searched, t.Events, t.More, t.Skipped)
+		_, _ = s.db.ExecContext(ctx, `INSERT OR IGNORE INTO hunt_results(job_id,outcome,events,more,skipped,stopped,limit_minutes,yara_files,yara_processes,yara_unread) VALUES(?,?,?,?,?,?,?,?,?,?)`,
+			m.job, t.Searched, t.Events, t.More, t.Skipped, t.Stopped, t.Limit, t.YaraFiles, t.YaraProcesses, t.YaraUnread)
 	}
 	return h, nil
 }

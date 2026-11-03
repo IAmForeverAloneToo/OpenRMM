@@ -87,7 +87,8 @@ YARA scanning; nothing to do when updating.
 - **YARA rule sets.** The administrator keeps YARA rule sets on the Hunting page (**YARA rules**); every save is checked and versioned ([YARA.md](YARA.md)).
 - **Scans of files and process memory** in indicator hunts, with the console command `yara`, and from a case. Agents need this release; older agents are listed as not searched. Memory is only read, and never that of LSASS, security products or the agent itself.
 - Rules that need YARA modules (`pe`, `math`, `hash` and others), `include`, or the `xor` and `base64` modifiers are refused with the reason.
-- The server adds the rule set tables on its first start (database migration 55).
+- A search with YARA rules runs for up to 60 minutes per device (others keep 15): process memory first, then files. Each device's result shows what the rules scanned and, when a search stopped at its limit, which part was stopped.
+- The server adds the rule set tables and the search coverage on its first start (database migrations 55 and 56).
 - `install.sh` works again, as in 0.3.2, and Windows agents start again, as in 0.3.3.
 
 ### 0.3.3

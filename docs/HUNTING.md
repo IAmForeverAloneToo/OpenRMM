@@ -118,7 +118,7 @@ Links and junctions are not followed, and files on other computers are never ope
 
 | Limit | Value |
 | --- | --- |
-| Search time per device | 15 minutes, then the result is **Partly searched** |
+| Search time per device | 15 minutes, 60 with YARA rules; then the result is **Partly searched** and names the part that was stopped |
 | Blocked file open or folder read (for example an oplock held by another program) | Abandoned after 10 seconds; the result is reported without it |
 | Files per device | 500,000, then the result is **Partly searched** |
 | Largest file hashed | 100 MB |

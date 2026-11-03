@@ -5,7 +5,7 @@ import { ArrowLeft, Eye, ListTree, Square } from "lucide-react";
 import { get, post } from "../../lib/api";
 import { absoluteTime, relativeTime, utcTime } from "../../lib/format";
 import type { ActionResult, Hunt, HuntTarget, WindowsEvent } from "../../lib/types";
-import { IndicatorText, MatchesTable, type MatchRow } from "./matches";
+import { IndicatorText, MatchesTable, stoppedText, yaraText, type MatchRow } from "./matches";
 import { PageHeader } from "../../app/AppShell";
 import { ConfirmDialog, Modal } from "../../components/Dialog";
 import { Badge, Button, EmptyState, ErrorNotice, Mono, Panel, SearchInput, Spinner, Tip, type Tone } from "../../components/ui";
@@ -165,6 +165,9 @@ export function HuntPage() {
   const h = q.data;
   const f = h.filter;
   const indicators = h.kind === "indicators" ? (h.spec?.indicators ?? []) : null;
+  const yara = h.kind === "indicators" ? h.spec?.yara : undefined;
+  const yaraFiles = !!yara && (!!h.spec?.files || !!yara.path);
+  const yaraMemory = !!yara && (!!yara.memory || !!yara.pid);
   const done = h.targets.filter(usable);
   const waiting = h.targets.filter((t) => active.has(t.status)).length;
   const matches = done.reduce((n, t) => n + t.events, 0);
@@ -272,7 +275,8 @@ export function HuntPage() {
                     {t.skipped ? ` · ${t.skipped} skipped` : ""}
                   </span>
                 ) : null}
-                {t.searched === "partial" ? <span className="text-warn">Stopped at the 15-minute limit; not every file was searched.</span> : null}
+                {usable(t) && yara ? <span className="text-muted tabular-nums">{yaraText(t, yaraFiles, yaraMemory)}</span> : null}
+                {t.searched === "partial" ? <span className="text-warn">{stoppedText(t)}</span> : null}
                 {t.searched && t.searched !== "ok" && t.searched !== "partial" ? <span className="text-warn">{searched[t.searched] ?? t.searched}</span> : null}
                 {t.status === "failed" || (t.status === "expired" && t.outcome !== "purged") ? <span className="text-danger">{t.status === "expired" ? "The device did not come online within 7 days." : (reasons[t.outcome] ?? t.outcome)}</span> : null}
                 <span className="flex-1" />

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { HuntMatch, HuntResult, Indicator } from "../../lib/types";
+import type { HuntCoverage, HuntMatch, HuntResult, Indicator } from "../../lib/types";
 import { Badge, EmptyState, Mono, SearchInput } from "../../components/ui";
 
 // Indicator hunt matches, for one device (action viewer) or many
@@ -103,6 +103,32 @@ export function MatchesTable({ rows, devices }: { rows: MatchRow[]; devices?: bo
   );
 }
 
+const stages: Record<string, string> = {
+  processes: "checking processes",
+  connections: "checking network connections",
+  dns: "checking the DNS cache",
+  persistence: "checking autostart entries",
+  mft: "matching names on whole drives",
+  memory: "scanning process memory",
+  files: "searching files",
+};
+
+/** Why an indicator hunt stopped early (a partial result). Results of agents before 0.4.0 name neither the part nor the limit. */
+export function stoppedText(c: HuntCoverage): string {
+  if (c.stopped) return `Stopped at the ${c.limit_minutes || 15}-minute limit while ${stages[c.stopped] ?? c.stopped}; the rest was not searched.`;
+  if (c.limit_minutes) return "Stopped after 500,000 files; the rest were not searched.";
+  return "Stopped at the 15-minute limit; not every file was searched.";
+}
+
+/** What a hunt's YARA rules scanned on one device: files when the hunt scans files, processes when it reads memory. */
+export function yaraText(c: HuntCoverage, files: boolean, memory: boolean): string {
+  const parts = [
+    files ? `${(c.yara_files ?? 0).toLocaleString()} ${c.yara_files === 1 ? "file" : "files"}` : "",
+    memory ? `${(c.yara_processes ?? 0).toLocaleString()} ${c.yara_processes === 1 ? "process" : "processes"}${c.yara_unread ? ` (${c.yara_unread.toLocaleString()} not read)` : ""}` : "",
+  ].filter(Boolean);
+  return parts.length ? `YARA: ${parts.join(", ")}` : "";
+}
+
 /** What one device searched, for a result's header. */
 export function Scanned({ r }: { r: HuntResult }) {
   const s = r.scanned;
@@ -113,12 +139,14 @@ export function Scanned({ r }: { r: HuntResult }) {
     s.persistence ? `${s.persistence} autostart entries` : "",
     s.mft_files ? `${s.mft_files.toLocaleString()} files on whole drives by name and path (MFT)` : "",
     s.files ? `${s.files.toLocaleString()} files in common locations (${s.hashed.toLocaleString()} hashed)` : "",
+    s.yara_files ? `${s.yara_files.toLocaleString()} files with YARA rules` : "",
+    s.yara_processes || s.yara_unread ? `the memory of ${(s.yara_processes ?? 0).toLocaleString()} processes with YARA rules${s.yara_unread ? ` (${s.yara_unread.toLocaleString()} not read)` : ""}` : "",
   ].filter(Boolean);
   return (
     <p className="text-[12px] text-muted">
       Searched {parts.join(", ") || "nothing"}
       {r.skipped ? ` · ${r.skipped.toLocaleString()} files or folders skipped (larger than 100 MB or unreadable)` : ""}
-      {r.outcome === "partial" ? " · stopped at the 15-minute limit: the rest of the files were not searched" : ""}
+      {r.outcome === "partial" ? ` · ${stoppedText(r)}` : ""}
       {r.more ? " · more than 1,000 matches; the rest are not listed" : ""}
     </p>
   );

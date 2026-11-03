@@ -202,6 +202,7 @@ export function NewIndicatorHunt({ initialList, initialYara }: { initialList?: s
                 </span>
               </label>
             ) : null}
+            {yaraSet ? <p className="text-[12px] text-muted">A search with YARA rules runs for up to 60 minutes per device (memory first, then files); scanning files is limited by the disk.</p> : null}
           </div>
           <CaseChoice open allowNone {...c.props} noneNote="The search is recorded in the audit log only. Each device's result is kept for 24 hours after it answers." note="Each device's result is stored in the case as hashed evidence, recorded in its custody log." />
           {error ? <ErrorNotice error={error} /> : null}

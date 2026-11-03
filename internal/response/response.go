@@ -29,12 +29,22 @@ const (
 var ErrUnsupported = errors.New("response actions are available on Windows only")
 
 // ActionTime bounds one action, including hashing (the server waits up to 30
-// minutes for its result to start uploading).
+// minutes for its result to start uploading, two and a half hours for a
+// hunt's).
 const ActionTime = 20 * time.Minute
+
+// actionTime is ActionTime, or for a hunt its own limit with five minutes
+// to spare for writing the result.
+func actionTime(a protocol.ResponseAction) time.Duration {
+	if a.Kind == "hunt" && a.Hunt != nil {
+		return max(ActionTime, huntLimit(*a.Hunt)+5*time.Minute)
+	}
+	return ActionTime
+}
 
 // Run executes a validated action.
 func Run(ctx context.Context, a protocol.ResponseAction, cache *HashCache) (protocol.ActionResult, error) {
-	ctx, cancel := context.WithTimeout(ctx, ActionTime)
+	ctx, cancel := context.WithTimeout(ctx, actionTime(a))
 	defer cancel()
 	r := protocol.ActionResult{Format: protocol.ActionFormat, Version: 1, Action: a.WithoutRules(), DeviceTime: stamp(time.Now())}
 	if !a.Valid() {

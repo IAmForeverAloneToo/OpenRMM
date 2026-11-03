@@ -37,15 +37,22 @@ func TestIndicatorHunt(t *testing.T) {
 		t.Fatalf("hunt %+v %v", h, e)
 	}
 	result := protocol.ActionResult{Format: protocol.ActionFormat, Version: 1, Action: protocol.ResponseAction{Kind: "hunt", Hunt: &spec},
-		Hunt: &protocol.HuntResult{Outcome: "partial", Matches: []protocol.HuntMatch{{Area: "file", Indicator: spec.Indicators[1], Path: `C:\Users\a\Downloads\evil1.exe`}, {Area: "process", Indicator: spec.Indicators[0], PID: 8}}, Skipped: 3}}
+		Hunt: &protocol.HuntResult{Outcome: "partial", Matches: []protocol.HuntMatch{{Area: "file", Indicator: spec.Indicators[1], Path: `C:\Users\a\Downloads\evil1.exe`}, {Area: "process", Indicator: spec.Indicators[0], PID: 8}}, Skipped: 3,
+			Stopped: "files", Limit: 60, Scanned: protocol.HuntScanned{YaraFiles: 7, YaraProcesses: 5, YaraUnread: 2}}}
 	data, _ := json.Marshal(result)
 	job := collect(t, s, device, now, data, &protocol.EvidenceMeta{Method: "action"})
 	if job.Action == nil || job.Action.Kind != "hunt" || len(job.Action.Hunt.Indicators) != 2 || !job.Action.Hunt.Files {
 		t.Fatalf("dispatched %+v", job.Action)
 	}
-	d, e := s.HuntDetail(ctx, h.ID)
-	if e != nil || d.Spec == nil || len(d.Spec.Indicators) != 2 || len(d.Targets) != 1 || d.Targets[0].Events != 2 || d.Targets[0].Searched != "partial" || d.Targets[0].Skipped != 3 {
-		t.Fatalf("detail %+v %+v %v", d.Spec, d.Targets, e)
+	// The counts are read from the result once, then from the cache.
+	for range 2 {
+		d, e := s.HuntDetail(ctx, h.ID)
+		if e != nil || d.Spec == nil || len(d.Spec.Indicators) != 2 || len(d.Targets) != 1 || d.Targets[0].Events != 2 || d.Targets[0].Searched != "partial" || d.Targets[0].Skipped != 3 {
+			t.Fatalf("detail %+v %+v %v", d.Spec, d.Targets, e)
+		}
+		if g := d.Targets[0]; g.Stopped != "files" || g.Limit != 60 || g.YaraFiles != 7 || g.YaraProcesses != 5 || g.YaraUnread != 2 {
+			t.Fatalf("coverage %+v", g)
+		}
 	}
 	list, _ := s.Hunts(ctx, "owner", true)
 	if len(list) != 1 || list[0].Kind != "indicators" || list[0].Indicators != 2 || !list[0].Files {

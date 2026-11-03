@@ -4,8 +4,10 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/IAmForeverAloneToo/OpenRMM/internal/protocol"
 	"github.com/IAmForeverAloneToo/OpenRMM/internal/yara"
@@ -100,5 +102,48 @@ func TestYaraHunt(t *testing.T) {
 	r = hunt(context.Background(), spec, huntSources{roots: src.roots}, n)
 	if len(r.Matches) != 1 || len(n.list) != 1 || !strings.Contains(n.list[0], "could not be compiled") {
 		t.Fatal(r.Matches, n.list)
+	}
+}
+
+// Process memory is scanned before the files, which can take the whole
+// time limit; a result stopped by the limit names the part it stopped.
+func TestYaraHuntOrderAndLimit(t *testing.T) {
+	if huntLimit(protocol.HuntSpec{}) != huntTime || huntLimit(protocol.HuntSpec{Yara: &protocol.YaraSpec{}}) != yaraHuntTime {
+		t.Fatal("limits")
+	}
+	if a := (protocol.ResponseAction{Kind: "hunt", Hunt: &protocol.HuntSpec{Yara: &protocol.YaraSpec{}}}); actionTime(a) != yaraHuntTime+5*time.Minute || actionTime(protocol.ResponseAction{Kind: "collect"}) != ActionTime {
+		t.Fatal("action time")
+	}
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "tool.exe"), []byte("dumpcreds::allsessions"), 0600)
+	var order []string
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	src := huntSources{
+		roots: func() []huntRoot { order = append(order, "files"); return []huntRoot{{dir: dir}} },
+		processes: func(context.Context) ([]protocol.ProcessDetail, error) {
+			return []protocol.ProcessDetail{{PID: 100, Name: "a.exe"}, {PID: 200, Name: "lsass.exe"}}, nil
+		},
+		memory: func(_ context.Context, pid uint32, fn func([]yara.Block) error) error {
+			order = append(order, "memory")
+			return fn([]yara.Block{{Data: []byte("nothing")}})
+		},
+	}
+	spec := protocol.HuntSpec{Files: true, Yara: &protocol.YaraSpec{Name: "t", SHA256: strings.Repeat("a", 64), Rules: huntRules, Memory: true}}
+	r := hunt(ctx, spec, src, &notes{})
+	if strings.Join(order, ",") != "memory,files" || r.Outcome != "ok" || r.Stopped != "" || r.Limit != 60 || r.Scanned.YaraUnread != 1 || len(r.Matches) != 1 {
+		t.Fatalf("%v %+v", order, r)
+	}
+	// The limit reached while memory is read: memory is named, and the
+	// files are not searched.
+	order = nil
+	inner := src.memory
+	src.memory = func(c context.Context, pid uint32, fn func([]yara.Block) error) error {
+		cancel()
+		return inner(c, pid, fn)
+	}
+	r = hunt(ctx, spec, src, &notes{})
+	if r.Outcome != "partial" || r.Stopped != "memory" || slices.Contains(order, "files") {
+		t.Fatalf("%v %+v", order, r)
 	}
 }

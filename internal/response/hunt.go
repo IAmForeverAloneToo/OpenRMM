@@ -30,8 +30,21 @@ import (
 // come from the platform files.
 
 // huntTime bounds the search itself, so a partial result is still uploaded
-// within the action's time limit.
-const huntTime = 15 * time.Minute
+// within the action's time limit; yaraHuntTime bounds a hunt with YARA
+// rules, whose file scan is bound by the disk (some 40 MB/s, for 20 GB and
+// more in the common locations of a used PC).
+const (
+	huntTime     = 15 * time.Minute
+	yaraHuntTime = 60 * time.Minute
+)
+
+// huntLimit is the time a hunt may search.
+func huntLimit(spec protocol.HuntSpec) time.Duration {
+	if spec.Yara != nil {
+		return yaraHuntTime
+	}
+	return huntTime
+}
 
 // maxHuntFiles bounds the files one hunt looks at (a variable for tests).
 var maxHuntFiles = 500000
@@ -236,10 +249,11 @@ type dnsRecord struct{ name, data string }
 
 // hunt runs an indicator hunt over the sources.
 func hunt(ctx context.Context, spec protocol.HuntSpec, src huntSources, n *notes) protocol.HuntResult {
-	ctx, cancel := context.WithTimeout(ctx, huntTime)
+	limit := huntLimit(spec)
+	ctx, cancel := context.WithTimeout(ctx, limit)
 	defer cancel()
 	m := newMatcher(spec)
-	r := protocol.HuntResult{Outcome: "ok", Matches: []protocol.HuntMatch{}}
+	r := protocol.HuntResult{Outcome: "ok", Limit: int(limit / time.Minute), Matches: []protocol.HuntMatch{}}
 	if spec.Yara != nil {
 		rules, e := yara.Compile(spec.Yara.Rules)
 		if e != nil {
@@ -279,20 +293,27 @@ func hunt(ctx context.Context, spec protocol.HuntSpec, src huntSources, n *notes
 		}
 		return true
 	}
+	// stage is the part being searched, named in the result when the time
+	// limit stops it (each part checks the limit before it starts, so the
+	// part that used up the time is the one named).
+	stage := ""
 	partial := func() bool {
 		if ctx.Err() != nil {
+			if r.Outcome != "partial" {
+				r.Stopped = stage
+			}
 			r.Outcome = "partial"
 			return true
 		}
 		return false
 	}
 	objectFile := spec.Needs("name", "path", "sha256", "sha1", "md5")
-	// The process list, kept for the memory scan, which runs last: it is the
-	// slowest part and must not starve the rest.
+	// The process list, kept for the memory scan.
 	var processes []protocol.ProcessDetail
 	// Running processes.
 	if objectFile || spec.Needs("cmd") || yaraMemory {
 		if src.processes != nil {
+			stage = "processes"
 			list, e := src.processes(ctx)
 			if e != nil {
 				n.add("processes could not be listed")
@@ -312,6 +333,7 @@ func hunt(ctx context.Context, spec protocol.HuntSpec, src huntSources, n *notes
 	}
 	// Network connections and the DNS cache.
 	if spec.Needs("ip") && src.connections != nil && !partial() {
+		stage = "connections"
 		list, e := src.connections(ctx)
 		if e != nil {
 			n.add("network connections could not be listed")
@@ -326,6 +348,7 @@ func hunt(ctx context.Context, spec protocol.HuntSpec, src huntSources, n *notes
 		}
 	}
 	if spec.Needs("domain", "ip") && src.dns != nil && !partial() {
+		stage = "dns"
 		list, e := src.dns(ctx)
 		if e != nil {
 			n.add("the DNS cache could not be read")
@@ -340,6 +363,7 @@ func hunt(ctx context.Context, spec protocol.HuntSpec, src huntSources, n *notes
 	}
 	// The persistence report.
 	if (objectFile || spec.Needs("cmd")) && src.persistence != nil && !partial() {
+		stage = "persistence"
 		list, e := src.persistence(ctx)
 		if e != nil {
 			n.add("the persistence report could not be built")
@@ -361,6 +385,7 @@ func hunt(ctx context.Context, spec protocol.HuntSpec, src huntSources, n *notes
 	// Every file on fixed NTFS drives by name and path, from their MFT
 	// (quick: no folder walk). Hashes are checked in the common locations.
 	if spec.Files && spec.Needs("name", "path") && src.mft != nil && !partial() {
+		stage = "mft"
 		_, e := src.mft(ctx, func(f filetransfer.NTFSEntry) bool {
 			r.Scanned.MFTFiles++
 			found := append(m.byName(f.Name), m.byPath(f.Path)...)
@@ -370,28 +395,30 @@ func hunt(ctx context.Context, spec protocol.HuntSpec, src huntSources, n *notes
 			n.add("the MFT of a drive could not be read; its names and paths were searched in the common locations only")
 		}
 	}
-	// Files in the common locations (or the YARA scan's own path).
-	if (spec.Files && objectFile || yaraFiles) && src.roots != nil && !partial() {
-		skipped, capped := m.files(ctx, src, &r, add)
-		r.Skipped += skipped
-		if capped {
-			r.Outcome = "partial"
-			n.add("more than 500,000 files in the searched locations; the rest were not searched")
-		}
-		partial()
-	}
-	// Process memory with YARA rules.
+	// Process memory with YARA rules, before the files: it takes minutes,
+	// while the files can take the whole time limit.
 	if yaraMemory && !partial() {
+		stage = "memory"
 		scanned, skipped := m.memory(ctx, src, spec.Yara, processes, add)
-		r.Scanned.YaraProcesses = scanned
+		r.Scanned.YaraProcesses, r.Scanned.YaraUnread = scanned, skipped
 		if skipped > 0 {
 			n.add(fmt.Sprintf("the memory of %d processes was not scanned (LSASS, security products, the agent, or processes that cannot be read)", skipped))
 		}
 		if spec.Yara.PID != 0 && scanned == 0 {
 			n.add("the process to scan is not running or cannot be read")
 		}
-		partial()
 	}
+	// Files in the common locations (or the YARA scan's own path).
+	if (spec.Files && objectFile || yaraFiles) && src.roots != nil && !partial() {
+		stage = "files"
+		skipped, capped := m.files(ctx, src, &r, add)
+		r.Skipped += skipped
+		if capped {
+			r.Outcome = "partial"
+			n.add("more than 500,000 files in the searched locations; the rest were not searched")
+		}
+	}
+	partial()
 	return r
 }
 

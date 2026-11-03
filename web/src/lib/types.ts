@@ -817,11 +817,15 @@ export type HuntMatch = {
   address?: string;
   detail?: string;
 };
+/** Coverage of an indicator hunt: the part its time limit stopped (empty with the file cap) and what YARA rules scanned. */
+export type HuntCoverage = { stopped?: string; limit_minutes?: number; yara_files?: number; yara_processes?: number; yara_unread?: number };
 export type HuntResult = {
   outcome: string;
+  stopped?: string;
+  limit_minutes?: number;
   matches: HuntMatch[];
   more: boolean;
-  scanned: { files: number; hashed: number; processes: number; connections: number; dns: number; persistence: number; mft_files?: number };
+  scanned: { files: number; hashed: number; processes: number; connections: number; dns: number; persistence: number; mft_files?: number; yara_files?: number; yara_processes?: number; yara_unread?: number };
   skipped: number;
 };
 export type IOCList = { id: string; name: string; indicators: Indicator[]; created_by: string; created_at: number; updated_by: string; updated_at: number };
@@ -905,7 +909,7 @@ export type HuntTarget = {
   events: number;
   more: boolean;
   skipped: number;
-};
+} & HuntCoverage;
 export type Hunt = {
   id: string;
   kind: "log_search" | "indicators";

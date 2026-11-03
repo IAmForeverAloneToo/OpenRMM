@@ -99,10 +99,15 @@ func (y YaraSpec) Valid(files bool) bool {
 }
 
 // HuntResult is one device's hunt. Outcome is ok, or partial when the time
-// limit stopped the search. Scanned counts what was searched; Skipped counts
-// files not hashed (too large or unreadable) and folders not readable.
+// limit (Limit minutes) or the file cap stopped the search; Stopped names
+// the part the time limit stopped (processes, connections, dns,
+// persistence, mft, memory or files; empty for the file cap). Scanned
+// counts what was searched; Skipped counts files not hashed (too large or
+// unreadable) and folders not readable.
 type HuntResult struct {
 	Outcome string      `json:"outcome"`
+	Stopped string      `json:"stopped,omitempty"`
+	Limit   int         `json:"limit_minutes,omitempty"`
 	Matches []HuntMatch `json:"matches"`
 	More    bool        `json:"more"`
 	Scanned HuntScanned `json:"scanned"`
@@ -119,9 +124,12 @@ type HuntScanned struct {
 	// MFTFiles are the files on fixed NTFS drives whose names and paths
 	// were matched through the drives' MFT.
 	MFTFiles int `json:"mft_files,omitempty"`
-	// YaraFiles and YaraProcesses were scanned with YARA rules.
+	// YaraFiles and YaraProcesses were scanned with YARA rules; the memory
+	// of YaraUnread processes was not (LSASS, security products, the agent,
+	// or not readable).
 	YaraFiles     int `json:"yara_files,omitempty"`
 	YaraProcesses int `json:"yara_processes,omitempty"`
+	YaraUnread    int `json:"yara_unread,omitempty"`
 }
 
 // HuntMatch is one object that matched one indicator. Area is file,

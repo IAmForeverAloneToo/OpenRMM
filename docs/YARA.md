@@ -64,7 +64,7 @@ A hunt, console command or case scan copies the rules it runs: changing or withd
 
 ## Results
 
-A rule that matched is listed as a match with the indicator type **YARA rule** and the rule's name. **Details** name the rule's tags and up to 8 strings with their offsets, such as `rule example_dumper [hacktool]: $a at 0x4`. File matches carry the file's path, size and time; memory matches the process with its PID, image and user, and say `memory:`. The device's summary counts the files and processes scanned with rules.
+A rule that matched is listed as a match with the indicator type **YARA rule** and the rule's name. **Details** name the rule's tags and up to 8 strings with their offsets, such as `rule example_dumper [hacktool]: $a at 0x4`. File matches carry the file's path, size and time; memory matches the process with its PID, image and user, and say `memory:`. The device's summary counts the files and processes scanned with rules, such as `YARA: 12,400 files, 238 processes (33 not read)`.
 
 ## Limits
 
@@ -75,7 +75,8 @@ A rule that matched is listed as a match with the indicator type **YARA rule** a
 | Memory per process | 1 GiB (in batches of up to 64 MiB) |
 | Matches kept per string | 10,000 per scan of a file or batch |
 | Strings shown per match | 8 (all are counted in the condition) |
-| Search time and matches per device | As for [indicator hunts](HUNTING.md#limits): 15 minutes and 1,000 matches |
+| Search time per device | 60 minutes: process memory first (usually a few minutes), then files, which are limited by the disk; a search stopped at the limit names the part it stopped |
+| Matches per device | As for [indicator hunts](HUNTING.md#limits): 1,000 |
 
 ## API
 
