@@ -80,6 +80,12 @@ Only the latest release receives fixes, including security fixes. Pre-releases a
 
 ## Version notes
 
+### 0.3.3
+
+A fix for Windows agents; update agents after the server.
+
+- **Windows agents from 0.2.0 to 0.3.2 did not start.** The agent listed its abilities out of order, failed its own startup check and stopped ("heartbeat collection currently requires valid Windows x64 metadata"). Updates to those versions rolled back to the previous agent, and new installations failed with error 1920. Agents updated from the dashboard to this release start normally.
+
 ### 0.3.2
 
 A fix for `install.sh`; nothing to do when updating from the dashboard.
