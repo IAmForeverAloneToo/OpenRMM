@@ -139,8 +139,8 @@ export function Scanned({ r }: { r: HuntResult }) {
     s.persistence ? `${s.persistence} autostart entries` : "",
     s.mft_files ? `${s.mft_files.toLocaleString()} files on whole drives by name and path (MFT)` : "",
     s.files ? `${s.files.toLocaleString()} files in common locations (${s.hashed.toLocaleString()} hashed)` : "",
-    s.yara_files ? `${s.yara_files.toLocaleString()} files with YARA rules` : "",
-    s.yara_processes || s.yara_unread ? `the memory of ${(s.yara_processes ?? 0).toLocaleString()} processes with YARA rules${s.yara_unread ? ` (${s.yara_unread.toLocaleString()} not read)` : ""}` : "",
+    s.yara_files ? `${s.yara_files.toLocaleString()} ${s.yara_files === 1 ? "file" : "files"} with YARA rules` : "",
+    s.yara_processes || s.yara_unread ? `the memory of ${(s.yara_processes ?? 0).toLocaleString()} ${s.yara_processes === 1 ? "process" : "processes"} with YARA rules${s.yara_unread ? ` (${s.yara_unread.toLocaleString()} not read)` : ""}` : "",
   ].filter(Boolean);
   return (
     <p className="text-[12px] text-muted">
