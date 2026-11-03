@@ -88,6 +88,13 @@ YARA scanning; nothing to do when updating.
 - **Scans of files and process memory** in indicator hunts, with the console command `yara`, and from a case. Agents need this release; older agents are listed as not searched. Memory is only read, and never that of LSASS, security products or the agent itself.
 - Rules that need YARA modules (`pe`, `math`, `hash` and others), `include`, or the `xor` and `base64` modifiers are refused with the reason.
 - The server adds the rule set tables on its first start (database migration 55).
+- `install.sh` works again, as in 0.3.2.
+
+### 0.3.2
+
+A fix for `install.sh`; nothing to do when updating from the dashboard.
+
+- **`install.sh` works again.** From 0.1.4 to 0.3.1 it stopped with `compose: command not found` (a quoting error), so new installations and upgrades with the script failed; updates from the dashboard were not affected. Use the script from this release or later.
 
 ### 0.3.1
 
