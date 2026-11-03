@@ -6,9 +6,13 @@ import (
 	"errors"
 	"log/slog"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/IAmForeverAloneToo/OpenRMM/internal/config"
+	"github.com/IAmForeverAloneToo/OpenRMM/internal/protocol"
 )
 
 func TestHeartbeatBackoffCapsResetsAndSuppressesRepeatedLogs(t *testing.T) {
@@ -93,5 +97,24 @@ func TestRetryJitterBoundsAndThrottleMinimum(t *testing.T) {
 	var delay time.Duration
 	if err := runHeartbeatLoop(context.Background(), time.Second, logger, func(context.Context) error { return ErrDeviceThrottled }, func(_ context.Context, d time.Duration) bool { delay = d; return false }, time.Now, func(time.Duration) time.Duration { return time.Millisecond }); err != nil || delay < time.Minute {
 		t.Fatal("server throttle was retried too soon")
+	}
+}
+
+// The metadata a Windows agent starts with passes the checks of the agent
+// and the server, with every ability it has: an invalid list (unsorted, as
+// from 0.2.0 to 0.4.0-rc.2) stopped the agent at start.
+func TestHeartbeatMetadataIsValid(t *testing.T) {
+	m := heartbeatMetadata("DESKTOP-1", "windows", "amd64", []string{"terminal"})
+	if !m.Valid() {
+		t.Fatalf("invalid metadata: %+v", m)
+	}
+	want := []string{protocol.AbilityHunt, protocol.AbilityIsolation, protocol.AbilityNTFS, protocol.AbilityPersistence, protocol.AbilityTriage, protocol.AbilityYara}
+	for _, a := range want {
+		if !slices.Contains(m.Abilities, a) {
+			t.Fatalf("ability %s missing: %v", a, m.Abilities)
+		}
+	}
+	if _, e := newHeartbeatSession(config.Agent{}, m); e != nil && strings.Contains(e.Error(), "metadata") {
+		t.Fatal(e)
 	}
 }

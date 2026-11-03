@@ -88,7 +88,13 @@ YARA scanning; nothing to do when updating.
 - **Scans of files and process memory** in indicator hunts, with the console command `yara`, and from a case. Agents need this release; older agents are listed as not searched. Memory is only read, and never that of LSASS, security products or the agent itself.
 - Rules that need YARA modules (`pe`, `math`, `hash` and others), `include`, or the `xor` and `base64` modifiers are refused with the reason.
 - The server adds the rule set tables on its first start (database migration 55).
-- `install.sh` works again, as in 0.3.2.
+- `install.sh` works again, as in 0.3.2, and Windows agents start again, as in 0.3.3.
+
+### 0.3.3
+
+A fix for Windows agents; update agents after the server.
+
+- **Windows agents from 0.2.0 to 0.3.2 did not start.** The agent listed its abilities out of order, failed its own startup check and stopped ("heartbeat collection currently requires valid Windows x64 metadata"). Updates to those versions rolled back to the previous agent, and new installations failed with error 1920. Agents updated from the dashboard to this release start normally.
 
 ### 0.3.2
 

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -331,6 +332,18 @@ func Run(ctx context.Context, c config.Agent, logger *slog.Logger) error {
 	}
 }
 
+// heartbeatMetadata describes this agent in its heartbeats. The abilities
+// are sorted, as the protocol requires: from 0.2.0 to 0.4.0-rc.2 they were
+// not, the metadata failed validation and the agent stopped at start.
+func heartbeatMetadata(hostname, goos, goarch string, locked []string) protocol.Heartbeat {
+	m := protocol.Heartbeat{Hostname: hostname, OS: goos, Architecture: goarch, AgentVersion: Version, Locked: locked, Features: protocol.AgentFeatures}
+	if goos == "windows" {
+		m.Abilities = []string{protocol.AbilityHunt, protocol.AbilityIsolation, protocol.AbilityNTFS, protocol.AbilityPersistence, protocol.AbilityTriage, protocol.AbilityYara}
+		slices.Sort(m.Abilities)
+	}
+	return m
+}
+
 func runOnce(ctx context.Context, local config.Agent, disabled []string, logger *slog.Logger) (bool, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -340,11 +353,7 @@ func runOnce(ctx context.Context, local config.Agent, disabled []string, logger 
 	}
 	locked := localLocks(local)
 	c := withFeatures(local, locked, disabled)
-	metadata := protocol.Heartbeat{Hostname: hostname, OS: runtime.GOOS, Architecture: runtime.GOARCH, AgentVersion: Version, Locked: locked, Features: protocol.AgentFeatures}
-	if runtime.GOOS == "windows" {
-		metadata.Abilities = []string{protocol.AbilityHunt, protocol.AbilityIsolation, protocol.AbilityPersistence, protocol.AbilityTriage, protocol.AbilityNTFS, protocol.AbilityYara}
-	}
-	session, err := newHeartbeatSession(c, metadata)
+	session, err := newHeartbeatSession(c, heartbeatMetadata(hostname, runtime.GOOS, runtime.GOARCH, locked))
 	if err != nil {
 		return false, err
 	}
