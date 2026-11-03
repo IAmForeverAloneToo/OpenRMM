@@ -101,7 +101,8 @@ func brokerFixture(t *testing.T, enabled bool) (*Broker, *fakePlatform, protocol
 }
 func finishFixture(t *testing.T, b *Broker, q protocol.AgentUpgradeJob, proof bool) protocol.AgentUpgradeResult {
 	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
+	// Generous: slow CI runners (Windows file scanning) took over 3 seconds.
+	deadline := time.Now().Add(15 * time.Second)
 	for time.Now().Before(deadline) {
 		if proof {
 			b.Healthy(123, q.Release.Manifest.Version)
