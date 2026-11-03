@@ -80,6 +80,12 @@ Only the latest release receives fixes, including security fixes. Pre-releases a
 
 ## Version notes
 
+### 0.3.2
+
+A fix for `install.sh`; nothing to do when updating from the dashboard.
+
+- **`install.sh` works again.** From 0.1.4 to 0.3.1 it stopped with `compose: command not found` (a quoting error), so new installations and upgrades with the script failed; updates from the dashboard were not affected. Use the script from this release or later.
+
 ### 0.3.1
 
 Dashboard fixes for narrow windows; nothing to do when updating.

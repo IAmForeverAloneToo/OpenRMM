@@ -122,7 +122,7 @@ address=${address,,}
 address=${address// /}
 trusted_proxies=${trusted_proxies,,}
 trusted_proxies=${trusted_proxies// /}
-[ "$trusted_proxies" != none ] || trusted_proxies='
+[ "$trusted_proxies" != none ] || trusted_proxies=''
 dashboard_port=${dashboard_port:-443}
 agent_port=${agent_port:-8444}
 
