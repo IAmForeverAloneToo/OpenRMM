@@ -13,7 +13,8 @@ import (
 
 var eventsTable = Def{Name: "event_logs", Title: "Event logs",
 	Columns: []string{"TimeCreated", "Channel", "EventID", "Level", "Provider", "EventRecordID", "Computer", "UserID", "ProcessID", "ThreadID", "Task", "Opcode", "Keywords", "Data", "SourceFile"},
-	Times:   []string{"TimeCreated"}}
+	Times:   []string{"TimeCreated"},
+	Events:  []EventDef{{Time: "TimeCreated", What: "Event {EventID} ({Channel})", Path: "Provider", Details: []string{"Level", "UserID", "Data"}}}}
 
 // maxEventLog is the largest event log parsed.
 const maxEventLog = 4 << 30

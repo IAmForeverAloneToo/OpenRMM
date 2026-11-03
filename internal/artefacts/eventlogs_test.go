@@ -15,7 +15,7 @@ func TestParseEventLogs(t *testing.T) {
 	in := pkg(t, map[string][]byte{"C/Windows/System32/winevt/Logs/Security.evtx": evtxtest.Log("alice", "bob")})
 	req := request(t, in)
 	m, err := Parse(context.Background(), req)
-	if err != nil || len(m.Errors) != 0 || len(m.Tables) != 1 || m.Tables[0].Rows != 2 {
+	if err != nil || len(m.Errors) != 0 || tableOf(m, "event_logs").Rows != 2 || tableOf(m, "timeline").Rows != 2 {
 		t.Fatal(m, err)
 	}
 	table := readTable(t, req.Output, "event_logs")
@@ -36,7 +36,7 @@ func TestParseEventLogs(t *testing.T) {
 	if err := writeFile(single.Input, evtxtest.Log("carol")); err != nil {
 		t.Fatal(err)
 	}
-	if m, err := Parse(context.Background(), single); err != nil || m.Tables[0].Rows != 1 {
+	if m, err := Parse(context.Background(), single); err != nil || tableOf(m, "event_logs").Rows != 1 {
 		t.Fatal(m, err)
 	}
 }

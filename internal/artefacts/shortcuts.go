@@ -12,10 +12,12 @@ import (
 var (
 	lnkTable = Def{Name: "lnk_files", Title: "Shortcuts (LNK)",
 		Columns: []string{"SourceFile", "ShortcutModified", "TargetPath", "Arguments", "WorkingDir", "Name", "TargetCreated", "TargetModified", "TargetAccessed", "TargetSize", "DriveType", "VolumeSerial", "VolumeLabel", "NetworkPath", "MachineID", "MAC"},
-		Times:   []string{"ShortcutModified", "TargetCreated", "TargetModified", "TargetAccessed"}}
+		Times:   []string{"ShortcutModified", "TargetCreated", "TargetModified", "TargetAccessed"},
+		Events:  []EventDef{{Time: "ShortcutModified", What: "Shortcut written (target opened)", Path: "TargetPath", Details: []string{"Arguments"}}, {Time: "TargetCreated", What: "Target created (shortcut)", Path: "TargetPath"}, {Time: "TargetModified", What: "Target modified (shortcut)", Path: "TargetPath"}, {Time: "TargetAccessed", What: "Target accessed (shortcut)", Path: "TargetPath"}}}
 	jumpTable = Def{Name: "jump_lists", Title: "Jump lists",
 		Columns: []string{"SourceFile", "AppID", "Type", "Entry", "Path", "LastAccess", "Pinned", "AccessCount", "Hostname", "TargetPath", "Arguments", "TargetCreated", "TargetModified", "TargetAccessed", "VolumeSerial", "MachineID"},
-		Times:   []string{"LastAccess", "TargetCreated", "TargetModified", "TargetAccessed"}}
+		Times:   []string{"LastAccess", "TargetCreated", "TargetModified", "TargetAccessed"},
+		Events:  []EventDef{{Time: "LastAccess", What: "Opened (jump list)", Path: "Path", Details: []string{"AppID", "AccessCount", "Pinned"}}, {Time: "TargetCreated", What: "Target created (jump list)", Path: "TargetPath", Details: []string{"AppID"}}, {Time: "TargetModified", What: "Target modified (jump list)", Path: "TargetPath", Details: []string{"AppID"}}, {Time: "TargetAccessed", What: "Target accessed (jump list)", Path: "TargetPath", Details: []string{"AppID"}}}}
 )
 
 func size(n uint32) string {

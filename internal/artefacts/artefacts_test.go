@@ -15,6 +15,16 @@ import (
 	"unicode/utf16"
 )
 
+// tableOf finds a table in a manifest.
+func tableOf(m Manifest, name string) TableInfo {
+	for _, t := range m.Tables {
+		if t.Name == name {
+			return t
+		}
+	}
+	return TableInfo{}
+}
+
 // The test binary doubles as the parsing process.
 func TestMain(m *testing.M) {
 	if len(os.Args) == 2 && os.Args[1] == ChildArg {
@@ -92,7 +102,7 @@ func TestParseTriagePackage(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if m.Format != Format || m.Parser != ParserVersion || len(m.Tables) != 1 || m.Tables[0].Name != "prefetch" || m.Tables[0].Rows != 2 || m.Tables[0].Sources != 2 {
+	if pf := tableOf(m, "prefetch"); m.Format != Format || m.Parser != ParserVersion || len(m.Tables) != 2 || m.Tables[0].Name != "timeline" || pf.Rows != 2 || pf.Sources != 2 {
 		t.Fatalf("%+v", m)
 	}
 	// The broken prefetch file and the placeholder SOFTWARE hive.
@@ -131,7 +141,7 @@ func TestParseInChildProcess(t *testing.T) {
 	in := pkg(t, map[string][]byte{"C/Windows/Prefetch/CMD.EXE-0BD30981.pf": pf("CMD.EXE", 7)})
 	req := request(t, in)
 	m, outcome := Run(context.Background(), exe, req)
-	if outcome != "" || len(m.Tables) != 1 || m.Tables[0].Rows != 1 {
+	if outcome != "" || tableOf(m, "prefetch").Rows != 1 {
 		t.Fatal(m, outcome)
 	}
 	// Not a package.

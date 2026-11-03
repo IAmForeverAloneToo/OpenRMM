@@ -18,7 +18,7 @@ func TestParseShortcuts(t *testing.T) {
 	})
 	req := request(t, in)
 	m, err := Parse(context.Background(), req)
-	if err != nil || len(m.Errors) != 0 || len(m.Tables) != 2 {
+	if err != nil || len(m.Errors) != 0 || len(m.Tables) != 3 {
 		t.Fatal(m, err)
 	}
 	links := string(readTable(t, req.Output, "lnk_files"))

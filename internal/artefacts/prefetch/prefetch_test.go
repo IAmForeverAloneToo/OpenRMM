@@ -139,6 +139,13 @@ func TestHuffmanBlock(t *testing.T) {
 	}
 }
 
+// A file of zeros says so.
+func TestEmpty(t *testing.T) {
+	if _, err := Parse(make([]byte, 18980)); err != ErrEmpty {
+		t.Fatal(err)
+	}
+}
+
 // Random and truncated input never panics.
 func TestDamagedInput(t *testing.T) {
 	r := rand.New(rand.NewPCG(1, 2))

@@ -14,6 +14,7 @@ var prefetchTable = Def{
 	Title:   "Prefetch",
 	Columns: []string{"SourceFile", "Executable", "ExecutablePath", "Hash", "Version", "RunCount", "LastRun", "PreviousRuns", "Volumes", "FileCount", "Files"},
 	Times:   []string{"LastRun", "PreviousRuns"},
+	Events:  []EventDef{{Time: "LastRun", What: "Program ran", Path: "ExecutablePath", Details: []string{"Executable", "RunCount"}}, {Time: "PreviousRuns", What: "Program ran", Path: "ExecutablePath", Details: []string{"Executable", "RunCount"}}},
 }
 
 var prefetchParser = parser{

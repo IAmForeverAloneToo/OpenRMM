@@ -8,13 +8,18 @@ package prefetch
 import (
 	"encoding/binary"
 	"errors"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf16"
 )
 
-// ErrCorrupt reports a file that does not decode.
-var ErrCorrupt = errors.New("prefetch: corrupt or unsupported file")
+// ErrCorrupt reports a file that does not decode; ErrEmpty one that holds
+// only zeros, as Windows sometimes leaves them.
+var (
+	ErrCorrupt = errors.New("prefetch: corrupt or unsupported file")
+	ErrEmpty   = errors.New("prefetch: the file holds no data (only zeros)")
+)
 
 // Limits on what is decoded, far above real prefetch files.
 const (
@@ -85,6 +90,9 @@ func Parse(b []byte) (Info, error) {
 
 func parse(b []byte) (Info, error) {
 	if len(b) < 84 || string(b[4:8]) != "SCCA" {
+		if len(b) > 0 && !slices.ContainsFunc(b, func(c byte) bool { return c != 0 }) {
+			return Info{}, ErrEmpty
+		}
 		return Info{}, ErrCorrupt
 	}
 	le := binary.LittleEndian

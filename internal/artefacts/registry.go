@@ -14,25 +14,35 @@ var (
 	hivesTable = Def{Name: "registry_hives", Title: "Registry hives",
 		Columns: []string{"SourceFile", "Hive", "User", "LastWritten", "Dirty", "LogEntriesApplied", "Keys"}, Times: []string{"LastWritten"}}
 	keysTable = Def{Name: "registry_keys", Title: "Registry keys",
-		Columns: []string{"Hive", "User", "Path", "LastWrite", "Values", "Subkeys"}, Times: []string{"LastWrite"}}
+		Columns: []string{"Hive", "User", "Path", "LastWrite", "Values", "Subkeys"}, Times: []string{"LastWrite"},
+		Events: []EventDef{{Time: "LastWrite", What: "Registry key written", Path: "Path", Details: []string{"Hive", "User"}}}}
 	amcacheFilesTable = Def{Name: "amcache_files", Title: "Amcache files",
-		Columns: []string{"Path", "SHA1", "Size", "Name", "Publisher", "Product", "Version", "LinkDate", "BinaryType", "OsComponent", "ProgramId", "KeyLastWrite"}, Times: []string{"KeyLastWrite"}}
+		Columns: []string{"Path", "SHA1", "Size", "Name", "Publisher", "Product", "Version", "LinkDate", "BinaryType", "OsComponent", "ProgramId", "KeyLastWrite"}, Times: []string{"KeyLastWrite"},
+		Events: []EventDef{{Time: "KeyLastWrite", What: "Program recorded (Amcache)", Path: "Path", Details: []string{"SHA1", "Publisher", "Product"}}}}
 	amcacheProgramsTable = Def{Name: "amcache_programs", Title: "Amcache programs",
-		Columns: []string{"Name", "Publisher", "Version", "InstallDate", "Source", "RootDirPath", "UninstallString", "ProgramId", "KeyLastWrite"}, Times: []string{"KeyLastWrite"}}
+		Columns: []string{"Name", "Publisher", "Version", "InstallDate", "Source", "RootDirPath", "UninstallString", "ProgramId", "KeyLastWrite"}, Times: []string{"KeyLastWrite"},
+		Events: []EventDef{{Time: "KeyLastWrite", What: "Program recorded (Amcache)", Path: "Name", Details: []string{"Publisher", "Version", "RootDirPath"}}}}
 	shimTable = Def{Name: "shimcache", Title: "ShimCache (AppCompatCache)",
-		Columns: []string{"ControlSet", "Position", "Path", "Modified"}, Times: []string{"Modified"}}
+		Columns: []string{"ControlSet", "Position", "Path", "Modified"}, Times: []string{"Modified"},
+		Events: []EventDef{{Time: "Modified", What: "File modified (ShimCache entry)", Path: "Path", Details: []string{"Position"}}}}
 	userAssistTable = Def{Name: "userassist", Title: "UserAssist",
-		Columns: []string{"User", "Guid", "Name", "RunCount", "FocusCount", "FocusSeconds", "LastRun"}, Times: []string{"LastRun"}}
+		Columns: []string{"User", "Guid", "Name", "RunCount", "FocusCount", "FocusSeconds", "LastRun"}, Times: []string{"LastRun"},
+		Events: []EventDef{{Time: "LastRun", What: "Program ran (UserAssist)", Path: "Name", Details: []string{"User", "RunCount", "FocusCount"}}}}
 	bamTable = Def{Name: "bam", Title: "BAM / DAM",
-		Columns: []string{"Sid", "Path", "LastRun", "Source"}, Times: []string{"LastRun"}}
+		Columns: []string{"Sid", "Path", "LastRun", "Source"}, Times: []string{"LastRun"},
+		Events: []EventDef{{Time: "LastRun", What: "Program ran ({Source})", Path: "Path", Details: []string{"Sid"}}}}
 	shellbagsTable = Def{Name: "shellbags", Title: "ShellBags",
-		Columns: []string{"User", "Hive", "Path", "Type", "MRUPosition", "NodeSlot", "KeyLastWrite", "Modified", "Created", "Accessed", "MFTEntry", "MFTSequence"}, Times: []string{"KeyLastWrite", "Modified", "Created", "Accessed"}}
+		Columns: []string{"User", "Hive", "Path", "Type", "MRUPosition", "NodeSlot", "KeyLastWrite", "Modified", "Created", "Accessed", "MFTEntry", "MFTSequence"}, Times: []string{"KeyLastWrite", "Modified", "Created", "Accessed"},
+		Events: []EventDef{{Time: "KeyLastWrite", What: "Folder opened (ShellBags)", Path: "Path", Details: []string{"User"}}, {Time: "Created", What: "Folder created (ShellBags)", Path: "Path", Details: []string{"User"}}, {Time: "Modified", What: "Folder modified (ShellBags)", Path: "Path", Details: []string{"User"}}, {Time: "Accessed", What: "Folder accessed (ShellBags)", Path: "Path", Details: []string{"User"}}}}
 	autorunsTable = Def{Name: "registry_autoruns", Title: "Registry autostart entries",
-		Columns: []string{"Hive", "User", "Key", "Name", "Value", "KeyLastWrite"}, Times: []string{"KeyLastWrite"}}
+		Columns: []string{"Hive", "User", "Key", "Name", "Value", "KeyLastWrite"}, Times: []string{"KeyLastWrite"},
+		Events: []EventDef{{Time: "KeyLastWrite", What: "Autostart key written", Path: "Key", Details: []string{"Name", "Value", "User"}}}}
 	servicesTable = Def{Name: "services", Title: "Services",
-		Columns: []string{"ControlSet", "Name", "DisplayName", "ImagePath", "ServiceDll", "Start", "Type", "Account", "KeyLastWrite"}, Times: []string{"KeyLastWrite"}}
+		Columns: []string{"ControlSet", "Name", "DisplayName", "ImagePath", "ServiceDll", "Start", "Type", "Account", "KeyLastWrite"}, Times: []string{"KeyLastWrite"},
+		Events: []EventDef{{Time: "KeyLastWrite", What: "Service key written", Path: "Name", Details: []string{"ImagePath", "ServiceDll", "Start"}}}}
 	usbTable = Def{Name: "usb_devices", Title: "USB devices",
-		Columns: []string{"Bus", "Device", "Serial", "FriendlyName", "FirstInstall", "LastArrival", "LastRemoval", "KeyLastWrite"}, Times: []string{"FirstInstall", "LastArrival", "LastRemoval", "KeyLastWrite"}}
+		Columns: []string{"Bus", "Device", "Serial", "FriendlyName", "FirstInstall", "LastArrival", "LastRemoval", "KeyLastWrite"}, Times: []string{"FirstInstall", "LastArrival", "LastRemoval", "KeyLastWrite"},
+		Events: []EventDef{{Time: "FirstInstall", What: "USB device installed", Path: "Device", Details: []string{"Serial", "FriendlyName"}}, {Time: "LastArrival", What: "USB device connected", Path: "Device", Details: []string{"Serial", "FriendlyName"}}, {Time: "LastRemoval", What: "USB device removed", Path: "Device", Details: []string{"Serial", "FriendlyName"}}}}
 )
 
 // maxKeys bounds the keys listed per hive.

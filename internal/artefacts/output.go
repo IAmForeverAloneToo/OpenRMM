@@ -41,11 +41,13 @@ func Stamp(t time.Time) string {
 
 // Def describes a table: its columns, and those holding times (a cell may
 // hold several, separated by "|"), which the viewer's time filter checks.
+// Events put its rows on the combined timeline.
 type Def struct {
 	Name    string
 	Title   string
 	Columns []string
 	Times   []string
+	Events  []EventDef
 }
 
 // TableInfo describes one table in the manifest.
@@ -88,6 +90,7 @@ type Output struct {
 	tables map[string]*table
 	order  []string
 	m      Manifest
+	tl     timeline
 }
 
 type table struct {
@@ -129,8 +132,16 @@ func (w tableWriter) Write(p []byte) (int, error) {
 }
 
 // Add writes a row of a table from source (the file it came from),
-// creating the table with its header on first use.
+// creating the table with its header on first use, and its events to the
+// combined timeline.
 func (o *Output) Add(d Def, source string, row []string) error {
+	if err := o.add(d, source, row); err != nil {
+		return err
+	}
+	return o.event(d, source, row)
+}
+
+func (o *Output) add(d Def, source string, row []string) error {
 	t, ok := o.tables[d.Name]
 	if !ok {
 		f, e := os.CreateTemp(o.dir, "table-*")
@@ -172,6 +183,7 @@ func (o *Output) Fail(path, table string, err error) {
 
 // Close removes the temporary files.
 func (o *Output) Close() {
+	o.closeTimeline()
 	for _, t := range o.tables {
 		t.f.Close()
 		os.Remove(t.f.Name())
@@ -181,6 +193,9 @@ func (o *Output) Close() {
 // Finish writes the results to w: tables/<name>.csv for each table, then
 // manifest.json. The compressed tables are copied as they are.
 func (o *Output) Finish(w io.Writer) (Manifest, error) {
+	if err := o.writeTimeline(); err != nil {
+		return Manifest{}, err
+	}
 	zw := zip.NewWriter(w)
 	for _, name := range o.order {
 		t := o.tables[name]
