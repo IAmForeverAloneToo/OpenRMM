@@ -92,13 +92,14 @@ type (
 	}
 	regexLit struct{ p *pattern }
 	floatLit struct{ v float64 }
+	entryN   struct{} // entrypoint
 )
 
 // staticType is the type of an expression as far as the parser knows it:
 // 'i', 'f', 's', 'b', 'r', a module type's kind, or '?'.
 func staticType(n node, vars []varDef) *ftype {
 	switch x := n.(type) {
-	case intLit, filesizeN, strCount, strOffset, intRead:
+	case intLit, filesizeN, strCount, strOffset, intRead, entryN:
 		return tInt
 	case floatLit:
 		return tFlt
@@ -226,6 +227,10 @@ func (e *evaluator) moduleData(m *module) any {
 
 func (e *evaluator) evalModule(n node) value {
 	switch x := n.(type) {
+	case entryN:
+		if root, ok := e.moduleData(peModule).(obj); ok {
+			return toValue(root["entry_point"])
+		}
 	case modRef:
 		return toValue(e.moduleData(x.m))
 	case fieldN:

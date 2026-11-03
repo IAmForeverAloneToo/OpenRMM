@@ -106,8 +106,10 @@ type parser struct {
 	vars []varDef
 	// anon is the string bound by a for-of loop body ($, #, @, !).
 	inForOf int
-	// imports are the modules the rules imported.
-	imports map[string]*module
+	// imports are the modules the rules imported; entrypoint is set when a
+	// condition uses the entrypoint keyword (the pe module).
+	imports    map[string]*module
+	entrypoint bool
 }
 
 // varDef is a loop variable and its type.
@@ -499,7 +501,10 @@ func (p *parser) primary() (node, error) {
 			p.take()
 			return filesizeN{}, nil
 		case "entrypoint":
-			return nil, p.errorf(t, "entrypoint is not supported")
+			// The older form of pe.entry_point; it needs no import.
+			p.take()
+			p.entrypoint = true
+			return entryN{}, nil
 		case "any", "all", "none":
 			return p.of()
 		case "for":

@@ -28,6 +28,7 @@ func huntSourcesFor(cache *HashCache, n *notes) huntSources {
 		},
 		mft:    filetransfer.NTFSFiles,
 		memory: processMemory,
+		image:  processImage,
 	}
 }
 

@@ -96,7 +96,7 @@ func (e *evaluator) eval(n node) value {
 		return intV(x.v)
 	case floatLit:
 		return floatV(x.v)
-	case modRef, fieldN, indexN, callN:
+	case modRef, fieldN, indexN, callN, entryN:
 		return e.evalModule(n)
 	case strLit:
 		return value{kind: 's', s: x.v}

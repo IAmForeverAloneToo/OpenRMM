@@ -212,15 +212,14 @@ func TestBlocks(t *testing.T) {
 
 func TestCompileErrors(t *testing.T) {
 	for src, want := range map[string]string{
-		`import "pe" rule r { condition: true }`:                "module",
-		`rule r { condition: pe.number_of_sections == 1 }`:      "module",
+		`import "elf" rule r { condition: true }`:               "module",
+		`rule r { condition: pe.number_of_sections == 1 }`:      "without import",
 		`rule r { strings: $a = "x" condition: true }`:          "never used",
 		`rule r { condition: $a }`:                              "undefined string",
 		`rule r { strings: $a = "x" xor condition: $a }`:        "xor",
 		`rule r { condition: true } rule r { condition: true }`: "duplicate rule",
 		`rule r { strings: $a = { 4D 5A [2-] } condition: $a }`: "jump",
 		`rule r { strings: $a = /(a)\1/ condition: $a }`:        "regular expression",
-		`rule r { condition: entrypoint == 0 }`:                 "entrypoint",
 		`rule r { strings: $a = "x" $a = "y" condition: $a }`:   "duplicate string",
 		`rule r { condition: missing_rule }`:                    "unknown identifier",
 		`rule r { strings: $a = "unterminated condition: $a }`:  "unterminated",

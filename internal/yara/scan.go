@@ -26,7 +26,13 @@ type Rules struct {
 	// fullScan are regular expressions without a literal prefix and hex
 	// strings without an atom, run over the whole data.
 	fullScan []*pattern
+	// uses names the modules the rules use.
+	uses map[string]bool
 }
+
+// Uses reports whether the rules use a module (imported, or pe through
+// the entrypoint keyword).
+func (r *Rules) Uses(module string) bool { return r.uses[module] }
 
 // Compile parses and compiles rules.
 func Compile(src string) (*Rules, error) {
@@ -44,7 +50,13 @@ func Compile(src string) (*Rules, error) {
 	if len(p.order) == 0 {
 		return nil, errors.New("no rules")
 	}
-	rs := &Rules{rules: p.order}
+	rs := &Rules{rules: p.order, uses: map[string]bool{}}
+	for name := range p.imports {
+		rs.uses[name] = true
+	}
+	if p.entrypoint {
+		rs.uses["pe"] = true
+	}
 	var lits []acLit
 	for _, r := range p.order {
 		for _, s := range r.strings {

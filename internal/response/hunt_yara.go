@@ -108,8 +108,13 @@ func (m *matcher) memory(ctx context.Context, src huntSources, spec *protocol.Ya
 			continue
 		}
 		var found []yara.Match
+		// The pe module describes the process's main executable image.
+		var target yara.Target
+		if m.yara.Uses("pe") && src.image != nil {
+			target.Image, _ = src.image(ctx, p.PID)
+		}
 		e := src.memory(ctx, p.PID, func(blocks []yara.Block) error {
-			ms, err := m.yara.Scan(ctx, blocks, -1)
+			ms, err := m.yara.ScanTarget(ctx, blocks, -1, target)
 			found = append(found, ms...)
 			return err
 		})

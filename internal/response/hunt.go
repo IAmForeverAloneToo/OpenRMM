@@ -238,6 +238,9 @@ type huntSources struct {
 	// memory reads a process's committed, readable memory in batches of
 	// blocks for fn; an error means the process could not be read.
 	memory func(ctx context.Context, pid uint32, fn func([]yara.Block) error) error
+	// image reads a process's main executable as mapped in memory, for
+	// the pe module.
+	image func(ctx context.Context, pid uint32) (*yara.Block, error)
 }
 
 type huntRoot struct {
