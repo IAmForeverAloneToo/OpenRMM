@@ -29,7 +29,7 @@ Remote desktop lets the owner or a technician view, and optionally control, the 
 - A Windows x64 device with the installed agent service. Console (non-service) agents never offer remote desktop.
 - The agent MSI installs the companion and registers it to start at every user sign-in (**OpenRMM Desktop** under `HKLM\Software\Microsoft\Windows\CurrentVersion\Run`, which runs `openrmm-desktop.exe --background`). Install the agent from **Devices → Add device** or with its MSI; see [WINDOWS-SERVICE.md](WINDOWS-SERVICE.md). Re-enrolling is not needed to enable the feature.
 - The companion stays silent where remote desktop is unavailable, such as RDP sessions or elevated accounts. It connects to the agent service and retries every 10 seconds, because the service has a delayed start and restarts during updates. It reports the display layout (primary display first) with every exchange.
-- The installed agent also starts the companion in any active signed-in session that has none, within about a minute (for example after an agent install or update stopped it), at most once every five minutes per session.
+- The installed agent also starts the companion in any active signed-in session that has none, within about a minute (for example after an agent install or update replaced it), at most once every five minutes per session. A companion whose file an install replaced or an uninstall removed is ended.
 - Someone must be signed in at the console. Viewing the sign-in screen when nobody is signed in is not supported.
 
 ## Starting a session
