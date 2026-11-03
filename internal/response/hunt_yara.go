@@ -108,9 +108,10 @@ func (m *matcher) memory(ctx context.Context, src huntSources, spec *protocol.Ya
 			continue
 		}
 		var found []yara.Match
-		// The pe module describes the process's main executable image.
+		// The pe and dotnet modules describe the process's main executable
+		// image.
 		var target yara.Target
-		if m.yara.Uses("pe") && src.image != nil {
+		if (m.yara.Uses("pe") || m.yara.Uses("dotnet")) && src.image != nil {
 			target.Image, _ = src.image(ctx, p.PID)
 			// Signatures are not loaded into memory: read the program's file.
 			if target.Image != nil && m.yara.UsesSignatures() && p.Image != "" {
