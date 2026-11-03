@@ -62,7 +62,8 @@ func TestYaraHunt(t *testing.T) {
 	r := hunt(context.Background(), spec, src, n)
 	got := map[string]protocol.HuntMatch{}
 	for _, m := range r.Matches {
-		got[m.Area+" "+m.Indicator.Value+" "+filepath.Base(m.Path)] = m
+		// Process paths are Windows paths, also when the test runs elsewhere.
+		got[m.Area+" "+m.Indicator.Value+" "+m.Path[strings.LastIndexAny(m.Path, `\/`)+1:]] = m
 	}
 	if len(r.Matches) != 3 || r.Scanned.YaraFiles != 3 || r.Scanned.YaraProcesses != 2 {
 		t.Fatalf("%+v %v", r, n.list)
