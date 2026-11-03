@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 )
 
 // Request is what the server hands a parsing process.
@@ -34,6 +35,8 @@ type file struct {
 	path string
 	size int64
 	open func() (io.ReadCloser, error)
+	// modified is the file's modification time on the device, when known.
+	modified time.Time
 	// sibling finds another file of the same collection by its path.
 	sibling func(path string) (file, bool)
 }
@@ -48,7 +51,7 @@ type parser struct {
 	parse func(ctx context.Context, o *Output, f file) error
 }
 
-var parsers = []parser{prefetchParser, registryParser, eventLogParser}
+var parsers = []parser{prefetchParser, registryParser, eventLogParser, lnkParser, jumpListParser}
 
 // Parse reads a collection and writes the parsed results to req.Output.
 func Parse(ctx context.Context, req Request) (Manifest, error) {
@@ -94,7 +97,12 @@ func Parse(ctx context.Context, req Request) (Manifest, error) {
 		}
 		var sibling func(string) (file, bool)
 		entry := func(path string, z *zip.File) file {
-			return file{path: path, size: int64(z.UncompressedSize64), open: z.Open, sibling: sibling}
+			f := file{path: path, size: int64(z.UncompressedSize64), open: z.Open, sibling: sibling}
+			// An entry without a time reads as the DOS epoch.
+			if z.Modified.Year() > 1980 {
+				f.modified = z.Modified.UTC()
+			}
+			return f
 		}
 		sibling = func(path string) (file, bool) {
 			z, ok := byPath[strings.ToLower(path)]
